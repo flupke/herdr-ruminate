@@ -51,6 +51,11 @@ impl Event {
         })
     }
 
+    /// The name of the document a `doc` event says was saved, such as herdr-app's layout.
+    pub(crate) fn saved_document(&self) -> Option<&str> {
+        (self.kind == "doc").then(|| self.data.get("name")?.as_str())?
+    }
+
     /// Whether the terminal's program is gone for good: it finished, it was removed, or it was
     /// lost, after which herdr-core gives the terminal a new shell at most.
     pub(crate) fn ends_program(&self) -> bool {

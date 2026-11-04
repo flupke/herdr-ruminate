@@ -40,8 +40,16 @@ itself Herdr too, and labels its terminals `herdr.*`.
   its pane goes.
 - herdr-core gives each terminal its size, `cols` and `rows`, in `terminals()` and
   `hc get`.
-- herdr-app writes `~/.config/herdr-app/view.json`: the selected space, the selected tab
-  of each space, and the focused pane of each tab, by herdr-app's pane IDs.
+- herdr-app writes `~/.config/herdr-app/view.json`: the selected space (`active`), the
+  selected tab of each space (`spaces`), and the focused pane of each tab (`tabs.<tab>.focused`),
+  by herdr-app's pane IDs, on each focus change and for other reasons, such as an agent's
+  attention. It writes a temporary file and renames it over the view. herdr-core keeps
+  herdr-app's layout as its document `herdr-app` (`doc.get`): spaces, tabs, and nested
+  `row`/`column` nodes whose `block` leaves hold `content.terminal` or `content.mod`, by the same
+  pane IDs. A `doc` event carries only the document's name and version (herdr-app 0.1.13).
+- A terminal's environment is herdr-core's, plus its `HC_*` variables: its `HERDR_APP_HOME`
+  is the one herdr-core started with, not the window's. A mod reads its window's with
+  `appHome()`.
 - The `herdr-gpui-browser` skill is for Herdr GPUI, a different app; on Linux it opens
   pages in the system browser.
 
@@ -103,7 +111,7 @@ scripts nix Makefile` list the reviewer's uses.
 | `pane.process_info` | `foreground`, the group leader only |
 | `agent.prompt` | `terminal.send` |
 | `agent.read` (tests only) | `terminal.read` |
-| `events.subscribe`: `pane.focused` | Nothing in the core; a mod's `focused()`, and `view.json` |
+| `events.subscribe`: `pane.focused` | Nothing in the core; a mod's `focused()`, and `view.json` with the `herdr-app` document, which the review pane follows |
 | `events.subscribe`: `pane.agent_detected`, `pane.agent_status_changed` | `events.subscribe` status events |
 | `plugin.pane.open`, `plugin.pane.focus`, `plugin.pane.close`, `agent.focus` | `pane.split` or `terminal.open`, `pane.focus`, `pane.close`, `agent.focus`, through `herdr-app do` or a mod's `run()` |
 | `pane.get`, `pane.layout`, `pane.resize` | `herdr-app ls` and a mod's `panes()`, with each pane's tab; no pane size |
@@ -123,9 +131,14 @@ and its agents are Herdr's.
 [ADR 0014](../adr/0014-talk-to-herdr-core-behind-the-host-traits-beside-herdr.md) says why
 both stay.
 
-- Under herdr-core the pane has no focus to follow: its first target is the terminal the mod
-  names with `--focused-terminal`, else the tab's only agent; it does not follow a focus change
-  after it opened.
+- Under herdr-core the pane's first target is the terminal the mod names with
+  `--focused-terminal`; it follows the focus of the window whose home the mod names with
+  `--herdr-app-home`, else `~/.config/herdr-app`, through `view.json` and the layout
+  (`crates/herdr-app-focus`, [ADR 0017](../adr/0017-follow-herdr-app-s-focus-through-its-view-file.md)).
+  It tells only the focus of this computer's spaces: another machine's ids carry a `<machine>/`
+  prefix that its layout lacks. A home it cannot watch, or a layout it cannot read, leaves the
+  focus unknown, not the agents' events. The watch ignores the reads of `view.json`: notify's
+  inotify backend reports each open, the pane's own included.
 - The agent's session is a label of its terminal, which the reviewer's Claude Code hook sets,
   and the agents' hooks reach the reviewers of a core as those of a Herdr server
   ([ADR 0016](../adr/0016-report-the-agent-s-session-as-a-label-of-its-herdr-core-terminal.md)).
@@ -144,14 +157,23 @@ both stay.
   `host.rs`. No check parses the mod; `herdr-app check herdr-app-mod` does. Never drive it in the
   user's window: `herdr-app do` acts on the space the user looks at now, which they may switch
   at any moment, and `space.new` switches their view. A copy of a mod lives only while it shows,
-  and the launcher's closes at once: following the focus needs a copy that stays, in a layout
-  or a kept window.
+  and the launcher's closes at once.
 
 The tests of the backend against a real herdr-core are opt-in (Checks, Opt-in tests). A private
 core needs its own `HC_SESSION`, scratch `XDG_*_HOME` folders, and an `XDG_RUNTIME_DIR` short
 enough for its socket: herdr-core refuses a socket path over 107 bytes, which a scratch folder
 under `$TMPDIR` can exceed; the tests use `/tmp`. herdr-core may update itself and restart
 while it runs (0.1.17 to 0.1.18 during one session): its terminals keep running.
+
+A private herdr-app window runs off the user's screen on that core: start `Xvfb :97`, then
+`herdr-app` with the core's variables, `HC_TERMINAL_*` and `HC_SCOPE` unset, `DISPLAY=:97`,
+`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json` (software Vulkan), and
+`HERDR_APP_HOME` a short folder under `/tmp`: its control socket lives there, and a longer path
+leaves `herdr-app do`, `ls` and `shot` with no window to reach. `scripts/herdr-app-mod install`
+with that `HERDR_APP_HOME` installs the launcher there; `herdr-app do mod.open:<mod>` presses
+its key, `hc keys` and `hc read` drive and read the review pane, and `herdr-app shot` shows the
+window. The window opens on its welcome overlay (`overlay.close {id: "frame-welcome"}`), and
+the pane needs 40 columns (`app.zoom_out`).
 
 ## The review pane outside Herdr
 

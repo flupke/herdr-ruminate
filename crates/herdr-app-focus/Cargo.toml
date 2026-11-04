@@ -1,0 +1,20 @@
+[package]
+name = "herdr-app-focus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The pane the user focuses in herdr-app's window, and the terminal it shows."
+
+[dependencies]
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+test-case.workspace = true
+
+[lints]
+workspace = true

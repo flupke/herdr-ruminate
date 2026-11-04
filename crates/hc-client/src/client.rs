@@ -2,10 +2,16 @@
 
 use std::collections::BTreeMap;
 use std::io::BufReader;
+use std::net::Shutdown;
+use std::ops::ControlFlow;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
+
+use herdr_app_focus::{AppHome, LAYOUT_DOCUMENT, Layout, ViewWatch};
 
 use herdr_client::client::{EventCanceller, Tie, read_line, write_json_line};
 use herdr_client::protocol::{
@@ -18,6 +24,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::events::{Event, Roster, StatusChange, status_of};
+use crate::focus::Focus;
 use crate::terminal::{SESSION_LABEL, Terminal, place_of, session_label};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
@@ -29,10 +36,13 @@ static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 /// A synchronous client of herdr-core, the core of herdr-app that runs its terminals and
 /// agents. herdr-core keeps no focus and no agent session: the reviewer keeps the agent's
 /// session in its terminal's session label, which the agent's hook and
-/// [`AgentHost::report_agent_session`] set (ADR 0016).
+/// [`AgentHost::report_agent_session`] set (ADR 0016), and the client reads the focus of a
+/// screen of herdr-app when it follows one.
 #[derive(Clone, Debug)]
 pub struct HcClient {
     socket_path: PathBuf,
+    /// The home of the herdr-app screen whose focus the client follows.
+    focus_home: Option<AppHome>,
 }
 
 /// A refusal of herdr-core: `{code, message, data: {kind, hint}}`.
@@ -91,6 +101,13 @@ struct Listed {
     terminals: Vec<Terminal>,
 }
 
+/// What `doc.get` answers for herdr-app's layout: `null` before herdr-app saved one.
+#[derive(Debug, Deserialize)]
+struct Document {
+    #[serde(default)]
+    value: Option<Layout>,
+}
+
 /// The snapshot `events.subscribe` answers, before the events that follow it.
 #[derive(Debug, Deserialize)]
 struct Snapshot {
@@ -105,10 +122,51 @@ struct Subscription {
     socket_path: PathBuf,
 }
 
+/// What [`HcClient::forward_events`] waits for: herdr-core's next event, read on a thread of its
+/// own, or herdr-app writing its view.
+enum Input {
+    /// The next event; `None` once the stream's canceller ended it.
+    Event(Result<Option<Event>>),
+    ViewWritten,
+}
+
+/// Ends the reads of a subscription's thread when it drops, by shutting its socket down.
+struct Reader(UnixStream);
+
+impl Drop for Reader {
+    fn drop(&mut self) {
+        let _ = self.0.shutdown(Shutdown::Both);
+    }
+}
+
+/// Tells `inputs` each time herdr-app writes the view of the screen whose home is `home`, until
+/// the watch drops. A home that cannot be watched leaves the focus as first read: agent
+/// delivery does without the focus, as with only one agent in the tab, not without the events.
+fn watch_view(home: &AppHome, inputs: mpsc::Sender<Input>) -> Option<ViewWatch> {
+    home.watch_view(move || {
+        let _ = inputs.send(Input::ViewWritten);
+    })
+    .ok()
+}
+
 impl HcClient {
     /// A client of the core whose socket is `socket_path`.
     pub fn new(socket_path: PathBuf) -> Self {
-        Self { socket_path }
+        Self {
+            socket_path,
+            focus_home: None,
+        }
+    }
+
+    /// The client, following the focus of the herdr-app screen whose home is `home`: its
+    /// session snapshot gives the focused terminal, and its events each terminal the user
+    /// focuses, as Herdr's `pane.focused` tells.
+    #[must_use]
+    pub fn following_focus(self, home: AppHome) -> Self {
+        Self {
+            focus_home: Some(home),
+            ..self
+        }
     }
 
     /// A client of the core of the terminal this process runs in: herdr-core gives each of its
@@ -167,6 +225,51 @@ impl HcClient {
             terminal,
             &BTreeMap::from([(SESSION_LABEL.to_owned(), String::new())]),
         )
+    }
+
+    /// What `input` tells the reviewer: the arrival or departure of an agent, or the terminal
+    /// the user focuses when it changed, if any; `Break` once the stream ended.
+    fn tell(
+        &self,
+        input: Input,
+        roster: &mut Roster,
+        focus: Option<&mut Focus>,
+    ) -> Result<ControlFlow<(), Option<HerdrEvent>>> {
+        let event = match input {
+            Input::ViewWritten => {
+                return Ok(ControlFlow::Continue(
+                    focus.and_then(Focus::changed).map(HerdrEvent::PaneFocused),
+                ));
+            }
+            Input::Event(event) => event?,
+        };
+        let Some(event) = event else {
+            return Ok(ControlFlow::Break(()));
+        };
+        match focus {
+            Some(focus) if event.saved_document() == Some(LAYOUT_DOCUMENT) => {
+                Ok(ControlFlow::Continue(
+                    // A layout that cannot be read keeps the last one read.
+                    self.layout()
+                        .ok()
+                        .and_then(|layout| focus.layout_changed(layout))
+                        .map(HerdrEvent::PaneFocused),
+                ))
+            }
+            _ => roster.observe(&event).map(ControlFlow::Continue),
+        }
+    }
+
+    /// herdr-app's layout, which herdr-core keeps for it; empty before herdr-app saved one.
+    fn layout(&self) -> Result<Layout> {
+        let document: Document = self.call("doc.get", &json!({"name": LAYOUT_DOCUMENT}))?;
+        Ok(document.value.unwrap_or_default())
+    }
+
+    /// herdr-app's layout, or none when it cannot be read: the agents and their prompts do
+    /// without the focus, which then falls on no terminal.
+    fn layout_or_none(&self) -> Layout {
+        self.layout().unwrap_or_default()
     }
 
     /// The terminal at `address`, live or finished; `None` when herdr-core has none there.
@@ -302,6 +405,30 @@ impl HcClient {
 }
 
 impl Subscription {
+    /// Reads the subscription's events on a thread of its own, which hands each to `inputs`
+    /// until the stream ends, the receiver drops, or the [`Reader`] it returns drops.
+    fn forward_to(mut self, inputs: mpsc::Sender<Input>) -> Result<Reader> {
+        let socket = self
+            .reader
+            .get_ref()
+            .try_clone()
+            .map_err(|source| Error::Io {
+                operation: "share the herdr-core event socket",
+                path: self.socket_path.clone(),
+                source,
+            })?;
+        thread::spawn(move || {
+            loop {
+                let event = self.next_event();
+                let ended = !matches!(event, Ok(Some(_)));
+                if inputs.send(Input::Event(event)).is_err() || ended {
+                    return;
+                }
+            }
+        });
+        Ok(Reader(socket))
+    }
+
     /// The next event; `None` once the stream's canceller ended it. A subscriber that fell
     /// behind is an error: it subscribes again for a fresh snapshot.
     fn next_event(&mut self) -> Result<Option<Event>> {
@@ -381,9 +508,14 @@ fn refusal(method: &'static str, error: ApiError) -> Error {
 }
 
 impl AgentPort for HcClient {
-    /// herdr-core keeps no focus: herdr-app keeps it on each screen.
+    /// herdr-core keeps no focus: herdr-app keeps it on each screen, and gives it only to a
+    /// client that follows the screen's.
     fn session_snapshot(&self) -> Result<SessionSnapshot> {
-        Ok(SessionSnapshot::default())
+        let focused_pane_id = match &self.focus_home {
+            Some(home) => home.focused_terminal(&self.layout_or_none()).map(PaneId),
+            None => None,
+        };
+        Ok(SessionSnapshot { focused_pane_id })
     }
 
     fn list_agents(&self) -> Result<Vec<Agent>> {
@@ -436,12 +568,14 @@ impl AgentPort for HcClient {
 }
 
 impl AgentHost for HcClient {
+    /// The agents' arrivals and departures, and, for a client that follows a screen's focus,
+    /// each terminal the user focuses there, the one focused at first included.
     fn forward_events(
         &self,
         canceller: &EventCanceller,
         send: &mut dyn FnMut(HerdrEvent) -> bool,
     ) -> Result<()> {
-        let Some((snapshot, mut events)) = self.subscribe(&json!({}), canceller)? else {
+        let Some((snapshot, events)) = self.subscribe(&json!({}), canceller)? else {
             return Err(Error::Protocol {
                 operation: "events.subscribe".to_owned(),
                 detail: "herdr-core found no terminal for a subscription that names none",
@@ -456,10 +590,26 @@ impl AgentHost for HcClient {
                 return Ok(());
             }
         }
-        while let Some(event) = events.next_event()? {
-            if let Some(event) = roster.observe(&event)?
-                && !send(event)
-            {
+        let (inputs, received) = mpsc::channel();
+        let _reader = events.forward_to(inputs.clone())?;
+        // The watch ends when it drops, with the stream.
+        let (mut focus, _view_watch) = match &self.focus_home {
+            Some(home) => (
+                Some(Focus::new(home.clone(), self.layout_or_none())),
+                watch_view(home, inputs),
+            ),
+            None => (None, None),
+        };
+        let focused = focus.as_mut().and_then(Focus::changed);
+        if focused.is_some_and(|terminal| !send(HerdrEvent::PaneFocused(terminal))) {
+            return Ok(());
+        }
+        // The reader's last input, the end of its stream or an error, ends the loop.
+        while let Ok(input) = received.recv() {
+            let ControlFlow::Continue(told) = self.tell(input, &mut roster, focus.as_mut())? else {
+                break;
+            };
+            if told.is_some_and(|event| !send(event)) {
                 break;
             }
         }
