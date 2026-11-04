@@ -96,12 +96,38 @@ enum Awaiting {
     /// submitted meanwhile is blocked.
     Resume { session: String },
     /// The prompt `text` the reviewer typed is submitted to the agent, on the session
-    /// `session` when Herdr reports one for a pane: any other prompt submitted meanwhile is
-    /// blocked.
+    /// `session` when Herdr reports one for a pane: a prompt submitted meanwhile that joins
+    /// more text to it is blocked, and one without it as `others` says.
     Prompt {
         session: Option<String>,
         text: String,
+        others: OtherPrompts,
     },
+}
+
+/// What the reviewer does with a prompt submitted to the agent without the reviewer's text,
+/// while it waits for its own: the host it types through says.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OtherPrompts {
+    /// Blocks it, as under Herdr, which types the reviewer's prompt at once, among the keys
+    /// someone presses there.
+    Block,
+    /// Lets it go on, as under herdr-core: its `terminal.send` types the reviewer's prompt only
+    /// once nobody typed for about 3 s, and holds the keys pressed while it types, so a prompt
+    /// without the reviewer's text holds none of it. Blocking it would block what the user
+    /// submits for as long as the host waits.
+    Pass,
+}
+
+impl OtherPrompts {
+    /// What the reviewer does with the other prompts while it types one through `port`.
+    pub fn for_host(port: &dyn AgentPort) -> Self {
+        if port.types_prompts_whole() {
+            Self::Pass
+        } else {
+            Self::Block
+        }
+    }
 }
 
 /// What the agent's hooks said that an [`Expectation`] waited for, first.
@@ -247,10 +273,17 @@ impl AgentHooks {
     }
 
     /// Expects the prompt `text` to be submitted to `agent`, from now until the expectation is
-    /// dropped, and meanwhile blocks each other prompt submitted to it, for `block`, which the
-    /// agent shows: the reviewer arms it before it types the prompt. Text left in the agent's
-    /// input box joins the typed prompt into one, which is blocked: the expectation hears it.
-    pub fn expect_prompt(&self, agent: &HookedAgent, text: &str, block: &str) -> Expectation {
+    /// dropped, and meanwhile blocks each prompt submitted to it that joins more text to it, for
+    /// `block`, which the agent shows, and the others as `others` says: the reviewer arms it
+    /// before it types the prompt. Text left in the agent's input box joins the typed prompt
+    /// into one, which is blocked: the expectation hears it.
+    pub fn expect_prompt(
+        &self,
+        agent: &HookedAgent,
+        text: &str,
+        block: &str,
+        others: OtherPrompts,
+    ) -> Expectation {
         let session = match agent {
             HookedAgent::Pane { session, .. } => session.clone(),
             // The expectation is the session's already.
@@ -261,6 +294,7 @@ impl AgentHooks {
             Awaiting::Prompt {
                 session,
                 text: text.to_owned(),
+                others,
             },
             block,
         )
@@ -388,8 +422,10 @@ impl Awaited {
     fn blocks(&self, prompt: &str, session: Option<&str>) -> bool {
         match &self.awaiting {
             Awaiting::Resume { .. } => true,
-            Awaiting::Prompt { text, .. } => {
+            Awaiting::Prompt { text, others, .. } => {
+                let mine = prompt.contains(text.trim());
                 self.heard.is_none()
+                    && (mine || *others == OtherPrompts::Block)
                     && (self.on_another_session(session) || prompt.trim() != text.trim())
             }
         }

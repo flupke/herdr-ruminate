@@ -1,0 +1,17 @@
+[package]
+name = "hc-test-support"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "A private herdr-core (`hc`) for the tests, and a person who types in one of its terminals."
+
+[dependencies]
+hc-client = { path = "../hc-client" }
+herdr-client = { path = "../herdr-client" }
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

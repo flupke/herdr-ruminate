@@ -167,6 +167,48 @@ fn an_agent_that_blocked_on_its_user_after_a_prompt_started_on_it() {
 }
 
 #[test]
+fn a_prompt_to_an_agent_that_waits_on_its_user_reaches_nothing_and_says_why() {
+    let (client, _core) = fake_core(|request| vec![refusal_of(request, "blocked")]);
+
+    let error = client.submit_prompt(&pane(), "Review x.rs").unwrap_err();
+
+    let Error::NotTyped { reason } = error else {
+        panic!("a refused send typed nothing: {error:?}");
+    };
+    assert!(reason.contains("waits on its user"), "{reason}");
+}
+
+#[test]
+fn another_refused_send_reaches_nothing_with_herdr_core_s_reason() {
+    let (client, _core) = fake_core(|request| vec![refusal_of(request, "unavailable")]);
+
+    let error = client.prompt_agent(&pane(), "Review x.rs").unwrap_err();
+
+    assert!(
+        matches!(&error, Error::NotTyped { reason } if reason == "refused: unavailable"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn a_refused_send_of_a_kind_herdr_core_does_not_list_may_have_typed() {
+    let (client, _core) = fake_core(|request| vec![refusal_of(request, "internal")]);
+
+    let error = client.submit_prompt(&pane(), "Review x.rs").unwrap_err();
+
+    assert!(
+        matches!(
+            error,
+            Error::Herdr {
+                operation: "terminal.send",
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+}
+
+#[test]
 fn a_submitted_command_does_not_wait_for_the_agent_to_start() {
     let (client, core) = fake_core(|request| match request["method"].as_str() {
         Some("terminal.send") => vec![result(

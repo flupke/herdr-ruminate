@@ -55,10 +55,14 @@ records it for the tab it is in.
   Codex 0.162.1 shows "Blocked by hook" with the reason, keeps the prompt in its history and
   empties the input box.
 - Text left in the agent's input box joins the typed prompt into one. While the reviewer
-  waits for its prompt, the hook blocks any other prompt of that pane (of that session, for
-  Codex): the joined one, whose
-  delivery then fails with the text left (`PromptError::Blocked`) and waits for Retry, and
-  one typed by someone else, after which the reviewer waits on for its own. A blocked prompt runs no turn; Claude
+  waits for its prompt, the hook blocks the joined prompt of that pane (of that session, for
+  Codex), whose
+  delivery then fails with the text left (`PromptError::Blocked`) and waits for Retry, and,
+  under Herdr, any other prompt, as one typed by someone else, after which the reviewer waits on for its own.
+  Under herdr-core, whose send waits until the user stops typing and then types the prompt
+  whole, a prompt without the reviewer's text goes on
+  ([herdr-app](herdr-app.md#the-reviewers-hc-backend)): blocked, the user's prompt would go
+  back to the input box, and the reviewer's, typed after it, would join it. A blocked prompt runs no turn; Claude
   Code 2.1.309 shows the reason and puts the prompt back in the input box, so the user clears
   the box before Retry.
 - Claude Code trims the end of the prompt it reports, and wraps a long paste in
@@ -72,7 +76,8 @@ records it for the tab it is in.
 - Herdr judges by the state it knows. When an integration reports the agent's state to Herdr
   instead of Herdr reading its screen, that integration must report the turns the agent
   starts, or every prompt to an agent without the hooks counts as not started.
-- Herdr owns the terminal submission and rejects a prompt to a blocked agent. The reviewer
+- Herdr owns the terminal submission and rejects a prompt to a blocked agent; so does
+  herdr-core, whose refusal says nothing reached the agent. The reviewer
   does not inspect the agent's terminal or its focus; it protects a prompt from the text left
   in the input box only through the hooks.
 

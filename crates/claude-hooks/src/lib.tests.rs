@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use agent_hooks::{AgentHooks, Heard, HookedAgent, HookedSession};
+use agent_hooks::{AgentHooks, Heard, HookedAgent, HookedSession, OtherPrompts};
 use serde_json::Value;
 
 use super::*;
@@ -179,7 +179,12 @@ fn wrapped_paste(before: &str) -> String {
 fn a_long_prompt_claude_code_reports_as_a_paste_is_the_one_the_reviewer_typed() {
     let (_runtime, directory, hooks) = reviewer();
     let pane = PaneId("w:p1".into());
-    let expectation = hooks.expect_prompt(&in_session(&pane, "session"), LONG, "blocked");
+    let expectation = hooks.expect_prompt(
+        &in_session(&pane, "session"),
+        LONG,
+        "blocked",
+        OtherPrompts::Block,
+    );
 
     let decision = hook_in(
         &pane,
@@ -195,7 +200,12 @@ fn a_long_prompt_claude_code_reports_as_a_paste_is_the_one_the_reviewer_typed() 
 fn text_left_in_the_input_box_before_a_long_prompt_is_blocked() {
     let (_runtime, directory, hooks) = reviewer();
     let pane = PaneId("w:p1".into());
-    let expectation = hooks.expect_prompt(&in_session(&pane, "session"), LONG, "blocked");
+    let expectation = hooks.expect_prompt(
+        &in_session(&pane, "session"),
+        LONG,
+        "blocked",
+        OtherPrompts::Block,
+    );
 
     let decision = hook_in(
         &pane,
@@ -216,7 +226,12 @@ fn text_left_in_the_input_box_before_a_long_prompt_is_blocked() {
 fn the_typed_prompt_in_another_session_of_the_pane_is_blocked() {
     let (_runtime, directory, hooks) = reviewer();
     let pane = PaneId("w:p1".into());
-    let expectation = hooks.expect_prompt(&in_session(&pane, "agent"), "Reply with ok", "blocked");
+    let expectation = hooks.expect_prompt(
+        &in_session(&pane, "agent"),
+        "Reply with ok",
+        "blocked",
+        OtherPrompts::Block,
+    );
 
     let decision = hook_in(&pane, &directory, prompt_submit("Reply with ok").as_bytes());
 

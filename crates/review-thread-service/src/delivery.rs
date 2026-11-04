@@ -9,7 +9,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
-use agent_hooks::{AgentHooks, Heard};
+use agent_hooks::{AgentHooks, Heard, OtherPrompts};
 use herdr_client::protocol::{Agent, AgentPort};
 
 use crate::{Input, PinnedAgent};
@@ -27,24 +27,31 @@ const BLOCKED: &str = "The progressive reviewer stopped this prompt while it typ
                        reviewer.";
 
 /// Submit `text` to `agent` and wait until it starts on it: as its `hooks` report the prompt,
-/// when the agent runs them, and otherwise as Herdr reports the agent's status. Any other
-/// failure may come after Herdr wrote the text, so it leaves the outcome unknown.
+/// when the agent runs them, and otherwise as Herdr reports the agent's status. A host that
+/// refuses the prompt typed nothing; any other failure may come after the host wrote the text,
+/// so it leaves the outcome unknown.
 fn prompt_agent(
     port: &dyn AgentPort,
     hooks: Option<&AgentHooks>,
     agent: &Agent,
     text: &str,
 ) -> Result<(), PromptError> {
-    let unknown = |error: herdr_client::Error| match error {
+    let failure = |error: herdr_client::Error| match error {
         herdr_client::Error::AgentNotStarted { .. } => PromptError::NotStarted,
+        herdr_client::Error::NotTyped { reason } => PromptError::Delivery(format!(
+            "Nothing reached the agent ({reason}). Look at the agent's pane, then Retry."
+        )),
         error => PromptError::Unknown(error.to_string()),
     };
     let Some((hooks, hooked)) = hooks.and_then(|hooks| Some((hooks, hooks.hooked(port, agent)?)))
     else {
-        return port.prompt_agent(&agent.pane_id, text).map_err(unknown);
+        return port.prompt_agent(&agent.pane_id, text).map_err(failure);
     };
-    let expectation = hooks.expect_prompt(&hooked, text, BLOCKED);
-    port.submit_prompt(&agent.pane_id, text).map_err(unknown)?;
+    // A host that types the prompt only once nobody types there may wait for seconds: the
+    // user's own prompts go on meanwhile, when it holds none of the reviewer's text.
+    let others = OtherPrompts::for_host(port);
+    let expectation = hooks.expect_prompt(&hooked, text, BLOCKED, others);
+    port.submit_prompt(&agent.pane_id, text).map_err(failure)?;
     match expectation.wait(HOOK_LIMIT) {
         Some(Heard::Submitted) => Ok(()),
         Some(Heard::Joined { left }) => Err(PromptError::Blocked { left }),
@@ -63,7 +70,7 @@ fn prompt_agent(
                 "the agent's hooks did not report the prompt within {} s",
                 HOOK_LIMIT.as_secs()
             ))),
-            Err(error) => Err(unknown(error)),
+            Err(error) => Err(failure(error)),
         },
     }
 }
@@ -634,6 +641,20 @@ mod tests {
             ["Held"]
         );
         assert!(saved.0.load(Ordering::Acquire), "its outcome is saved");
+    }
+
+    #[test]
+    fn a_prompt_the_host_refused_did_not_reach_the_agent_and_says_why() {
+        let agent: Agent = serde_json::from_value(serde_json::json!({"pane_id":"pane", "tab_id":"tab", "workspace_id":"workspace", "agent_status":"blocked"})).unwrap();
+        let port = herdr_client::memory::InMemoryAgents::default();
+        port.refuse_prompts("it waits on its user");
+
+        let result = prompt_agent(&port, None, &agent, "Review x.rs");
+
+        assert!(
+            matches!(&result, Err(PromptError::Delivery(message)) if message.contains("(it waits on its user)")),
+            "{result:?}"
+        );
     }
 
     #[test]

@@ -65,6 +65,8 @@ tiktoken-rs = "0.12"
 
 [dev-dependencies]
 codex-daemon = { path = "../codex-daemon" }
+# The contract check of prompt delivery runs real Claude Code on a private herdr-core.
+hc-test-support = { path = "../hc-test-support" }
 # The tests learn that the thread worker sent every prompt it was asked to.
 review-thread-service = { path = "../review-thread-service", features = ["flush"] }
 review-explore-round-settings = { path = "../review-explore-round-settings" }

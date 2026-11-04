@@ -1,124 +1,20 @@
-//! The hc backend against a real herdr-core, on a private core of its own: its own
-//! `HC_SESSION` and scratch XDG folders, never the user's core. Opt-in, since the dev shell
-//! pins no herdr-core: `cargo nextest run -p hc-client --run-ignored only`, with `hc` on the
-//! `PATH` or `TEST_HC_BIN` naming one.
+//! The hc backend against a real herdr-core, on a private core of its own
+//! ([`hc_test_support::PrivateCore`]), never the user's core. Opt-in, since the dev shell pins
+//! no herdr-core: `cargo nextest run -p hc-client --run-ignored only`, with `hc` on the `PATH`
+//! or `TEST_HC_BIN` naming one.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use hc_client::HcClient;
+use hc_test_support::PrivateCore;
 use herdr_client::client::EventCanceller;
 use herdr_client::protocol::{AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, TabId};
-use serde_json::{Value, json};
 
-const SESSION: &str = "t";
-
-/// A herdr-core started for one test, and stopped with it.
-struct PrivateCore {
-    /// Short, under `/tmp`: the socket's path must fit in 107 bytes.
-    runtime: tempfile::TempDir,
-    home: tempfile::TempDir,
-}
-
-impl PrivateCore {
-    fn start() -> Self {
-        let core = Self {
-            runtime: tempfile::Builder::new()
-                .prefix("hc")
-                .tempdir_in("/tmp")
-                .unwrap(),
-            home: tempfile::tempdir().unwrap(),
-        };
-        core.hc(&["server", "start", "--json"]);
-        core
-    }
-
-    fn hc(&self, arguments: &[&str]) -> String {
-        let binary = std::env::var_os("TEST_HC_BIN").unwrap_or_else(|| OsString::from("hc"));
-        let folder = |name: &str| self.home.path().join(name);
-        let output = Command::new(binary)
-            .args(arguments)
-            .env_remove("HC_TERMINAL_ID")
-            .env_remove("HC_TERMINAL_SOCKET")
-            .env_remove("HC_SCOPE")
-            .env("HC_SESSION", SESSION)
-            .env("XDG_RUNTIME_DIR", self.runtime.path())
-            .env("XDG_STATE_HOME", folder("state"))
-            .env("XDG_CONFIG_HOME", folder("config"))
-            .env("XDG_DATA_HOME", folder("data"))
-            .env("XDG_CACHE_HOME", folder("cache"))
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "hc {arguments:?}: {output:?}");
-        String::from_utf8(output.stdout).unwrap()
-    }
-
-    fn socket(&self) -> PathBuf {
-        self.runtime
-            .path()
-            .join("herdr-core")
-            .join(format!("{SESSION}.sock"))
-    }
-
-    /// Waits until herdr-core names the foreground process of `terminal`, which it tells only
-    /// in its raw events.
-    fn wait_for_foreground(&self, terminal: &PaneId) {
-        let mut socket = UnixStream::connect(self.socket()).unwrap();
-        let request = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "events.subscribe",
-            "params": {"terminal": terminal.0},
-        });
-        writeln!(socket, "{request}").unwrap();
-        for line in BufReader::new(socket).lines() {
-            let message: Value = serde_json::from_str(&line.unwrap()).unwrap();
-            let named = !message["result"]["terminals"][0]["foreground"].is_null()
-                || message["params"]["type"] == "foreground";
-            if named {
-                return;
-            }
-        }
-        panic!("herdr-core closed the stream before it named the foreground process");
-    }
-
-    fn client(&self) -> HcClient {
-        HcClient::new(self.socket())
-    }
-
-    /// Runs `script` in a new terminal of the tab `tb1`, in `folder`; returns its address.
-    fn run(&self, folder: &Path, script: &str) -> PaneId {
-        let started: Value = serde_json::from_str(&self.hc(&[
-            "run",
-            "--bg",
-            "--json",
-            "--cwd",
-            folder.to_str().unwrap(),
-            "--label",
-            "herdr.space=sp1",
-            "--label",
-            "herdr.tab=tb1",
-            "--",
-            "bash",
-            "-c",
-            script,
-        ]))
-        .unwrap();
-        PaneId(started["address"].as_str().unwrap().to_owned())
-    }
-}
-
-impl Drop for PrivateCore {
-    fn drop(&mut self) {
-        self.hc(&["server", "stop", "--json"]);
-    }
-}
+/// How fast the person types.
+const PACE: Duration = Duration::from_millis(300);
 
 /// A shell line that reports `state` as Claude Code does, with OSC 7501.
 fn report(state: &str) -> String {
@@ -212,6 +108,120 @@ fn an_agent_that_never_starts_on_a_prompt_is_told() {
         client.prompt_agent(&agent, "Review crates/hc-client"),
         Err(herdr_client::Error::AgentNotStarted { .. })
     ));
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+fn a_prompt_to_an_agent_that_waits_on_its_user_types_nothing() {
+    let core = PrivateCore::start();
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(
+        folder.path(),
+        &format!(
+            "{} read -r line; printf '%s' \"$line\" > typed; {} read -r line",
+            report("blocked"),
+            report("done")
+        ),
+    );
+    wait_for(&client, &agent, AgentStatus::Blocked);
+
+    let refused = client.submit_prompt(&agent, "Review crates/hc-client");
+
+    assert!(
+        matches!(&refused, Err(herdr_client::Error::NotTyped { reason }) if reason.contains("waits on its user")),
+        "{refused:?}"
+    );
+    // A key pressed after the refusal is the first the agent reads.
+    core.hc(&["keys", &agent.0, "m", "enter"]);
+    wait_for(&client, &agent, AgentStatus::Done);
+    assert_eq!(
+        std::fs::read_to_string(folder.path().join("typed")).unwrap(),
+        "m"
+    );
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+fn a_prompt_to_an_agent_that_blocked_while_the_person_typed_types_nothing() {
+    let core = PrivateCore::start();
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    // The agent works until the person types `!`, then waits on them.
+    let agent = core.run(
+        folder.path(),
+        &format!(
+            "{} while read -rn1 key && [ \"$key\" != '!' ]; do :; done; {} read -r line; \
+             printf '%s' \"$line\" > typed; {} read -r line",
+            report("working"),
+            report("blocked"),
+            report("done")
+        ),
+    );
+    wait_for(&client, &agent, AgentStatus::Working);
+    let mut person = core.person_at(&agent);
+    person.types("ab", PACE);
+    let sender = {
+        let (client, agent) = (client.clone(), agent.clone());
+        thread::spawn(move || {
+            let refused = client.submit_prompt(&agent, "Review crates/hc-client");
+            (refused, Instant::now())
+        })
+    };
+
+    person.types("!cd", PACE);
+    let typed = Instant::now();
+    let (refused, at) = sender.join().unwrap();
+
+    assert!(
+        matches!(&refused, Err(herdr_client::Error::NotTyped { reason }) if reason.contains("waits on its user")),
+        "{refused:?}"
+    );
+    // A refusal before the send waited for the person to stop would have come at once.
+    assert!(
+        at >= typed + Duration::from_secs(2),
+        "herdr-core refused before it waited"
+    );
+    core.hc(&["keys", &agent.0, "m", "enter"]);
+    wait_for(&client, &agent, AgentStatus::Done);
+    assert_eq!(
+        std::fs::read_to_string(folder.path().join("typed")).unwrap(),
+        "cdm"
+    );
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+fn a_prompt_waits_until_the_person_typing_in_the_agent_s_terminal_stops() {
+    let core = PrivateCore::start();
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(
+        folder.path(),
+        &format!(
+            "{} for n in 1 2; do read -r line; printf '%s\\n' \"$line\" >> lines; done; {} exec \
+             sleep 600",
+            report("idle"),
+            report("working")
+        ),
+    );
+    wait_for(&client, &agent, AgentStatus::Idle);
+    let mut person = core.person_at(&agent);
+    person.types("my", PACE);
+    let sender = {
+        let (client, agent) = (client.clone(), agent.clone());
+        thread::spawn(move || client.prompt_agent(&agent, "Review crates/hc-client"))
+    };
+
+    person.types(" own words", PACE);
+    person.presses_enter();
+    sender.join().unwrap().unwrap();
+
+    // herdr-core typed nothing among the person's keys: their line went first, whole.
+    assert_eq!(
+        std::fs::read_to_string(folder.path().join("lines")).unwrap(),
+        "my own words\nReview crates/hc-client\n"
+    );
 }
 
 #[test]
@@ -362,4 +372,73 @@ fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_i
         HerdrEvent::AgentSessionChanged(agent.clone())
     );
     assert_eq!(session(&client), None);
+}
+
+/// The variable that makes [`send_from_this_terminal`] send, to the terminal it names.
+const SEND_TO: &str = "PRIVATE_CORE_SEND_TO";
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+fn a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged() {
+    let core = PrivateCore::start();
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(
+        folder.path(),
+        &format!(
+            "{} read -r line; printf '%s' \"$line\" > typed; {} read -r line",
+            report("idle"),
+            report("done")
+        ),
+    );
+    wait_for(&client, &agent, AgentStatus::Idle);
+
+    // The review pane sends from a terminal of the core, which herdr-core could name as the
+    // caller, and tag what it sends.
+    let this_test = std::env::current_exe().unwrap();
+    let sender = core.start_in(
+        folder.path(),
+        &[
+            "env",
+            &format!("{SEND_TO}={}", agent.0),
+            this_test.to_str().unwrap(),
+            "send_from_this_terminal",
+            "--exact",
+            "--ignored",
+        ],
+    );
+
+    // The sender's stream ends with its program.
+    client
+        .forward_agent_status(&sender, &EventCanceller::default(), &mut |_| true)
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&core.hc(&["get", &sender.0])).unwrap()["exit_code"],
+        0,
+        "the sender failed: {}",
+        core.screen(&sender)
+    );
+    wait_for(&client, &agent, AgentStatus::Done);
+    assert_eq!(
+        std::fs::read_to_string(folder.path().join("typed")).unwrap(),
+        "Review crates/hc-client"
+    );
+}
+
+/// What [`a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged`] runs in a
+/// terminal of the core: it sends a prompt there as the review pane does. Without its variable,
+/// it does nothing.
+#[test]
+#[ignore = "run by a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged"]
+fn send_from_this_terminal() {
+    let Some(agent) = std::env::var_os(SEND_TO) else {
+        return;
+    };
+    HcClient::from_env()
+        .unwrap()
+        .submit_prompt(
+            &PaneId(agent.into_string().unwrap()),
+            "Review crates/hc-client",
+        )
+        .unwrap();
 }

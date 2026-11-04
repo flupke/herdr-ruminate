@@ -10,6 +10,7 @@ members = [
     "crates/agent-forks",
     "crates/hc-client",
     "crates/herdr-app-focus",
+    "crates/hc-test-support",
     "crates/reviewer-dirs",
     "crates/quick-tunnel",
     "crates/claude-fork",

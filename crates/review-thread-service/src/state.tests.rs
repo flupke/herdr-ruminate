@@ -786,6 +786,106 @@ fn a_wakeup_to_a_codex_agent_is_confirmed_on_the_session_its_calls_named() {
     );
 }
 
+#[test]
+fn the_user_s_own_prompt_goes_on_while_a_host_that_types_whole_waits_to_type_a_wakeup() {
+    let runtime = tempfile::tempdir().unwrap();
+    let directory = agent_hooks::HookDirectory::for_server(
+        runtime.path(),
+        std::path::Path::new("/run/hc.sock"),
+    );
+    let hooks = Arc::new(agent_hooks::AgentHooks::listen(&directory).unwrap());
+    let root = directory.root();
+    root.record_codex_session("thread-1").unwrap();
+    let (answering, answers) = std::sync::mpsc::channel();
+    let mut service = Service::start_with(Some(hooks), |agents| {
+        agents.type_prompts_whole();
+        Arc::new(WaitingAgents {
+            agents,
+            root,
+            answers: Mutex::new(answering),
+        })
+    });
+    let thread = service.start_thread("Rename this");
+    let (_, access) = only_wakeup(&service.poll());
+    service.fetch_on(&access, Some("thread-1")).unwrap();
+
+    service.comment(&thread, "And document it");
+    service.poll();
+
+    let user_s = answers.try_recv().expect("the user submitted no prompt");
+    assert_eq!(user_s, None, "the hook blocked the user's own prompt");
+    assert_eq!(
+        answers.try_recv().unwrap(),
+        None,
+        "the hook blocked the wakeup"
+    );
+    assert!(
+        service.wakeup_outcomes().last().unwrap().is_none(),
+        "{:?}",
+        service.wakeup_outcomes()
+    );
+}
+
+/// The agents of a host that types each prompt whole, as herdr-core does: while it waits to
+/// type one, the user submits a prompt of their own to the agent, and only then is the prompt
+/// typed. Tells what the hooks answered to each, in that order.
+struct WaitingAgents {
+    agents: InMemoryAgents,
+    root: agent_hooks::HookRoot,
+    answers: Mutex<std::sync::mpsc::Sender<Option<String>>>,
+}
+
+impl WaitingAgents {
+    /// The agent's hook, for `prompt` submitted to it.
+    fn submit(&self, prompt: &str) {
+        let report = agent_hooks::Report {
+            pane: None,
+            event: agent_hooks::AgentEvent::PromptSubmitted {
+                prompt: prompt.to_owned(),
+                session: Some("thread-1".into()),
+            },
+        };
+        let answer = self.root.ask(&report, Duration::from_secs(30));
+        let _ = self.answers.lock().unwrap().send(answer);
+    }
+}
+
+impl AgentPort for WaitingAgents {
+    fn session_snapshot(&self) -> herdr_client::Result<herdr_client::protocol::SessionSnapshot> {
+        self.agents.session_snapshot()
+    }
+
+    fn list_agents(&self) -> herdr_client::Result<Vec<Agent>> {
+        self.agents.list_agents()
+    }
+
+    fn get_agent(&self, pane_id: &PaneId) -> herdr_client::Result<Option<Agent>> {
+        self.agents.get_agent(pane_id)
+    }
+
+    fn pane_process_info(
+        &self,
+        pane_id: &PaneId,
+    ) -> herdr_client::Result<herdr_client::protocol::PaneProcessInfo> {
+        self.agents.pane_process_info(pane_id)
+    }
+
+    fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> herdr_client::Result<()> {
+        self.submit("my own words");
+        self.agents.submit_prompt(pane_id, text)?;
+        self.submit(text.trim_end());
+        Ok(())
+    }
+
+    fn prompt_agent(&self, pane_id: &PaneId, text: &str) -> herdr_client::Result<()> {
+        self.agents.prompt_agent(pane_id, text)
+    }
+
+    fn types_prompts_whole(&self) -> bool {
+        self.agents.types_prompts_whole()
+    }
+}
+
 /// The agents, telling the text of each prompt typed without Herdr's wait, as the reviewer
 /// types the prompts its hooks confirm.
 struct TypedAgents {

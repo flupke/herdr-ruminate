@@ -29,8 +29,11 @@ use crate::terminal::{SESSION_LABEL, Terminal, place_of, session_label};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long `terminal.send` may take: it waits until nobody typed in the terminal for about
-/// 3 seconds, then a few seconds more to tell whether the program went working.
-const SEND_TIMEOUT: Duration = Duration::from_secs(60);
+/// 3 seconds, however long someone types there (herdr-core 0.1.18), then a few seconds more to
+/// tell whether the program went working. A send given up on still types later, after the
+/// reviewer stopped waiting for its hook: so the bound is one that nobody types up to without a
+/// pause.
+const SEND_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// A synchronous client of herdr-core, the core of herdr-app that runs its terminals and
@@ -287,7 +290,8 @@ impl HcClient {
 
     /// Pastes `text` into the terminal of `pane_id` and presses Enter. Sent without a caller,
     /// so herdr-core types the text as it is, without the `<hc from="...">` tags it puts around
-    /// what one of its terminals sends another.
+    /// what one of its terminals sends another. The refusals `hc schema` lists typed
+    /// nothing ([`untyped`]).
     fn send(&self, pane_id: &PaneId, text: &str) -> Result<Sent> {
         match self.response(
             "terminal.send",
@@ -295,7 +299,10 @@ impl HcClient {
             SEND_TIMEOUT,
         )? {
             Ok(result) => parse(result, "terminal.send"),
-            Err(error) => Err(refusal("terminal.send", error)),
+            Err(error) => match untyped(&error) {
+                Some(reason) => Err(Error::NotTyped { reason }),
+                None => Err(refusal("terminal.send", error)),
+            },
         }
     }
 
@@ -500,6 +507,24 @@ fn parse<T: DeserializeOwned>(value: Value, method: &'static str) -> Result<T> {
     })
 }
 
+/// Why herdr-core typed nothing, for a refusal of `terminal.send` that `hc schema` lists; `None`
+/// for any other, which may come after it typed. The opt-in tests show `blocked` comes before
+/// it types, also for a program that blocked while the send waited for the person typing there,
+/// since herdr-core checks the status again when it types; `unavailable` says "nothing was
+/// typed"; the others check the request or the terminal before.
+fn untyped(error: &ApiError) -> Option<String> {
+    let kind = error.data.as_ref()?.kind.as_deref()?;
+    Some(match kind {
+        "blocked" => "it waits on its user, as for a permission".to_owned(),
+        "finished" => "its program ended".to_owned(),
+        "not_found" => "herdr-core no longer knows its terminal".to_owned(),
+        "unavailable" | "machine_unknown" | "status_mismatch" | "invalid_params" | "config" => {
+            error.message.clone()
+        }
+        _ => return None,
+    })
+}
+
 fn refusal(method: &'static str, error: ApiError) -> Error {
     Error::Herdr {
         operation: method,
@@ -563,6 +588,12 @@ impl AgentPort for HcClient {
 
     /// herdr-core tells each change of a terminal's labels, the session label's included.
     fn announces_sessions(&self) -> bool {
+        true
+    }
+
+    /// `terminal.send` types only once nobody typed for about 3 s, and holds the keys pressed
+    /// while it types.
+    fn types_prompts_whole(&self) -> bool {
         true
     }
 }

@@ -2304,12 +2304,23 @@ dependencies = [
 name = "hc-client"
 version = "0.2.0"
 dependencies = [
+ "hc-test-support",
  "herdr-app-focus",
  "herdr-client",
  "serde",
  "serde_json",
  "tempfile",
  "test-case",
+]
+
+[[package]]
+name = "hc-test-support"
+version = "0.2.0"
+dependencies = [
+ "hc-client",
+ "herdr-client",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4647,6 +4658,7 @@ dependencies = [
  "eyre",
  "fs2",
  "hc-client",
+ "hc-test-support",
  "herdr-app-focus",
  "herdr-client",
  "ignore",
