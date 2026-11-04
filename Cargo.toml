@@ -9,6 +9,7 @@ members = [
     "crates/codex-fork",
     "crates/agent-forks",
     "crates/hc-client",
+    "crates/herdr-app-focus",
     "crates/reviewer-dirs",
     "crates/quick-tunnel",
     "crates/claude-fork",

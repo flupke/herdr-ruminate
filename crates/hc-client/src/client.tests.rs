@@ -1,5 +1,6 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixListener;
+use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
@@ -7,6 +8,7 @@ use herdr_client::protocol::WorkspaceId;
 use serde_json::{Value, json};
 
 use super::*;
+use crate::test_screen::Screen;
 
 /// A stand-in for herdr-core's socket: each connection reads one request, hands it to the test,
 /// and gets the lines `answer` gives for it, then stays open until the client closes it.
@@ -465,4 +467,157 @@ fn a_stream_starts_with_each_agent_whose_session_or_end_may_have_gone_unheard() 
         &told[1],
         HerdrEvent::AgentDetected { pane_id, .. } if pane_id.0 == "t5"
     ));
+}
+
+/// herdr-app's layout: a tab whose panes `p3` and `p4` show the terminals `t3` and `t4`, and
+/// the pane `p5` the terminal `t5` when `with_t5`.
+fn layout_document(request: &Value, with_t5: bool) -> Value {
+    let mut panes = vec![
+        json!({"id": "p3", "type": "block", "content": {"terminal": "t3"}}),
+        json!({"id": "p4", "type": "block", "content": {"terminal": "t4"}}),
+    ];
+    if with_t5 {
+        panes.push(json!({"id": "p5", "type": "block", "content": {"terminal": "t5"}}));
+    }
+    result(
+        request,
+        json!({"version": 1, "value": {"spaces": [{"id": "sp1", "tabs": [
+            {"id": "tb1", "root": {"id": "tb1", "type": "row", "children": panes}}
+        ]}]}}),
+    )
+}
+
+fn focused(terminal: &str) -> HerdrEvent {
+    HerdrEvent::PaneFocused(PaneId(terminal.into()))
+}
+
+#[test]
+fn a_client_following_a_screen_tells_each_terminal_the_user_focuses_there() {
+    let (client, _core) = fake_core(|request| match request["method"].as_str() {
+        Some("doc.get") => vec![layout_document(request, false)],
+        _ => vec![result(request, json!({"seq": 1, "terminals": []}))],
+    });
+    let screen = Screen::new();
+    screen.focus("p3");
+    let client = client.following_focus(screen.home());
+    let mut told = Vec::new();
+
+    client
+        .forward_events(&EventCanceller::default(), &mut |event| {
+            told.push(event);
+            screen.focus("p4");
+            told.len() < 2
+        })
+        .unwrap();
+
+    assert_eq!(told, [focused("t3"), focused("t4")]);
+}
+
+#[test]
+fn a_pane_focused_before_herdr_app_saved_its_layout_is_told_once_it_did() {
+    let layouts = AtomicUsize::new(0);
+    let (client, _core) = fake_core(move |request| match request["method"].as_str() {
+        Some("doc.get") => vec![layout_document(
+            request,
+            layouts.fetch_add(1, Ordering::SeqCst) > 0,
+        )],
+        _ => vec![
+            result(request, json!({"seq": 1, "terminals": []})),
+            notification(
+                "event",
+                json!({"type": "doc", "seq": 2, "data": {"name": "herdr-app", "version": 2}}),
+            ),
+        ],
+    });
+    let screen = Screen::new();
+    screen.focus("p5");
+    let client = client.following_focus(screen.home());
+    let mut told = Vec::new();
+
+    client
+        .forward_events(&EventCanceller::default(), &mut |event| {
+            told.push(event);
+            false
+        })
+        .unwrap();
+
+    assert_eq!(told, [focused("t5")]);
+}
+
+#[test]
+fn the_session_of_a_client_following_a_screen_has_its_focused_terminal() {
+    let (client, _core) = fake_core(|request| vec![layout_document(request, false)]);
+    let screen = Screen::new();
+    screen.focus("p4");
+
+    let snapshot = client
+        .following_focus(screen.home())
+        .session_snapshot()
+        .unwrap();
+
+    assert_eq!(snapshot.focused_pane_id, Some(PaneId("t4".into())));
+}
+
+#[test]
+fn a_layout_herdr_core_refuses_leaves_the_agents_events_and_the_session() {
+    let (client, _core) = fake_core(|request| match request["method"].as_str() {
+        Some("doc.get") => vec![refusal_of(request, "unavailable")],
+        _ => vec![
+            result(request, json!({"seq": 1, "terminals": []})),
+            event("created", agent_terminal("idle")),
+        ],
+    });
+    let screen = Screen::new();
+    screen.focus("p3");
+    let client = client.following_focus(screen.home());
+    let mut told = Vec::new();
+
+    client
+        .forward_events(&EventCanceller::default(), &mut |event| {
+            told.push(event);
+            false
+        })
+        .unwrap();
+
+    assert!(
+        matches!(&told[..], [HerdrEvent::AgentDetected { pane_id, .. }] if *pane_id == pane()),
+        "{told:?}"
+    );
+    assert_eq!(client.session_snapshot().unwrap().focused_pane_id, None);
+}
+
+#[test]
+fn a_layout_herdr_core_refuses_to_read_again_keeps_the_last_one() {
+    let screen = std::sync::Arc::new(Screen::new());
+    screen.focus("p3");
+    let layouts = AtomicUsize::new(0);
+    let refused = std::sync::Arc::clone(&screen);
+    let (client, _core) = fake_core(move |request| match request["method"].as_str() {
+        Some("doc.get") if layouts.fetch_add(1, Ordering::SeqCst) == 0 => {
+            vec![layout_document(request, false)]
+        }
+        Some("doc.get") => {
+            // The user focuses another terminal while the layout cannot be read.
+            refused.focus("p4");
+            vec![refusal_of(request, "unavailable")]
+        }
+        _ => vec![
+            result(request, json!({"seq": 1, "terminals": []})),
+            notification(
+                "event",
+                json!({"type": "doc", "seq": 2, "data": {"name": "herdr-app", "version": 2}}),
+            ),
+        ],
+    });
+    let client = client.following_focus(screen.home());
+    let mut told = Vec::new();
+
+    client
+        .forward_events(&EventCanceller::default(), &mut |event| {
+            told.push(event);
+            told.len() < 2
+        })
+        .unwrap();
+
+    assert_eq!(told, [focused("t3"), focused("t4")]);
 }

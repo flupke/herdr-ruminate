@@ -6,7 +6,7 @@
 // path of that checkout's reviewer in place of `@REVIEWER@`.
 
 import { View, div } from "gpui-kit";
-import { closeOverlay, focused, notify, panes, props, run, spaces, terminals } from "herdr";
+import { appHome, closeOverlay, focused, notify, panes, props, run, spaces, terminals } from "herdr";
 
 // The review pane's program.
 const REVIEWER = "@REVIEWER@";
@@ -14,6 +14,10 @@ const REVIEWER = "@REVIEWER@";
 // The option the review pane's program takes the focused terminal with: with a program ending
 // in `/bin/reviewer`, it tells a review pane apart, whichever checkout installed it.
 const FOCUSED_TERMINAL = "--focused-terminal";
+
+// The option that names this window's home, whose `view.json` the review pane follows the focus
+// in: herdr-core starts the pane with its own environment, not the window's.
+const HERDR_APP_HOME = "--herdr-app-home";
 
 // A terminal at least this many times as many columns as rows splits right, else down: a
 // cell is about twice as tall as it is wide (Herdr's rule, `PaneSize::split_direction`).
@@ -49,7 +53,7 @@ function toggle() {
   const terminal = terminals().find((t) => t.address === at.terminal);
   const wide = terminal && terminal.cols >= WIDE * terminal.rows;
   run("terminal.open", {
-    argv: [REVIEWER, FOCUSED_TERMINAL, at.terminal],
+    argv: [REVIEWER, FOCUSED_TERMINAL, at.terminal, HERDR_APP_HOME, appHome()],
     folder: at.cwd ?? terminal?.cwd,
     place: wide ? "right" : "down",
   });
