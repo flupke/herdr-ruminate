@@ -10,7 +10,7 @@ use std::time::Duration;
 use herdr_client::client::{EventCanceller, Tie, read_line, write_json_line};
 use herdr_client::protocol::{
     Agent, AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, PaneProcessInfo, SessionReport,
-    SessionSnapshot,
+    SessionSnapshot, TabId, WorkspaceId,
 };
 use herdr_client::{Error, Result};
 use serde::Deserialize;
@@ -18,7 +18,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::events::{Event, Roster, StatusChange, status_of};
-use crate::terminal::Terminal;
+use crate::terminal::{Terminal, place_of};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long `terminal.send` may take: it waits until nobody typed in the terminal for about
@@ -127,6 +127,12 @@ impl HcClient {
             message: format!("no terminal {:?}", terminal.0),
         })?;
         Ok(terminal.labels)
+    }
+
+    /// The space and the tab of herdr-app that `terminal` shows in, by its `herdr.space` and
+    /// `herdr.tab` labels; `None` for a terminal herdr-app does not show.
+    pub fn place(&self, terminal: &PaneId) -> Result<Option<(WorkspaceId, TabId)>> {
+        Ok(place_of(&self.labels(terminal)?))
     }
 
     /// Sets `labels` on `terminal`; a label set to an empty value is removed. herdr-core tells

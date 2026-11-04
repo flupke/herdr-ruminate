@@ -95,8 +95,8 @@ const SUITES: &[(&str, Suite)] = &[
 
 /// Files that no check reads. Markdown outside the crates is one of them too: inside a crate, a
 /// Markdown file may be compiled into it. `scripts/dev-shell` enters the shell the checks run in,
-/// but no check runs it; `.envrc` and `herdr-plugin.toml` serve direnv and Herdr's install, and
-/// `.mcp.json` registers the vision MCP server for agents.
+/// but no check runs it; `.envrc`, `herdr-plugin.toml` and `herdr-app-mod/` serve direnv, Herdr's
+/// install and herdr-app's, and `.mcp.json` registers the vision MCP server for agents.
 const NOTHING: &[&str] = &[
     "docs/",
     ".agents/",
@@ -107,6 +107,7 @@ const NOTHING: &[&str] = &[
     ".envrc",
     ".mcp.json",
     "herdr-plugin.toml",
+    "herdr-app-mod/",
 ];
 
 /// What changed between two revisions.

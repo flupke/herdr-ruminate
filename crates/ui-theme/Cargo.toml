@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 eyre.workspace = true
 ratatui.workspace = true
+reviewer-dirs = { path = "../reviewer-dirs" }
 toml.workspace = true
 two-face.workspace = true
 

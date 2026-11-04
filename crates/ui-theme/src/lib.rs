@@ -2,10 +2,9 @@
 
 #![allow(clippy::unreadable_literal)]
 
-use std::env;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ratatui::style::Color;
 use two_face::theme::EmbeddedThemeName;
@@ -62,12 +61,12 @@ struct ThemeDefinition {
 }
 
 impl Theme {
-    /// Read the optional theme from the Herdr plugin configuration.
+    /// Read the optional theme from the reviewer's `config.toml`.
     pub fn from_env() -> eyre::Result<Self> {
-        let Some(directory) = env::var_os("HERDR_PLUGIN_CONFIG_DIR") else {
+        let Some(directory) = reviewer_dirs::config_dir() else {
             return Ok(Self::default());
         };
-        Self::from_config_dir(&PathBuf::from(directory))
+        Self::from_config_dir(&directory)
     }
 
     fn from_config_dir(directory: &Path) -> eyre::Result<Self> {

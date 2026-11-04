@@ -4659,6 +4659,7 @@ dependencies = [
  "review-threads",
  "review-types",
  "review-ui",
+ "reviewer-dirs",
  "rmcp",
  "serde",
  "serde_json",
@@ -4676,6 +4677,13 @@ dependencies = [
  "uuid",
  "vision-signal",
  "vision-turns",
+]
+
+[[package]]
+name = "reviewer-dirs"
+version = "0.2.0"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]
@@ -6096,6 +6104,7 @@ version = "0.2.0"
 dependencies = [
  "eyre",
  "ratatui 0.30.2",
+ "reviewer-dirs",
  "tempfile",
  "toml",
  "two-face",

@@ -1,0 +1,14 @@
+[package]
+name = "reviewer-dirs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Where the reviewer keeps its state and reads its configuration, under Herdr or herdr-app."
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

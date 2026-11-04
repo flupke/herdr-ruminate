@@ -43,7 +43,7 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use herdr_client::client::EventCanceller;
-use herdr_client::protocol::{AgentHost, AgentTarget, PaneId, PluginContext, TabId, WorkspaceId};
+use herdr_client::protocol::{AgentHost, AgentTarget, PaneId, TabId, WorkspaceId};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
 use review_explore_page::{
@@ -128,28 +128,21 @@ struct MouseClicks {
 }
 
 impl Runtime {
-    /// Read the pane context supplied by Herdr.
+    /// Read the pane context that Herdr, or herdr-app and its mod, supply.
     pub fn from_env() -> eyre::Result<Self> {
-        let state_dir = env::var_os("HERDR_PLUGIN_STATE_DIR")
-            .map(PathBuf::from)
-            .ok_or_else(|| eyre::eyre!("HERDR_PLUGIN_STATE_DIR is not set"))?;
-        let repository = Repository::discover(env::current_dir()?)?.with_state_root(&state_dir);
-        let context: PluginContext = serde_json::from_str(
-            &env::var("HERDR_PLUGIN_CONTEXT_JSON")
-                .map_err(|_| eyre::eyre!("HERDR_PLUGIN_CONTEXT_JSON is not set"))?,
-        )?;
+        // The state root may move the state Herdr kept: only once the pane runs in a host and
+        // a repository.
+        let host = host::Host::from_env(env::args().skip(1))?;
+        let repository = Repository::discover(env::current_dir()?)?;
+        let state_dir = reviewer_dirs::create_state_root()?;
+        let repository = repository.with_state_root(&state_dir);
         Ok(Self {
             repository,
             state_dir,
-            workspace_id: WorkspaceId(
-                env::var("HERDR_WORKSPACE_ID")
-                    .map_err(|_| eyre::eyre!("HERDR_WORKSPACE_ID is not set"))?,
-            ),
-            tab_id: TabId(
-                env::var("HERDR_TAB_ID").map_err(|_| eyre::eyre!("HERDR_TAB_ID is not set"))?,
-            ),
-            initial_agent: context.focused_pane_id,
-            host: host::from_env()?,
+            workspace_id: host.workspace_id,
+            tab_id: host.tab_id,
+            initial_agent: host.initial_agent,
+            host: host.agents,
             theme: Theme::from_env()?,
         })
     }

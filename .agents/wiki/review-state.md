@@ -7,8 +7,13 @@ losing writes. The decision and its alternatives are in
 
 ## Where it lives
 
-- Herdr gives the plugin `~/.local/state/herdr/plugins/herdr.progressive-reviewer` (the state
-  root). `settings.json`, `explore-page/`, `git/` and `run-ahead.log` there stay global or per
+- The state root is `~/.local/state/herdr-progressive-reviewer` (`$XDG_STATE_HOME`), or
+  `$HERDR_PLUGIN_STATE_DIR` when Herdr gives one, as under Herdr and in the tests
+  (`crates/reviewer-dirs`). The first reviewer to use it moves there the state Herdr kept in
+  `~/.local/state/herdr/plugins/herdr.progressive-reviewer`, and leaves a link to it in its
+  place ([ADR 0015](../adr/0015-move-the-state-off-herdr-s-plugin-folder-and-link-it-back.md)).
+  Backups taken before stay in `herdr.progressive-reviewer.backups/`, which `migration.json`
+  names. `settings.json`, `explore-page/`, `git/` and `run-ahead.log` there stay global or per
   workspace; everything about reviews is in `repositories/<parent worktree>-<16 hex>/`, one
   folder per repository, whose `repository.json` names the jj store or Git common directory.
 - `cat repositories/*/repository.json` tells which folder is which repository.
@@ -26,13 +31,14 @@ losing writes. The decision and its alternatives are in
   visible one (jj 0.45). Exclude `root()`: the all-`z` change is in every repository.
 - To see what a merge does to a real state without touching it, `cp -a` the state root to a
   scratch directory, then run `HERDR_PLUGIN_STATE_DIR=<copy> target/debug/reviewer-control
-  stats` in the repository.
+  stats` in the repository. To try the move from Herdr's folder, copy that folder to
+  `<scratch>/herdr/plugins/` and run the reviewer with `XDG_STATE_HOME=<scratch>`.
 
 ## Backup and restore
 
-- The first merge copies every per-workspace folder to
-  `herdr.progressive-reviewer.backups/<UTC time>/`, beside the state root, and records it in
-  `migration.json`. A folder changed after that (an earlier build still running) is copied
+- The first merge copies every per-workspace folder to `<state root>.backups/<UTC time>/`,
+  beside the state root, and records it in `migration.json`. The backups taken before the move
+  off Herdr's folder stay in `~/.local/state/herdr/plugins/herdr.progressive-reviewer.backups/`. A folder changed after that (an earlier build still running) is copied
   again with the shared folder before its next merge. Nothing deletes a backup.
 - To restore, follow the backup's `RESTORE.md`: close the review panes, remove
   `repositories/`, `merged-workspaces/`, `migration.json` and `migration.lock`, then

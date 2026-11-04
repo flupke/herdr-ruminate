@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Installs or uninstalls the reviewer's herdr-app mod (herdr-app-mod/), and the key that opens
+# the review pane, in herdr-app's home: ~/.config/herdr-app, or $HERDR_APP_HOME. The mod runs
+# this checkout's bin/reviewer. herdr-app reloads both at once.
+#
+# The key is `ctrl-b d` in keys.json's `global` section, or $REVIEW_KEY; a key bound to
+# something else stays as it is. Uninstall removes the keys of `global` that open the mod.
+# herdr-app takes an edited keys.json as the user's, and gives it no new default shortcuts.
+#
+# Usage: scripts/herdr-app-mod <install|uninstall>
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
+name=herdr-progressive-reviewer
+mod="$home/mods/$name"
+keys="$home/keys.json"
+key="${REVIEW_KEY:-ctrl-b d}"
+action="mod.open:$name"
+
+# Replaces keys.json by the output of the jq program $1, given the key and the action. The new
+# file is written beside the file keys.json links to, if it is a link, hidden, with its mode,
+# then renamed: herdr-app never reads half a file.
+edit_keys() {
+  local target
+  target="$(readlink -f "$keys")"
+  new="$(dirname "$target")/.keys.json.new"
+  trap 'rm -f "$new"' EXIT
+  # A copy first, so the new file keeps the mode of the old one.
+  cp -p "$target" "$new"
+  jq --arg key "$key" --arg action "$action" "$1" "$target" >"$new"
+  mv -f "$new" "$target"
+}
+
+install() {
+  if [ ! -d "$home" ]; then
+    echo "No herdr-app home at $home: the herdr-app mod is not installed."
+    return
+  fi
+  mkdir -p "$mod"
+  # The path as a JavaScript string, escaped again for sed's replacement.
+  reviewer="$(jq -rn --arg path "$root/bin/reviewer" '$path | tojson' | sed 's/[\\|&]/\\&/g')"
+  # Hidden while written: herdr-app reloads a mod when one of its files is saved.
+  sed "s|\"@REVIEWER@\"|$reviewer|" "$root/herdr-app-mod/main.js" >"$mod/.main.js.new"
+  cp "$root/herdr-app-mod/mod.json" "$mod/.mod.json.new"
+  mv -f "$mod/.mod.json.new" "$mod/mod.json"
+  mv -f "$mod/.main.js.new" "$mod/main.js"
+  if [ ! -f "$keys" ]; then
+    echo "No $keys: bind a key to \"$action\" in its \"global\" section to open the review pane."
+    return
+  fi
+  bound="$(jq -r --arg key "$key" '.global[$key] // empty' "$keys")"
+  if [ -z "$bound" ]; then
+    edit_keys '.global[$key] = $action'
+  elif [ "$bound" != "$action" ]; then
+    echo "\"$key\" already runs \"$bound\" in $keys: bind another key to \"$action\"."
+  fi
+}
+
+uninstall() {
+  rm -rf "$mod"
+  if [ -f "$keys" ] && jq -e --arg action "$action" '[.global[]?] | index($action)' "$keys" >/dev/null; then
+    edit_keys '.global |= with_entries(select(.value != $action))'
+  fi
+}
+
+case "${1:-}" in
+  install) install ;;
+  uninstall) uninstall ;;
+  *)
+    echo "usage: scripts/herdr-app-mod <install|uninstall>" >&2
+    exit 2
+    ;;
+esac

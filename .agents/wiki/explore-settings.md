@@ -3,7 +3,7 @@
 Where the settings of Explore rounds and of the Explore page are saved, and when a change reaches another open reviewer.
 
 - They are saved with the reviewer's other settings, in `settings.json` in
-  `$HERDR_PLUGIN_STATE_DIR`, which the reviewers of the machine share
+  the state root ([Review state](review-state.md)), which the reviewers of the machine share
   (`ExploreRoundSettings` in
   [`crates/review-explore-round-settings`](../../crates/review-explore-round-settings),
   `ExplorePageSettings` in
