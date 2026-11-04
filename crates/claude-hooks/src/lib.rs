@@ -2,16 +2,19 @@
 //!
 //! The plugin (`plugin/`, listed by the marketplace of this directory, which `make install`
 //! adds) runs `reviewer-control agent-hook` on each hook it registers, with Claude Code's event
-//! on its standard input. In a Herdr pane, that hands the event to the reviewers of the pane's
-//! Herdr server ([`agent_hooks`]), and a prompt a reviewer blocks does not run; anywhere else,
-//! it does nothing. Claude Code reads its hooks when it starts: an agent started before the
-//! plugin was installed runs without them.
+//! on its standard input. In a pane of Herdr or a terminal of herdr-core, that hands the event
+//! to the reviewers of the pane's host ([`agent_hooks`]), and a prompt a reviewer blocks does
+//! not run; anywhere else, it does nothing. In a terminal of herdr-core, which keeps no agent
+//! session, the hook also names the agent's session in the terminal's session label, and
+//! removes it when the session ends (ADR 0016). Claude Code reads its hooks when it starts: an
+//! agent started before the plugin was installed runs without them.
 
 use std::io::{Read, Write};
 use std::time::Duration;
 
 use agent_fork::ProcessStamp;
-use agent_hooks::{AgentEvent, HookDirectory, HookedSession, Report, SessionSource};
+use agent_hooks::{AgentEvent, HookDirectory, HookPane, HookedSession, Report, SessionSource};
+use hc_client::HcClient;
 use herdr_client::protocol::PaneId;
 use serde::Deserialize;
 
@@ -22,22 +25,62 @@ pub const SUBCOMMAND: &str = "agent-hook";
 /// waits for the hook before it takes the prompt.
 const ASK_LIMIT: Duration = Duration::from_millis(500);
 
-/// Runs the hook whose event Claude Code writes on standard input, for the Herdr pane this
-/// process runs in, if any, and prints the decision Claude Code reads, if one is made.
+/// The agent's name, as the reviewer and its session label give it.
+const CLAUDE: &str = "claude";
+
+/// Runs the hook whose event Claude Code writes on standard input, for the pane this process
+/// runs in, if any, and prints the decision Claude Code reads, if one is made.
 pub fn run_hook() {
     let mut payload = Vec::new();
     // Read whole, so that Claude Code never writes to a closed pipe.
     if std::io::stdin().read_to_end(&mut payload).is_err() {
         return;
     }
-    let pane = std::env::var("HERDR_PANE_ID")
-        .ok()
-        .filter(|pane| !pane.is_empty());
-    let (Some(pane), Some(directory)) = (pane, HookDirectory::from_env()) else {
+    let Some(pane) = HookPane::from_env() else {
         return;
     };
-    if let Some(decision) = hook(&PaneId(pane), &directory, &payload) {
+    // Claude Code runs the hook itself, without a shell: its parent is the agent.
+    let agent = std::os::unix::process::parent_id();
+    let core = pane.core.map(HcClient::new);
+    let target = HookTarget {
+        pane: &pane.pane,
+        directory: &pane.directory,
+        session_label: core.as_ref().map(|core| core as &dyn SessionLabel),
+        leads_terminal: agent_fork::leads_terminal_foreground(agent),
+    };
+    if let Some(decision) = hook(&target, agent, &payload) {
         let _ = std::io::stdout().write_all(decision.as_bytes());
+    }
+}
+
+/// Where the hook reports: the agent's pane, the directory of the reviewers of its host, and,
+/// in a terminal of herdr-core, the terminal's session label.
+struct HookTarget<'a> {
+    pane: &'a PaneId,
+    directory: &'a HookDirectory,
+    session_label: Option<&'a dyn SessionLabel>,
+    /// Whether the agent leads the foreground process group of its terminal. A `claude` that a
+    /// tool or an MCP server of the agent runs inherits the terminal's variables, but has no
+    /// terminal or leads no group: its session is not the terminal's.
+    leads_terminal: bool,
+}
+
+/// The session label of the agent's terminal of herdr-core.
+trait SessionLabel {
+    /// Names `session` as the agent's.
+    fn report(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()>;
+
+    /// Removes the label if it names `session`, which ended.
+    fn forget(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()>;
+}
+
+impl SessionLabel for HcClient {
+    fn report(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()> {
+        self.report_session(pane, CLAUDE, session)
+    }
+
+    fn forget(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()> {
+        self.forget_session(pane, CLAUDE, session)
     }
 }
 
@@ -53,6 +96,15 @@ enum Payload {
         #[serde(default)]
         agent_id: Option<String>,
     },
+    SessionEnd {
+        session_id: String,
+        /// Why the session ended, such as `prompt_input_exit`, `clear` or `resume`.
+        #[serde(default)]
+        reason: String,
+        /// The subagent the session belongs to, if it belongs to one.
+        #[serde(default)]
+        agent_id: Option<String>,
+    },
     UserPromptSubmit {
         prompt: String,
         #[serde(default)]
@@ -63,32 +115,51 @@ enum Payload {
     Other,
 }
 
-/// Hands the event `payload` of the agent of `pane` to the reviewers of `directory`; returns
-/// the decision Claude Code reads, when a reviewer blocks a prompt.
-fn hook(pane: &PaneId, directory: &HookDirectory, payload: &[u8]) -> Option<String> {
+/// Hands the event `payload` of the agent, the process `agent`, to `target`; returns the
+/// decision Claude Code reads, when a reviewer blocks a prompt.
+fn hook(target: &HookTarget<'_>, agent: u32, payload: &[u8]) -> Option<String> {
+    let pane = target.pane;
     match serde_json::from_slice::<Payload>(payload).ok()? {
         // A subagent's session is not the agent's.
         Payload::SessionStart {
+            agent_id: Some(_), ..
+        }
+        | Payload::SessionEnd {
             agent_id: Some(_), ..
         }
         | Payload::Other => None,
         Payload::SessionStart {
             session_id, source, ..
         } => {
-            // Claude Code runs the hook itself, without a shell: its parent is the agent.
-            let process = ProcessStamp::read(std::os::unix::process::parent_id());
+            if let Some(label) = target.session_label
+                && target.leads_terminal
+            {
+                let _ = label.report(pane, &session_id);
+            }
             let started = HookedSession {
                 session: session_id.clone(),
-                process,
+                process: ProcessStamp::read(agent),
             };
-            let _ = directory.record(pane, &started);
-            directory.tell(&Report {
+            let _ = target.directory.record(pane, &started);
+            target.directory.tell(&Report {
                 pane: Some(pane.clone()),
                 event: AgentEvent::SessionStarted {
                     session: session_id,
                     source,
                 },
             });
+            None
+        }
+        // A cleared or resumed session's successor names itself at its start: removing the
+        // label after that start would leave the agent without one.
+        Payload::SessionEnd {
+            session_id, reason, ..
+        } => {
+            if let Some(label) = target.session_label
+                && !matches!(reason.as_str(), "clear" | "resume")
+            {
+                let _ = label.forget(pane, &session_id);
+            }
             None
         }
         Payload::UserPromptSubmit { prompt, session_id } => {
@@ -99,7 +170,7 @@ fn hook(pane: &PaneId, directory: &HookDirectory, payload: &[u8]) -> Option<Stri
                     session: session_id,
                 },
             };
-            let reason = directory.ask(&report, ASK_LIMIT)?;
+            let reason = target.directory.ask(&report, ASK_LIMIT)?;
             Some(serde_json::json!({"decision": "block", "reason": reason}).to_string())
         }
     }

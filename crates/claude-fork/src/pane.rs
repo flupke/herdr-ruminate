@@ -14,8 +14,9 @@ use crate::transcripts::Transcripts;
 #[derive(Clone, Debug)]
 pub(crate) struct PaneClaude {
     /// The binary the agent runs, resolved, so a fork runs the same version; its arguments as
-    /// a fork keeps them; its directory; its environment without Herdr's variables, so that
-    /// Herdr never takes a fork for the pane's agent.
+    /// a fork keeps them; its directory; its environment without the variables of Herdr and of
+    /// herdr-core, so that neither takes a fork for the pane's agent, nor its hooks report the
+    /// fork's session as the pane's.
     pub(crate) command: ForkCommand,
     /// The model its arguments name, if any.
     pub(crate) model: Option<String>,
@@ -75,15 +76,16 @@ impl PaneClaude {
     }
 }
 
-/// The variables of a process environment, as `/proc/<pid>/environ` holds them, except
-/// Herdr's.
+/// The variables of a process environment, as `/proc/<pid>/environ` holds them, except those
+/// of Herdr and of herdr-core.
 fn environment(environ: &[u8]) -> Vec<(OsString, OsString)> {
     environ
         .split(|byte| *byte == 0)
         .filter_map(|entry| {
             let at = entry.iter().position(|byte| *byte == b'=')?;
             let (name, value) = entry.split_at(at);
-            (!name.starts_with(b"HERDR_")).then(|| {
+            let host = name.starts_with(b"HERDR_") || name.starts_with(b"HC_");
+            (!host).then(|| {
                 (
                     OsString::from_vec(name.to_vec()),
                     OsString::from_vec(value[1..].to_vec()),

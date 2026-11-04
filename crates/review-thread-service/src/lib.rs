@@ -50,6 +50,8 @@ enum Input {
     },
     /// Record each comments wakeup from now on in a vision session's turn log.
     LogTurns(vision_turns::TurnLog),
+    /// A prompt was cancelled: the poll that follows withdraws it if it still waits.
+    Withdrawn,
     Stop,
 }
 

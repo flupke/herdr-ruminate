@@ -56,7 +56,9 @@ impl<'a> Route<'a> {
         if let Some(event) = event.downcast_ref::<HerdrEvent>() {
             return match event {
                 HerdrEvent::PaneFocused(pane_id) => Self::AgentFocused(pane_id),
-                event @ HerdrEvent::AgentDetected { .. } => Self::Herdr(event),
+                event @ (HerdrEvent::AgentDetected { .. } | HerdrEvent::AgentSessionChanged(_)) => {
+                    Self::Herdr(event)
+                }
             };
         }
         if let Some(input) = event.downcast_ref::<UserInput>() {
@@ -96,10 +98,10 @@ impl<'a> Route<'a> {
 
     /// Whether handling the event can change what the screen shows.
     ///
-    /// Agent detection belongs to the delivery worker; the UI events it causes
+    /// Agent detection and sessions belong to the delivery worker; the UI events they cause
     /// redraw on their own.
     pub(super) fn needs_frame(&self) -> bool {
-        !matches!(self, Self::Herdr(HerdrEvent::AgentDetected { .. }))
+        !matches!(self, Self::Herdr(_))
     }
 
     /// Whether the terminal may have shown or hidden the cursor behind our back.

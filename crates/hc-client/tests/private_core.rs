@@ -292,12 +292,11 @@ fn an_agent_that_exits_leaves_and_labels_reach_its_terminal() {
             herdr_client::protocol::TabId("tb1".into())
         ))
     );
-    // An agent that arrives after the stream started tells that the subscription holds.
-    let marker = core.run(folder.path(), &format!("{} read -r line", report("idle")));
-    assert!(matches!(
+    // The stream starts with the agents it holds: the subscription holds.
+    assert_eq!(
         told.recv().unwrap(),
-        HerdrEvent::AgentDetected { pane_id, released: false, .. } if pane_id == marker
-    ));
+        HerdrEvent::AgentSessionChanged(agent.clone())
+    );
     client.submit_prompt(&agent, "exit").unwrap();
 
     assert_eq!(
@@ -310,4 +309,57 @@ fn an_agent_that_exits_leaves_and_labels_reach_its_terminal() {
             final_status: Some(AgentStatus::Idle),
         }
     );
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_is_told() {
+    let core = PrivateCore::start();
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(folder.path(), &format!("{} read -r line", report("idle")));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    let (events, told) = mpsc::channel();
+    {
+        let client = client.clone();
+        thread::spawn(move || {
+            client.forward_events(&EventCanceller::default(), &mut |event| {
+                events.send(event).is_ok()
+            })
+        });
+    }
+    // The stream starts with the agents it holds: the subscription holds.
+    assert_eq!(
+        told.recv().unwrap(),
+        HerdrEvent::AgentSessionChanged(agent.clone())
+    );
+
+    client.report_session(&agent, "claude", "s1").unwrap();
+    assert_eq!(
+        told.recv().unwrap(),
+        HerdrEvent::AgentSessionChanged(agent.clone())
+    );
+    let session = |client: &HcClient| {
+        client
+            .get_agent(&agent)
+            .unwrap()
+            .and_then(|agent| agent.agent_session)
+            .map(|session| session.value)
+    };
+    assert_eq!(session(&client).as_deref(), Some("s1"));
+
+    // A later session's label stays when an earlier one ends; the session that ends removes it.
+    client.report_session(&agent, "claude", "s2").unwrap();
+    assert_eq!(
+        told.recv().unwrap(),
+        HerdrEvent::AgentSessionChanged(agent.clone())
+    );
+    client.forget_session(&agent, "claude", "s1").unwrap();
+    assert_eq!(session(&client).as_deref(), Some("s2"));
+    client.forget_session(&agent, "claude", "s2").unwrap();
+    assert_eq!(
+        told.recv().unwrap(),
+        HerdrEvent::AgentSessionChanged(agent.clone())
+    );
+    assert_eq!(session(&client), None);
 }

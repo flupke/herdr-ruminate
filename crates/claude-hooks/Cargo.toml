@@ -5,17 +5,19 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-description = "The reviewer's Claude Code plugin, whose hooks tell the reviewer what the agent in its Herdr pane does."
+description = "The reviewer's Claude Code plugin, whose hooks tell the reviewer what the agent in its pane of Herdr or terminal of herdr-core does."
 
 [dependencies]
 agent-fork = { path = "../agent-fork" }
 agent-hooks = { path = "../agent-hooks" }
+hc-client = { path = "../hc-client" }
 herdr-client = { path = "../herdr-client" }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+test-case.workspace = true
 
 [lints]
 workspace = true

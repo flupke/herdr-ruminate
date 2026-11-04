@@ -234,13 +234,15 @@ fn an_agent_that_exits_is_told_once_to_the_reviewer() {
     client
         .forward_events(&EventCanceller::default(), &mut |event| {
             told.push(event);
-            told.len() < 2
+            told.len() < 3
         })
         .unwrap();
 
     assert_eq!(
         told,
         [
+            // The stream starts with the snapshot's agent.
+            HerdrEvent::AgentSessionChanged(pane()),
             HerdrEvent::AgentDetected {
                 pane_id: pane(),
                 workspace_id: WorkspaceId("sp1".into()),
@@ -367,4 +369,100 @@ fn the_statuses_of_an_agent_whose_program_ended_already_end_at_once() {
     client
         .forward_agent_status(&pane(), &EventCanceller::default(), &mut |_| true)
         .unwrap();
+}
+
+#[test]
+fn a_reported_session_is_set_as_the_terminals_session_label() {
+    let (client, core) = fake_core(|request| vec![result(request, agent_terminal("idle"))]);
+
+    client
+        .report_agent_session(
+            &pane(),
+            &SessionReport {
+                source: "herdr:codex",
+                agent: "codex",
+                seq: 1,
+                session: "thread-2",
+                start: "resume",
+            },
+        )
+        .unwrap();
+
+    let request = core.requests.recv().unwrap();
+    assert_eq!(request["method"], "terminal.label");
+    assert_eq!(
+        request["params"],
+        json!({"terminal": "t3", "labels": {"herdr-reviewer.session": "codex:thread-2"}})
+    );
+}
+
+/// A core whose agent `t3` has the session label `label`.
+fn core_with_session_label(label: &str) -> (HcClient, FakeCore) {
+    let label = label.to_owned();
+    fake_core(move |request| {
+        let mut terminal = agent_terminal("idle");
+        terminal["labels"]["herdr-reviewer.session"] = label.clone().into();
+        vec![result(request, terminal)]
+    })
+}
+
+#[test]
+fn an_ended_session_removes_the_label_that_names_it() {
+    let (client, core) = core_with_session_label("claude:s1");
+
+    client.forget_session(&pane(), "claude", "s1").unwrap();
+
+    let requests: Vec<Value> = core.requests.iter().take(2).collect();
+    assert_eq!(requests[1]["method"], "terminal.label");
+    assert_eq!(
+        requests[1]["params"],
+        json!({"terminal": "t3", "labels": {"herdr-reviewer.session": ""}})
+    );
+}
+
+#[test]
+fn an_ended_session_leaves_the_label_of_a_later_session() {
+    let (client, core) = core_with_session_label("claude:s2");
+
+    client.forget_session(&pane(), "claude", "s1").unwrap();
+
+    let methods: Vec<Value> = core
+        .requests
+        .try_iter()
+        .map(|request| request["method"].clone())
+        .collect();
+    assert_eq!(methods, [json!("terminal.get")]);
+}
+
+#[test]
+fn a_stream_starts_with_each_agent_whose_session_or_end_may_have_gone_unheard() {
+    let (client, _core) = fake_core(|request| {
+        let mut labelled = agent_terminal("idle");
+        labelled["labels"]["herdr-reviewer.session"] = "claude:s1".into();
+        let mut shell = agent_terminal("idle");
+        shell["address"] = json!("t4");
+        shell["status"] = Value::Null;
+        vec![
+            result(request, json!({"seq": 1, "terminals": [labelled, shell]})),
+            event_of("t5", "created", {
+                let mut terminal = agent_terminal("idle");
+                terminal["address"] = json!("t5");
+                terminal
+            }),
+        ]
+    });
+    let mut told = Vec::new();
+
+    client
+        .forward_events(&EventCanceller::default(), &mut |event| {
+            told.push(event);
+            told.len() < 2
+        })
+        .unwrap();
+
+    assert_eq!(told[0], HerdrEvent::AgentSessionChanged(pane()));
+    assert!(matches!(
+        &told[1],
+        HerdrEvent::AgentDetected { pane_id, .. } if pane_id.0 == "t5"
+    ));
 }

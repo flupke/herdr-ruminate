@@ -34,7 +34,7 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
   trusted ([ADR 0011](../adr/0011-keep-a-codex-fork-read-only-with-the-plugin-s-guard.md)).
 - Claude Code needs to be started with options run-ahead knows and
   without a `--settings` of its own, and with the hooks of the reviewer's Claude Code plugin
-  (below): the switch waits for them. An agent runs with them when the session Herdr reports
+  (below): the switch waits for them. An agent runs with them when the session the host reports
   is the one the plugin's `SessionStart` hook recorded for its pane, from a process still in
   the pane. Without them (an agent started before the install, or with the plugin disabled),
   run-ahead takes no fork, and each answer runs the plain chain with a line that says to
@@ -128,7 +128,8 @@ Claude Code 2.1.292 does with it:
 - `claude plugin marketplace add` and `claude plugin install` succeed when they ran before.
   Run from another checkout, they move the marketplace and the `control` option to it.
 - A plugin of a directory marketplace loads in place from the checkout: an edit of its hooks
-  takes effect at the next session start, without a reinstall.
+  takes effect at the next session start, without a reinstall; 2.1.318's
+  `claude plugin install` of the installed plugin prints so.
 - A hook's command may hold `${user_config.control}` only in exec form (`command` and `args`);
   in a shell string, Claude Code refuses it. A hook gets `CLAUDE_PLUGIN_ROOT` and the
   options as `CLAUDE_PLUGIN_OPTION_<NAME>` too.
@@ -147,6 +148,8 @@ Claude Code 2.1.292 does with it:
   daemon confirms the switch ([Codex's daemon](codex-daemon.md#the-reviewers-codex-plugin)).
   Then the host reports the fork's session to Herdr itself, as Herdr's Codex hook will at the
   next turn ([ADR 0012](../adr/0012-report-a-codex-agent-s-resumed-session-to-herdr.md)).
+  Under herdr-core it reports nothing, since nothing names a Codex agent's session there
+  ([ADR 0016](../adr/0016-report-the-agent-s-session-as-a-label-of-its-herdr-core-terminal.md)).
 
 ## The contract check
 

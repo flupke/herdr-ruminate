@@ -18,9 +18,10 @@ use vision_turns::TurnLog;
 use crate::delivery::{Courier, PromptError, PromptQueue};
 use crate::{Command, Event, Input, access::Access, notification::Notification, wakeup::Wakeup};
 
-/// How often the worker checks Herdr again while a prompt or wakeup waits. A prompt bound to
+/// How often the worker checks the host again while a prompt or wakeup waits. A prompt bound to
 /// a native session waits while the pane reports none, and Herdr publishes no event when an
-/// agent reports its session again: only asking shows it.
+/// agent reports its session again: only asking shows it. herdr-core tells it
+/// ([`HerdrEvent::AgentSessionChanged`]), so such a prompt waits for that event there.
 const RECHECK_INTERVAL: Duration = Duration::from_millis(100);
 
 pub(super) struct State {
@@ -83,7 +84,7 @@ impl State {
 
     pub(super) fn run(mut self, receiver: &Receiver<Input>) {
         loop {
-            let input = if self.has_pending_notifications() {
+            let input = if self.needs_recheck() {
                 receiver.recv_timeout(RECHECK_INTERVAL)
             } else {
                 receiver.recv().map_err(|_| RecvTimeoutError::Disconnected)
@@ -124,6 +125,7 @@ impl State {
                 result,
             } => self.notified(&token, through, result),
             Input::LogTurns(turns) => self.turns = Some(turns),
+            Input::Withdrawn => {}
             Input::Stop => return ControlFlow::Break(()),
         }
         ControlFlow::Continue(())
@@ -186,8 +188,11 @@ impl State {
         }
     }
 
-    fn has_pending_notifications(&self) -> bool {
-        self.prompts.is_pending()
+    /// Whether something waits that only asking the host again may move: a prompt waiting for
+    /// its agent's session, unless the host announces sessions; a notification; or a wakeup
+    /// that needs a poll.
+    fn needs_recheck(&self) -> bool {
+        (self.prompts.is_pending() && !self.port.announces_sessions())
             || !self.notifications.is_empty()
             || self.wakeups.iter().any(|(token, wakeup)| {
                 wakeup.needs_poll()
@@ -557,7 +562,8 @@ impl State {
                 self.resume_access(&pane_id);
                 self.refresh_target();
             }
-            _ => {}
+            // The poll after each input sends the prompts that waited for the session.
+            HerdrEvent::AgentSessionChanged(_) | HerdrEvent::PaneFocused(_) => {}
         }
     }
 

@@ -8,7 +8,7 @@
     {
       "name": "progressive-reviewer",
       "source": "./plugin",
-      "description": "Tells the progressive reviewer what the agent in its Herdr pane does, for run-ahead."
+      "description": "Tells the progressive reviewer what the agent in its pane of Herdr, or its terminal of herdr-core, does."
     }
   ]
 }

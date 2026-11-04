@@ -1,7 +1,7 @@
 {
   "name": "progressive-reviewer",
   "version": "0.1.0",
-  "description": "Tells the progressive reviewer what the agent in its Herdr pane does, for run-ahead. Outside Herdr, or with no reviewer open, its hooks do nothing.",
+  "description": "Tells the progressive reviewer what the agent in its pane of Herdr, or its terminal of herdr-core, does, and under herdr-core which session it runs. Elsewhere, its hooks do nothing.",
   "author": {
     "name": "Luper Rouch"
   },

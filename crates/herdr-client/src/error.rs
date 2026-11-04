@@ -36,14 +36,6 @@ pub enum Error {
     #[error("the host's event stream was cancelled")]
     Cancelled,
 
-    /// The host cannot do what the reviewer asks of it, such as herdr-core keeping an agent's
-    /// session.
-    #[error("{operation} is not supported here: {reason}")]
-    Unsupported {
-        operation: &'static str,
-        reason: &'static str,
-    },
-
     /// Herdr, or herdr-core, rejected a socket request.
     #[error("{operation} failed: {message}")]
     Herdr {

@@ -27,6 +27,7 @@ uuid.workspace = true
 herdr-client = { path = "../herdr-client", features = ["memory"] }
 review-source = { path = "../review-source" }
 tempfile.workspace = true
+test-case.workspace = true
 
 [lints]
 workspace = true

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use herdr_client::protocol::{
-    Agent, AgentStatus, PaneId, PaneProcess, PaneProcessInfo, TabId, WorkspaceId,
+    Agent, AgentSession, AgentStatus, PaneId, PaneProcess, PaneProcessInfo, TabId, WorkspaceId,
 };
 use serde::Deserialize;
 
@@ -13,6 +13,27 @@ use serde::Deserialize;
 const SPACE_LABEL: &str = "herdr.space";
 /// The label herdr-app gives the terminals of a tab: its ID.
 const TAB_LABEL: &str = "herdr.tab";
+
+/// The label of a terminal that names the session its agent runs, as `<agent>:<session>`: the
+/// agent's hooks set it, since herdr-core keeps no agent session (ADR 0016).
+pub(crate) const SESSION_LABEL: &str = "herdr-reviewer.session";
+
+/// The value of [`SESSION_LABEL`] for the session `session` of the agent `agent`.
+pub(crate) fn session_label(agent: &str, session: &str) -> String {
+    format!("{agent}:{session}")
+}
+
+/// The session that the [`SESSION_LABEL`] among `labels` names for the agent `agent`: none when
+/// it names another agent's, which a program the terminal ran before left.
+fn session_of(labels: &BTreeMap<String, String>, agent: &str) -> Option<AgentSession> {
+    let (named, session) = labels.get(SESSION_LABEL)?.split_once(':')?;
+    (named == agent && !session.is_empty()).then(|| AgentSession {
+        source: SESSION_LABEL.to_owned(),
+        agent: agent.to_owned(),
+        kind: "session_id".to_owned(),
+        value: session.to_owned(),
+    })
+}
 
 /// One terminal of herdr-core, live or finished (`Terminal` in `hc schema`).
 #[derive(Clone, Debug, Deserialize)]
@@ -104,20 +125,23 @@ impl Terminal {
         self.state == "live"
     }
 
-    /// The agent the terminal runs: a program that reports its status, in a tab of herdr-app.
-    /// herdr-core keeps no agent session, so the agent has none.
+    /// The agent the terminal runs: a program that reports its status, in a tab of herdr-app,
+    /// on the session its [`SESSION_LABEL`] names, if it names one.
     pub(crate) fn agent(&self) -> Option<Agent> {
         let status = self.status.as_ref()?;
         let (workspace_id, tab_id) = self.place()?;
+        let agent = status.agent();
         Some(Agent {
             pane_id: self.pane_id(),
             tab_id,
             workspace_id,
             name: self.name.clone(),
             display_agent: status.app.clone(),
-            agent: status.agent(),
+            agent_session: agent
+                .as_deref()
+                .and_then(|agent| session_of(&self.labels, agent)),
+            agent,
             agent_status: status.agent_status(),
-            agent_session: None,
             cwd: self
                 .foreground
                 .as_ref()

@@ -1,3 +1,5 @@
+use test_case::test_case;
+
 use super::*;
 
 #[test]
@@ -5,6 +7,15 @@ fn the_start_time_is_read_after_a_command_name_with_spaces_and_parentheses() {
     let stat = "4242 (a (strange) name) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 987654 1000 10";
 
     assert_eq!(state_and_start_time(stat), Some(("S", 987_654)));
+}
+
+#[test_case("4242 (a (strange) name) S 1 4242 4100 34834 4242 0", true; "the leader of the foreground group of its terminal")]
+#[test_case("4250 (claude) S 4242 4242 4100 34834 4242 0", false; "a child in the agent's group, as an MCP server")]
+#[test_case("4242 (claude) S 1 4242 4100 34834 4300 0", false; "another group in the foreground")]
+#[test_case("4242 (bash) S 1 4242 4242 0 -1 0", false; "no terminal, as a tool Claude Code runs")]
+#[test_case("4242 (bash)", false; "a truncated line")]
+fn a_process_leads_its_terminal_when_its_group_is_in_the_foreground(stat: &str, leads: bool) {
+    assert_eq!(leads_terminal(stat), leads);
 }
 
 #[test]

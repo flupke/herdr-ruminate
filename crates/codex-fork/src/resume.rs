@@ -107,7 +107,7 @@ impl Resume<'_> {
         drop(expectations);
         hooks.name_session(self.pane, self.session);
         if agent.agent_session.is_some() {
-            self.report_to_herdr();
+            self.report_to_host();
         }
         Ok(self
             .host
@@ -197,10 +197,11 @@ impl Resume<'_> {
         }
     }
 
-    /// Reports the session to Herdr, as Herdr's own Codex hook will at the agent's next turn:
-    /// until then, Herdr would report the agent on the session it left, which the pinned agent
-    /// and the access identity bind.
-    fn report_to_herdr(&self) {
+    /// Reports the session to the host, as Herdr's own Codex hook will at the agent's next turn
+    /// under Herdr: until then, the host would report the agent on the session it left, which
+    /// the pinned agent and the access identity bind. Under herdr-core, where nothing names a
+    /// Codex agent's session, the host reports none and this never runs (ADR 0016).
+    fn report_to_host(&self) {
         let seq = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |now| u64::try_from(now.as_nanos()).unwrap_or(u64::MAX));
@@ -216,7 +217,7 @@ impl Resume<'_> {
         );
         if let Err(error) = reported {
             self.log.write(&format!(
-                "Herdr was not told that the agent of {} runs the session {}: {error}",
+                "the host was not told that the agent of {} runs the session {}: {error}",
                 self.pane.0, self.session
             ));
         }

@@ -23,6 +23,17 @@ fn in_session(pane: &PaneId, session: &str) -> HookedAgent {
     }
 }
 
+/// Hands `payload` of the agent of `pane`, a pane of Herdr, to the reviewers of `directory`.
+fn hook_in(pane: &PaneId, directory: &HookDirectory, payload: &[u8]) -> Option<String> {
+    let target = HookTarget {
+        pane,
+        directory,
+        session_label: None,
+        leads_terminal: true,
+    };
+    hook(&target, std::os::unix::process::parent_id(), payload)
+}
+
 /// A reviewer listening in a new directory.
 fn reviewer() -> (tempfile::TempDir, HookDirectory, AgentHooks) {
     let runtime = tempfile::tempdir().unwrap();
@@ -44,7 +55,7 @@ fn a_session_claude_code_resumed_reaches_the_reviewer_that_expects_it() {
     let pane = PaneId("w:p1".into());
     let expectation = hooks.expect_resume(&in_pane(&pane), "fork", "blocked");
 
-    hook(
+    hook_in(
         &pane,
         &directory,
         session_start("fork", "resume").as_bytes(),
@@ -59,7 +70,7 @@ fn a_session_the_agent_started_is_recorded_for_a_reviewer_opened_later() {
     let directory = HookDirectory::for_server(runtime.path(), Path::new("/run/herdr.sock"));
     let pane = PaneId("w:p1".into());
 
-    hook(
+    hook_in(
         &pane,
         &directory,
         session_start("first", "startup").as_bytes(),
@@ -88,9 +99,9 @@ fn a_subagent_s_session_is_not_the_agent_s() {
     };
     directory.record(&pane, &agent).unwrap();
 
-    hook(&pane, &directory, subagent.to_string().as_bytes());
+    hook_in(&pane, &directory, subagent.to_string().as_bytes());
     // The reviewer takes the hooks one after another: it took the subagent's before this.
-    hook(
+    hook_in(
         &PaneId("w:p9".into()),
         &directory,
         session_start("marker", "resume").as_bytes(),
@@ -124,7 +135,7 @@ fn a_prompt_submitted_while_the_reviewer_expects_a_session_is_blocked_with_its_r
         "Text in the box met the reviewer's /resume.",
     );
 
-    let decision = hook(
+    let decision = hook_in(
         &pane,
         &directory,
         prompt_submit("half a thought /resume fork").as_bytes(),
@@ -147,7 +158,7 @@ fn a_prompt_submitted_while_the_reviewer_expects_a_session_is_blocked_with_its_r
 fn a_prompt_the_reviewer_does_not_block_goes_on_without_a_decision() {
     let (_runtime, directory, _hooks) = reviewer();
 
-    let decision = hook(
+    let decision = hook_in(
         &PaneId("w:p1".into()),
         &directory,
         prompt_submit("Reply with ok").as_bytes(),
@@ -170,7 +181,7 @@ fn a_long_prompt_claude_code_reports_as_a_paste_is_the_one_the_reviewer_typed() 
     let pane = PaneId("w:p1".into());
     let expectation = hooks.expect_prompt(&in_session(&pane, "session"), LONG, "blocked");
 
-    let decision = hook(
+    let decision = hook_in(
         &pane,
         &directory,
         prompt_submit(&wrapped_paste("")).as_bytes(),
@@ -186,7 +197,7 @@ fn text_left_in_the_input_box_before_a_long_prompt_is_blocked() {
     let pane = PaneId("w:p1".into());
     let expectation = hooks.expect_prompt(&in_session(&pane, "session"), LONG, "blocked");
 
-    let decision = hook(
+    let decision = hook_in(
         &pane,
         &directory,
         prompt_submit(&wrapped_paste("half a thought")).as_bytes(),
@@ -207,7 +218,7 @@ fn the_typed_prompt_in_another_session_of_the_pane_is_blocked() {
     let pane = PaneId("w:p1".into());
     let expectation = hooks.expect_prompt(&in_session(&pane, "agent"), "Reply with ok", "blocked");
 
-    let decision = hook(&pane, &directory, prompt_submit("Reply with ok").as_bytes());
+    let decision = hook_in(&pane, &directory, prompt_submit("Reply with ok").as_bytes());
 
     assert!(decision.is_some());
     assert_eq!(expectation.wait(Duration::ZERO), Some(Heard::Stopped));
@@ -241,4 +252,121 @@ fn each_hook_of_the_plugin_runs_the_agent_hook_of_the_installed_reviewer() {
         assert_eq!(command["command"], "${user_config.control}");
         assert_eq!(command["args"], serde_json::json!([SUBCOMMAND]));
     }
+}
+
+/// The session label of a terminal of herdr-core: what the hook asked of it, in order.
+#[derive(Default)]
+struct Label(std::sync::Mutex<Vec<String>>);
+
+impl SessionLabel for Label {
+    fn report(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("report {} {session}", pane.0));
+        Ok(())
+    }
+
+    fn forget(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("forget {} {session}", pane.0));
+        Ok(())
+    }
+}
+
+/// Claude Code's `SessionEnd` event, as 2.1.318 writes it, of `session`, which ended for
+/// `reason`.
+fn session_end(session: &str, reason: &str) -> String {
+    serde_json::json!({
+        "session_id": session,
+        "transcript_path": format!("/home/u/.claude/projects/-repo/{session}.jsonl"),
+        "cwd": "/repo",
+        "hook_event_name": "SessionEnd",
+        "reason": reason,
+    })
+    .to_string()
+}
+
+/// What the session label of `pane`, a terminal of herdr-core, was asked for the events
+/// `payloads` of an agent that leads its terminal if `leads_terminal`.
+fn label_asks(directory: &HookDirectory, leads_terminal: bool, payloads: &[String]) -> Vec<String> {
+    let pane = PaneId("t7".into());
+    let label = Label::default();
+    let target = HookTarget {
+        pane: &pane,
+        directory,
+        session_label: Some(&label),
+        leads_terminal,
+    };
+    for payload in payloads {
+        hook(
+            &target,
+            std::os::unix::process::parent_id(),
+            payload.as_bytes(),
+        );
+    }
+    label.0.into_inner().unwrap()
+}
+
+#[test]
+fn in_a_terminal_of_herdr_core_the_agents_sessions_are_named_in_its_label() {
+    let (_runtime, directory, _hooks) = reviewer();
+    let mut subagent: Value = serde_json::from_str(&session_start("sub", "startup")).unwrap();
+    subagent["agent_id"] = "a1".into();
+    let mut subagent_end: Value =
+        serde_json::from_str(&session_end("sub", "prompt_input_exit")).unwrap();
+    subagent_end["agent_id"] = "a1".into();
+
+    let asked = label_asks(
+        &directory,
+        true,
+        &[
+            session_start("first", "startup"),
+            subagent.to_string(),
+            subagent_end.to_string(),
+            session_end("first", "prompt_input_exit"),
+            session_start("second", "startup"),
+        ],
+    );
+
+    assert_eq!(
+        asked,
+        ["report t7 first", "forget t7 first", "report t7 second"]
+    );
+}
+
+#[test_case::test_case("clear"; "cleared")]
+#[test_case::test_case("resume"; "resumed")]
+fn a_session_that_a_successor_replaces_leaves_the_label_to_it(reason: &str) {
+    let (_runtime, directory, _hooks) = reviewer();
+
+    let asked = label_asks(
+        &directory,
+        true,
+        &[
+            session_start("first", "startup"),
+            session_end("first", reason),
+            session_start("second", reason),
+        ],
+    );
+
+    assert_eq!(asked, ["report t7 first", "report t7 second"]);
+}
+
+#[test]
+fn a_claude_without_a_terminal_names_no_session_but_forgets_its_own() {
+    let (_runtime, directory, _hooks) = reviewer();
+
+    let asked = label_asks(
+        &directory,
+        false,
+        &[
+            session_start("nested", "startup"),
+            session_end("nested", "prompt_input_exit"),
+        ],
+    );
+
+    assert_eq!(asked, ["forget t7 nested"]);
 }

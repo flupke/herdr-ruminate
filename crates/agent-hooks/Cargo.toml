@@ -18,6 +18,7 @@ sha2.workspace = true
 [dev-dependencies]
 herdr-client = { path = "../herdr-client", features = ["memory"] }
 tempfile.workspace = true
+test-case.workspace = true
 
 [lints]
 workspace = true

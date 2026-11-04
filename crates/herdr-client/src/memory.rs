@@ -28,6 +28,9 @@ struct Host {
     prompts: Vec<SentPrompt>,
     /// Panes whose agent reads each prompt without starting on it.
     swallowing: HashSet<PaneId>,
+    /// Whether the host claims, as herdr-core does, that its events tell each change of an
+    /// agent's session.
+    announces_sessions: bool,
 }
 
 impl InMemoryAgents {
@@ -72,6 +75,12 @@ impl InMemoryAgents {
         } else {
             host.swallowing.remove(pane_id);
         }
+    }
+
+    /// Make the host claim, as herdr-core does, that its events tell each change of an agent's
+    /// session: a worker stops asking again for a session.
+    pub fn announce_sessions(&self) {
+        self.host().announces_sessions = true;
     }
 
     /// Every prompt submitted so far, in submission order.
@@ -126,5 +135,9 @@ impl AgentPort for InMemoryAgents {
             });
         }
         Ok(())
+    }
+
+    fn announces_sessions(&self) -> bool {
+        self.host().announces_sessions
     }
 }

@@ -1,6 +1,6 @@
-//! [`HookDirectory`]: where the reviewers of one Herdr server listen for the hooks of its
-//! agents, and how a hook reaches them; [`HookRoot`]: the directories of every Herdr server,
-//! for a hook that cannot tell its server.
+//! [`HookDirectory`]: where the reviewers of one Herdr server, or one herdr-core, listen for the
+//! hooks of its agents, and how a hook reaches them; [`HookRoot`]: the directories of every
+//! host, for a hook that cannot tell its host.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -16,15 +16,16 @@ use sha2::{Digest, Sha256};
 
 use crate::wire::{Answer, Report};
 
-/// The directory of one Herdr server under the user's runtime directory, readable by the user
-/// alone: each open reviewer of that server listens there on a socket of its own. A hook reaches
-/// the reviewers of its own server only, since the directory is named after Herdr's socket.
+/// The directory of one host, a Herdr server or a herdr-core, under the user's runtime
+/// directory, readable by the user alone: each open reviewer of that host listens there on a
+/// socket of its own. A hook reaches the reviewers of its own host only, since the directory is
+/// named after the host's socket.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HookDirectory(PathBuf);
 
 /// The directory under the user's runtime directory that holds the [`HookDirectory`] of every
-/// Herdr server, readable by the user alone. Codex's hooks run in its app-server daemon, with
-/// the environment of whichever terminal started it, so they cannot tell their Herdr server:
+/// host, readable by the user alone. Codex's hooks run in its app-server daemon, with the
+/// environment of whichever terminal started it, so they cannot tell their host:
 /// they reach every reviewer of the user here, by the agent's session, which is unique.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HookRoot(PathBuf);
@@ -55,24 +56,23 @@ pub struct HookedSession {
 const TELL_LIMIT: Duration = Duration::from_millis(200);
 
 impl HookDirectory {
-    /// The directory of the Herdr server whose socket is `herdr_socket`, under the runtime
-    /// directory `runtime`, named after a digest of that socket's path.
-    pub fn for_server(runtime: &Path, herdr_socket: &Path) -> Self {
-        let digest = Sha256::digest(herdr_socket.as_os_str().as_encoded_bytes());
+    /// The directory of the Herdr server, or the herdr-core, whose socket is `socket`, under
+    /// the runtime directory `runtime`, named after a digest of that socket's path.
+    pub fn for_server(runtime: &Path, socket: &Path) -> Self {
+        let digest = Sha256::digest(socket.as_os_str().as_encoded_bytes());
         Self(HookRoot::new(runtime).0.join(hex(&digest[..6])))
     }
 
-    /// The directory of every Herdr server, this one's included.
+    /// The directory of every host, this one's included.
     pub fn root(&self) -> HookRoot {
         HookRoot(self.0.parent().unwrap_or(&self.0).to_owned())
     }
 
-    /// The directory of the Herdr server this process runs under, from `XDG_RUNTIME_DIR` and
-    /// `HERDR_SOCKET_PATH`; `None` without either.
+    /// The directory of the host this process runs under, from `XDG_RUNTIME_DIR` and the
+    /// host's socket: Herdr's `HERDR_SOCKET_PATH`, else herdr-core's `HC_TERMINAL_SOCKET`;
+    /// `None` without either.
     pub fn from_env() -> Option<Self> {
-        let runtime = std::env::var_os("XDG_RUNTIME_DIR").filter(|path| !path.is_empty())?;
-        let herdr = std::env::var_os("HERDR_SOCKET_PATH").filter(|path| !path.is_empty())?;
-        Some(Self::for_server(Path::new(&runtime), Path::new(&herdr)))
+        crate::host::directory_from_env()
     }
 
     /// Hands `report` to every reviewer that listens in the directory. A reviewer that cannot
@@ -208,8 +208,8 @@ impl HookRoot {
         Some(Self::new(Path::new(&runtime)))
     }
 
-    /// Asks every reviewer of the user, whatever its Herdr server, whether it blocks the prompt
-    /// that `report` submits, as [`HookDirectory::ask`] asks those of one server.
+    /// Asks every reviewer of the user, whatever its host, whether it blocks the prompt that
+    /// `report` submits, as [`HookDirectory::ask`] asks those of one host.
     pub fn ask(&self, report: &Report, limit: Duration) -> Option<String> {
         let Ok(entries) = fs::read_dir(&self.0) else {
             return None;

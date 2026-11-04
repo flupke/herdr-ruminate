@@ -44,6 +44,30 @@ impl ProcessStamp {
     }
 }
 
+/// Whether the process `pid` leads the foreground of its terminal: it leads its process group,
+/// which its controlling terminal gives the keyboard to. An agent the user runs in a terminal
+/// does; a program it starts, for a tool with no terminal of its own, or as an MCP server in its
+/// own group, does not.
+pub fn leads_terminal_foreground(pid: u32) -> bool {
+    fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| leads_terminal(&stat))
+}
+
+/// Whether the process of a `/proc/<pid>/stat` line leads its process group (the 5th field is
+/// its ID, the 1st) and that group is the foreground of its controlling terminal (the 8th, -1
+/// without a terminal), counted after the command name, which is in parentheses and may hold
+/// spaces and parentheses itself.
+fn leads_terminal(stat: &str) -> bool {
+    let (Some((pid, _)), Some((_, after_name))) = (stat.split_once(' '), stat.rsplit_once(')'))
+    else {
+        return false;
+    };
+    let fields: Vec<&str> = after_name.split_whitespace().take(6).collect();
+    let [_state, _parent, group, _session, _terminal, foreground] = fields[..] else {
+        return false;
+    };
+    pid == group && group == foreground
+}
+
 /// The state (the 3rd field) and the start time (the 22nd) of a `/proc/<pid>/stat` line,
 /// counted after the command name, which is in parentheses and may hold spaces and parentheses
 /// itself.

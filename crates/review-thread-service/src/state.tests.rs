@@ -8,6 +8,7 @@ use review_mcp::{Operation, Response};
 use review_source::{AnchorKind, DiffRangeAnchor};
 use review_threads::{AskedUnder, MessageId, ReviewThread, ThreadId, WakeupFailure};
 use tempfile::TempDir;
+use test_case::test_case;
 
 use super::*;
 
@@ -872,4 +873,76 @@ fn a_posted_comment_names_the_tab_of_the_review_pane() {
         book.thread(&thread).unwrap().messages[0].posted_from_tab,
         Some(tab().0)
     );
+}
+
+/// Queues a prompt pinned to the agent on `session-1`, which now reports no session.
+fn queue_prompt_for_a_sessionless_agent(
+    service: &mut Service,
+) -> (crate::PromptReceipt, crate::PromptCancellation) {
+    let mut sessionless = agent("first", "unused");
+    sessionless.agent_session = None;
+    service.agents.upsert_agent(sessionless);
+    let (sender, sent) = std::sync::mpsc::channel();
+    let prompts = crate::PromptSender {
+        sender,
+        gate: Arc::default(),
+    };
+    let queued = prompts.send(
+        crate::PinnedAgent::new(agent("first", "session-1")),
+        "Reviewer turn".into(),
+    );
+    let Ok(request @ Input::Prompt(_)) = sent.recv() else {
+        panic!("the sender queues the prompt");
+    };
+    let _ = service.state.input(request);
+    queued
+}
+
+#[test_case(false, true; "Herdr, which does not tell a reported session")]
+#[test_case(true, false; "herdr-core, which tells it")]
+fn a_prompt_waiting_for_its_agents_session_asks_again_only_a_host_that_does_not_tell_it(
+    announces: bool,
+    asks_again: bool,
+) {
+    let mut service = Service::start();
+    if announces {
+        service.agents.announce_sessions();
+    }
+    let (_receipt, _cancellation) = queue_prompt_for_a_sessionless_agent(&mut service);
+
+    assert_eq!(service.poll(), []);
+    assert_eq!(service.state.needs_recheck(), asks_again);
+}
+
+#[test]
+fn a_cancelled_prompt_that_waits_for_its_agents_session_is_withdrawn_under_a_host_that_announces_sessions()
+ {
+    let directory = tempfile::tempdir().unwrap();
+    let store = ReviewStore::open(directory.path().join("state"), directory.path()).unwrap();
+    let agents = InMemoryAgents::default();
+    agents.announce_sessions();
+    let mut sessionless = agent("first", "unused");
+    sessionless.agent_session = None;
+    agents.upsert_agent(sessionless);
+    let worker = crate::Worker::start(
+        store,
+        agents.clone(),
+        None,
+        AgentTarget::new(tab(), Some(pane("first"))),
+        Err("No MCP listener in this test".into()),
+        |_| Err("No MCP listener in this test".into()),
+        |_| {},
+    );
+    let (receipt, cancellation) = worker.prompt_sender().send(
+        crate::PinnedAgent::new(agent("first", "session-1")),
+        "Reviewer turn".into(),
+    );
+    // The worker took the prompt, which waits for the agent's session.
+    worker.prompt_sender().flush();
+
+    drop(cancellation);
+
+    // The worker, which waits for an input, withdraws it at once.
+    assert!(matches!(receipt.wait(), Err(crate::PromptError::Cancelled)));
+    assert_eq!(agents.prompts(), []);
 }

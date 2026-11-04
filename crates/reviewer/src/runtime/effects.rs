@@ -98,13 +98,14 @@ impl RunAheadSetup {
     }
 }
 
-/// The reviewer's end of the hooks of the agents of Herdr's server, whose directory is
-/// `directory`, or why it does not listen to them.
+/// The reviewer's end of the hooks of the agents of its host, Herdr's server or herdr-core,
+/// whose directory is `directory`, or why it does not listen to them.
 fn listen_to_hooks(
     directory: Option<&agent_hooks::HookDirectory>,
 ) -> Result<Arc<AgentHooks>, String> {
     let directory = directory.ok_or(
-        "cannot listen to the agents' hooks: XDG_RUNTIME_DIR or HERDR_SOCKET_PATH is not set",
+        "cannot listen to the agents' hooks: XDG_RUNTIME_DIR, or both HERDR_SOCKET_PATH and \
+         HC_TERMINAL_SOCKET, are not set",
     )?;
     AgentHooks::listen(directory)
         .map(Arc::new)

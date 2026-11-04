@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::terminal::{Status, Terminal, place_of};
+use crate::terminal::{SESSION_LABEL, Status, Terminal, place_of};
 
 /// One fact change, as an `event` notification of `events.subscribe` carries it: of a terminal,
 /// or of a document, such as herdr-app's layout, which names no terminal.
@@ -59,8 +59,9 @@ impl Event {
 }
 
 /// What the reviewer knows of each terminal of a subscription, to tell an agent that appears in
-/// a terminal, or leaves it, as Herdr's `pane.agent_detected` tells. A terminal holds an agent
-/// while its program reports a status and it is in a tab of herdr-app.
+/// a terminal, or leaves it, as Herdr's `pane.agent_detected` tells, and a change of the session
+/// an agent runs, which Herdr does not tell. A terminal holds an agent while its program reports
+/// a status and it is in a tab of herdr-app.
 #[derive(Debug, Default)]
 pub(crate) struct Roster {
     terminals: HashMap<String, Known>,
@@ -71,6 +72,8 @@ struct Known {
     /// The space and the tab of herdr-app the terminal shows in.
     place: Option<(WorkspaceId, TabId)>,
     status: Option<Status>,
+    /// Its session label, as set.
+    session: Option<String>,
 }
 
 /// The agent a terminal holds: where it shows, and its status.
@@ -80,6 +83,7 @@ impl Known {
     fn of(terminal: Terminal) -> Self {
         Self {
             place: terminal.place(),
+            session: terminal.labels.get(SESSION_LABEL).cloned(),
             status: terminal.status,
         }
     }
@@ -101,7 +105,17 @@ impl Roster {
         }
     }
 
-    /// The arrival or departure of an agent that `event` makes, if any.
+    /// The agents of the roster: a subscription that starts again tells their sessions, which
+    /// may have changed while no subscription held.
+    pub(crate) fn agents(&self) -> impl Iterator<Item = PaneId> + '_ {
+        self.terminals
+            .iter()
+            .filter(|(_, known)| known.agent().is_some())
+            .map(|(terminal, _)| PaneId(terminal.clone()))
+    }
+
+    /// The arrival or departure of an agent, or the change of its session, that `event` makes,
+    /// if any.
     pub(crate) fn observe(&mut self, event: &Event) -> Result<Option<HerdrEvent>> {
         let Some(terminal) = &event.terminal else {
             return Ok(None);
@@ -119,6 +133,7 @@ impl Roster {
                     Some(record) if !self.terminals.contains_key(terminal) => Known::of(record),
                     _ => Known {
                         place: place_of(&change.labels),
+                        session: change.labels.get(SESSION_LABEL).cloned(),
                         ..self.known(terminal)
                     },
                 }
@@ -130,11 +145,16 @@ impl Roster {
         if event.kind == "removed" {
             self.terminals.remove(terminal);
         }
-        Ok(change(
+        let arrival_or_departure = change(
             terminal,
             before.as_ref().and_then(Known::agent),
             after.agent(),
-        ))
+        );
+        let session_changed =
+            after.agent().is_some() && before.and_then(|before| before.session) != after.session;
+        Ok(arrival_or_departure.or_else(|| {
+            session_changed.then(|| HerdrEvent::AgentSessionChanged(PaneId(terminal.clone())))
+        }))
     }
 
     fn known(&self, terminal: &str) -> Known {
