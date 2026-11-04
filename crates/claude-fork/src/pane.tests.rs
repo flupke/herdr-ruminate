@@ -2,8 +2,8 @@ use super::*;
 use agent_fork::ForkCommand;
 
 #[test]
-fn a_fork_inherits_no_herdr_variable() {
-    let environ = b"HOME=/home/a\0HERDR_PANE_ID=w1:p1\0HERDR_SOCKET_PATH=/s\0PATH=/bin\0";
+fn a_fork_inherits_no_variable_of_herdr_or_herdr_core() {
+    let environ = b"HOME=/home/a\0HERDR_PANE_ID=w1:p1\0HERDR_SOCKET_PATH=/s\0HC_TERMINAL_ID=t7\0HC_TERMINAL_SOCKET=/c\0PATH=/bin\0";
 
     let names: Vec<_> = environment(environ)
         .into_iter()

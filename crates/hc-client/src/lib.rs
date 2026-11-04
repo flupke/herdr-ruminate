@@ -2,8 +2,9 @@
 //! herdr-app's terminals and agents, behind herdr-client's [`AgentPort`] and [`AgentHost`].
 //!
 //! An agent is a terminal whose program reports its status with OSC 7501, in the tab of
-//! herdr-app its `herdr.tab` label names. herdr-core keeps no focus and no agent session, so
-//! the agents it gives have none, and an agent's arrival or departure is the appearance or the
+//! herdr-app its `herdr.tab` label names, on the session its `herdr-reviewer.session` label
+//! names, which the reviewer sets there since herdr-core keeps no agent session (ADR 0016).
+//! herdr-core keeps no focus either. An agent's arrival or departure is the appearance or the
 //! end of its status.
 //!
 //! [`AgentPort`]: herdr_client::protocol::AgentPort

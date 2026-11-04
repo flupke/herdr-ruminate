@@ -283,6 +283,7 @@ version = "0.2.0"
 dependencies = [
  "agent-fork",
  "agent-hooks",
+ "hc-client",
  "herdr-client",
  "serde",
  "serde_json",
@@ -1680,6 +1681,15 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash",
+]
+
+[[package]]
+name = "hc-client"
+version = "0.2.0"
+dependencies = [
+ "herdr-client",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

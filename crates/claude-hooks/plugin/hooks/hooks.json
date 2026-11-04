@@ -1,7 +1,19 @@
 {
-  "description": "Each hook hands the event, with the agent's Herdr pane, to the reviewers of its Herdr server.",
+  "description": "Each hook hands the event, with the agent's pane, to the reviewers of its host, Herdr or herdr-core; under herdr-core, it also names the agent's session in a label of its terminal.",
   "hooks": {
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${user_config.control}",
+            "args": ["agent-hook"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
       {
         "hooks": [
           {

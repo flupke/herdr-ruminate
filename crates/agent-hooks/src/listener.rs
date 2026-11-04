@@ -1,4 +1,4 @@
-//! [`AgentHooks`]: a reviewer's end of the hooks of the agents of its Herdr server, and of
+//! [`AgentHooks`]: a reviewer's end of the hooks of the agents of its host, and of
 //! every Codex agent of the user.
 
 use std::collections::HashMap;
@@ -25,8 +25,8 @@ const CODEX: &str = "codex";
 /// Counts the reviewers of this process, which each listen on a socket of their own.
 static REVIEWERS: AtomicU64 = AtomicU64::new(0);
 
-/// A reviewer's end of the hooks of the agents of its Herdr server: it listens on a socket of
-/// its own in the server's [`HookDirectory`], one hook after another, hands each event of an
+/// A reviewer's end of the hooks of the agents of its host: it listens on a socket of its own
+/// in the host's [`HookDirectory`], one hook after another, hands each event of an
 /// agent to what the reviewer expects of it, and blocks the prompts submitted to an agent that
 /// the reviewer does not expect there while it expects something. Claude Code's hooks name the
 /// agent's pane; Codex's name its session, and reach every reviewer of the user. Dropping it
@@ -44,8 +44,9 @@ pub struct AgentHooks {
 /// An agent that runs the reviewer's hooks, as they name it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HookedAgent {
-    /// Claude Code, whose hooks name its Herdr pane `pane`. `session` is the session Herdr
-    /// reports for it, if any: a prompt that reaches another session is stopped.
+    /// Claude Code, whose hooks name its pane, or terminal of herdr-core, `pane`. `session` is
+    /// the session the host reports for it, if any: a prompt that reaches another session is
+    /// stopped.
     Pane {
         pane: PaneId,
         session: Option<String>,

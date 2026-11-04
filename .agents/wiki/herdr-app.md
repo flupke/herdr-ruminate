@@ -55,7 +55,8 @@ itself Herdr too, and labels its terminals `herdr.*`.
   status leaves `working`.
 - The core keeps no agent session ID. Herdr learned it from its own hooks,
   `~/.claude/hooks/herdr-agent-state.sh` and `~/.codex/herdr-agent-state.sh`, which exit at
-  once without `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`: in herdr-app nothing reports it.
+  once without `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`: in herdr-app the reviewer's Claude
+  Code hook reports Claude Code's, as a label; nothing reports Codex's (below).
 - `terminal.send` pastes and presses Enter once nobody has typed for about 3 seconds, so it
   answers 5 seconds later or more. It refuses a `blocked` program unless `force`, types
   only on an exact status with `if`, and answers `started`: whether the program went
@@ -98,7 +99,7 @@ scripts nix Makefile` list the reviewer's uses.
 | `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID` | The `herdr.space` and `herdr.tab` labels of the review pane's terminal |
 | `HERDR_PLUGIN_CONTEXT_JSON` (focused pane, its folder, tab) | A mod's `focused()`; nothing reaches a program unless the mod passes it |
 | `session.snapshot`, `agent.list`, `agent.get` | `terminal.list` and `terminal.get`, filtered by label, with OSC 7501 status and `app` |
-| The agent's session, `pane.report_agent_session` | Nothing |
+| The agent's session, `pane.report_agent_session` | The reviewer's `herdr-reviewer.session` label (ADR 0016) |
 | `pane.process_info` | `foreground`, the group leader only |
 | `agent.prompt` | `terminal.send` |
 | `agent.read` (tests only) | `terminal.read` |
@@ -122,11 +123,21 @@ and its agents are Herdr's.
 [ADR 0014](../adr/0014-talk-to-herdr-core-behind-the-host-traits-beside-herdr.md) says why
 both stay.
 
-- Under herdr-core the pane has no focus to follow and no agent session: its first target is
-  the terminal the mod names with `--focused-terminal`, else the tab's only agent; it does not
-  follow a focus change after it opened.
-- `report_agent_session` (ADR 0012) fails as unsupported, and the reviewer does not hear the
-  agents' hooks: their directory needs `HERDR_SOCKET_PATH`.
+- Under herdr-core the pane has no focus to follow: its first target is the terminal the mod
+  names with `--focused-terminal`, else the tab's only agent; it does not follow a focus change
+  after it opened.
+- The agent's session is a label of its terminal, which the reviewer's Claude Code hook sets,
+  and the agents' hooks reach the reviewers of a core as those of a Herdr server
+  ([ADR 0016](../adr/0016-report-the-agent-s-session-as-a-label-of-its-herdr-core-terminal.md)).
+  A subscription that starts again, after its stream dropped, tells each agent it holds as a
+  session change, since its session may have changed, or it may have gone, meanwhile.
+  The Bash tool of Claude Code 2.1.318 runs its commands in a session of their own, with no
+  terminal (`/proc/<pid>/stat`: tty 0, tpgid -1), while its MCP servers run in its own process
+  group, in the terminal's foreground, with its variables: the hook tells a `claude` either
+  runs from the agent by whether it leads its terminal's foreground group.
+- Nothing names a Codex agent's session under herdr-core: Codex's hook runs in its daemon,
+  which cannot tell the terminal, so the Codex resume, which reports a session only when the
+  host reports one, reports none there.
 - The pane-opening action (`reviewer-control`, `HerdrReader`, `HerdrWriter`) stays Herdr's;
   under herdr-app, `herdr-app-mod/` opens the pane. It tells a review pane by its terminal's
   argv, a program ending in `/bin/reviewer` and `--focused-terminal`: keep the two in step with

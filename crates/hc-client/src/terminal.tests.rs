@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
+use test_case::test_case;
+
 use super::*;
 
 /// Claude Code in a tab of herdr-app, as `hc get` gives it (herdr-core 0.1.17), trimmed.
@@ -52,6 +54,35 @@ fn claude_code_in_a_tab_is_an_agent_of_that_tab_by_herdrs_name() {
         agent.cwd,
         Some(PathBuf::from("/home/user/src/project/crates"))
     );
+}
+
+/// `claude_code()` with its session label set to `value`.
+fn labelled(value: &str) -> Terminal {
+    let mut labelled = claude_code();
+    labelled["labels"]["herdr-reviewer.session"] = value.into();
+    terminal(labelled)
+}
+
+#[test]
+fn the_agent_runs_the_session_its_label_names() {
+    let agent = labelled("claude:5f1c-uuid:with-colon").agent().unwrap();
+
+    assert_eq!(
+        agent.agent_session,
+        Some(AgentSession {
+            source: "herdr-reviewer.session".into(),
+            agent: "claude".into(),
+            kind: "session_id".into(),
+            value: "5f1c-uuid:with-colon".into(),
+        })
+    );
+}
+
+#[test_case("codex:thread-1"; "another agent's session, left by a program that ran before")]
+#[test_case("claude:"; "an empty session")]
+#[test_case("thread-1"; "no agent")]
+fn a_label_that_names_no_session_of_the_agent_gives_it_none(value: &str) {
+    assert_eq!(labelled(value).agent().unwrap().agent_session, None);
 }
 
 #[test]

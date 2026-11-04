@@ -131,6 +131,13 @@ pub trait AgentPort: Send + Sync {
     /// working: for a command of the agent's own, which starts no turn, or for a prompt whose
     /// submission the agent's hooks confirm.
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()>;
+
+    /// Whether the host's events tell each change of an agent's session
+    /// ([`HerdrEvent::AgentSessionChanged`]): herdr-core's do, Herdr's do not, so a caller that
+    /// waits for a session asks Herdr again from time to time.
+    fn announces_sessions(&self) -> bool {
+        false
+    }
 }
 
 impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
@@ -156,6 +163,10 @@ impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
 
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()> {
         (**self).submit_prompt(pane_id, text)
+    }
+
+    fn announces_sessions(&self) -> bool {
+        (**self).announces_sessions()
     }
 }
 
@@ -187,7 +198,7 @@ pub trait AgentHost: AgentPort + std::fmt::Debug {
     ) -> Result<()>;
 
     /// Tells the host that the agent of `pane_id` runs the session `report` names, as the
-    /// agent's own Herdr hook does when the agent starts a session (ADR 0012).
+    /// agent's own hook does when the agent starts a session (ADR 0012, ADR 0016).
     fn report_agent_session(&self, pane_id: &PaneId, report: &SessionReport<'_>) -> Result<()>;
 }
 
@@ -312,7 +323,7 @@ pub struct SessionReport<'a> {
     pub start: &'a str,
 }
 
-/// A native agent session identity reported by Herdr.
+/// A native agent session identity, as the host reports it.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentSession {
     pub source: String,
@@ -353,6 +364,8 @@ pub enum HerdrEvent {
         released: bool,
         final_status: Option<AgentStatus>,
     },
+    /// The session the host reports for the agent of a pane changed, appeared or went.
+    AgentSessionChanged(PaneId),
 }
 
 /// A pane owned by this plugin.

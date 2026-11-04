@@ -17,6 +17,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "test-case",
 ]
 
 [[package]]
@@ -40,6 +41,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "test-case",
 ]
 
 [[package]]
@@ -446,10 +448,12 @@ version = "0.2.0"
 dependencies = [
  "agent-fork",
  "agent-hooks",
+ "hc-client",
  "herdr-client",
  "serde",
  "serde_json",
  "tempfile",
+ "test-case",
 ]
 
 [[package]]
@@ -2304,6 +2308,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "test-case",
 ]
 
 [[package]]
@@ -4528,6 +4533,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "test-case",
  "thiserror 2.0.19",
  "ui-events",
  "uuid",

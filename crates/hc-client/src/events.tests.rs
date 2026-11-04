@@ -297,3 +297,44 @@ fn a_terminal_in_a_space_but_no_tab_holds_no_agent_yet() {
 
     assert_eq!((created, tabbed), (None, Some(arrival("t4"))));
 }
+
+/// A `labels` event of `t3` in the tab `tb1`, with the session label `session` if any.
+fn session_labels(session: Option<&str>) -> Event {
+    let mut labels = json!({"herdr.space": "sp1", "herdr.tab": "tb1"});
+    if let Some(session) = session {
+        labels["herdr-reviewer.session"] = session.into();
+    }
+    event("labels", "t3", json!({"labels": labels}))
+}
+
+#[test]
+fn the_session_label_of_an_agent_tells_each_change_of_its_session() {
+    let mut roster = roster(&[terminal(
+        "t3",
+        json!({"app": "claude-code", "state": "idle"}),
+    )]);
+    let changed = || Some(HerdrEvent::AgentSessionChanged(PaneId("t3".into())));
+
+    let reported = roster.observe(&session_labels(Some("claude:s1"))).unwrap();
+    let same = roster.observe(&session_labels(Some("claude:s1"))).unwrap();
+    let turn = roster
+        .observe(&event("status", "t3", status("working")))
+        .unwrap();
+    let replaced = roster.observe(&session_labels(Some("claude:s2"))).unwrap();
+    let forgotten = roster.observe(&session_labels(None)).unwrap();
+
+    assert_eq!(
+        [reported, same, turn, replaced, forgotten],
+        [changed(), None, None, changed(), changed()]
+    );
+}
+
+#[test]
+fn the_session_label_of_a_terminal_without_an_agent_tells_nothing() {
+    let mut roster = roster(&[terminal("t3", Value::Null)]);
+
+    assert_eq!(
+        roster.observe(&session_labels(Some("claude:s1"))).unwrap(),
+        None
+    );
+}

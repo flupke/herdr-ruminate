@@ -79,7 +79,7 @@ records it for the tab it is in.
 ## Access values
 
 - The wakeup gives a review access value tied to the selected agent and the review. When
-  Herdr reports a native session ID, the value is bound to that session; otherwise to the
+  the host reports a native session ID, the value is bound to that session; otherwise to the
   agent's foreground process group, so wakeups and "Retry agent" still reach an agent
   without a native session ID.
 - An access value is a bearer token. Each request checks that the bound pane still has the

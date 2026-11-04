@@ -18,7 +18,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::events::{Event, Roster, StatusChange, status_of};
-use crate::terminal::{Terminal, place_of};
+use crate::terminal::{SESSION_LABEL, Terminal, place_of, session_label};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long `terminal.send` may take: it waits until nobody typed in the terminal for about
@@ -27,7 +27,9 @@ const SEND_TIMEOUT: Duration = Duration::from_secs(60);
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// A synchronous client of herdr-core, the core of herdr-app that runs its terminals and
-/// agents. herdr-core keeps no focus and no agent session: the agents it gives have none.
+/// agents. herdr-core keeps no focus and no agent session: the reviewer keeps the agent's
+/// session in its terminal's session label, which the agent's hook and
+/// [`AgentHost::report_agent_session`] set (ADR 0016).
 #[derive(Clone, Debug)]
 pub struct HcClient {
     socket_path: PathBuf,
@@ -143,6 +145,28 @@ impl HcClient {
             &json!({"terminal": terminal.0, "labels": labels}),
         )
         .map(|_| ())
+    }
+
+    /// Names `session` as the session that the agent `agent` of `terminal` runs, in the
+    /// terminal's session label, which herdr-core tells each subscriber of the terminal's events.
+    pub fn report_session(&self, terminal: &PaneId, agent: &str, session: &str) -> Result<()> {
+        self.set_labels(
+            terminal,
+            &BTreeMap::from([(SESSION_LABEL.to_owned(), session_label(agent, session))]),
+        )
+    }
+
+    /// Removes the session label of `terminal` if it still names `session` of the agent
+    /// `agent`, which ended: one a later session of the terminal set stays.
+    pub fn forget_session(&self, terminal: &PaneId, agent: &str, session: &str) -> Result<()> {
+        let labels = self.labels(terminal)?;
+        if labels.get(SESSION_LABEL) != Some(&session_label(agent, session)) {
+            return Ok(());
+        }
+        self.set_labels(
+            terminal,
+            &BTreeMap::from([(SESSION_LABEL.to_owned(), String::new())]),
+        )
     }
 
     /// The terminal at `address`, live or finished; `None` when herdr-core has none there.
@@ -404,6 +428,11 @@ impl AgentPort for HcClient {
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()> {
         self.send(pane_id, text).map(|_| ())
     }
+
+    /// herdr-core tells each change of a terminal's labels, the session label's included.
+    fn announces_sessions(&self) -> bool {
+        true
+    }
 }
 
 impl AgentHost for HcClient {
@@ -419,6 +448,14 @@ impl AgentHost for HcClient {
             });
         };
         let mut roster = Roster::new(snapshot);
+        // A session reported, or an agent gone, while no subscription held, as when this one
+        // follows a stream that dropped, reaches no one otherwise: whoever waits on an agent
+        // looks again.
+        for agent in roster.agents().collect::<Vec<_>>() {
+            if !send(HerdrEvent::AgentSessionChanged(agent)) {
+                return Ok(());
+            }
+        }
         while let Some(event) = events.next_event()? {
             if let Some(event) = roster.observe(&event)?
                 && !send(event)
@@ -463,11 +500,9 @@ impl AgentHost for HcClient {
         Ok(())
     }
 
-    fn report_agent_session(&self, _pane_id: &PaneId, _report: &SessionReport<'_>) -> Result<()> {
-        Err(Error::Unsupported {
-            operation: "report the agent's session",
-            reason: "herdr-core keeps no agent session",
-        })
+    /// Sets the terminal's session label, as the agent's hook does under herdr-core.
+    fn report_agent_session(&self, pane_id: &PaneId, report: &SessionReport<'_>) -> Result<()> {
+        self.report_session(pane_id, report.agent, report.session)
     }
 }
 

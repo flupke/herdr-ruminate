@@ -384,11 +384,17 @@ impl PromptReceipt {
 
 /// Dropping the owner's guard removes a prompt that has not yet been sent.
 #[derive(Debug)]
-pub struct PromptCancellation(Arc<AtomicBool>);
+pub struct PromptCancellation {
+    cancelled: Arc<AtomicBool>,
+    /// Wakes the worker, which may wait for an input with the prompt queued: under a host that
+    /// announces sessions, nothing else makes it look at the prompt again.
+    worker: Sender<Input>,
+}
 
 impl Drop for PromptCancellation {
     fn drop(&mut self) {
-        self.0.store(true, Ordering::Release);
+        self.cancelled.store(true, Ordering::Release);
+        let _ = self.worker.send(Input::Withdrawn);
     }
 }
 
@@ -438,7 +444,13 @@ impl PromptSender {
                 "The reviewer prompt dispatcher is unavailable; nothing was sent".into(),
             )));
         }
-        (PromptReceipt(received), PromptCancellation(cancelled))
+        (
+            PromptReceipt(received),
+            PromptCancellation {
+                cancelled,
+                worker: self.sender.clone(),
+            },
+        )
     }
 }
 
