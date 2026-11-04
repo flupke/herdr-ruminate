@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use agent_fork::ForkCommand;
 
 use crate::arguments;
+use crate::settings::AgentSettings;
 use crate::transcripts::Transcripts;
 
 /// The pane agent's process: what a fork starts with so that it reads the same prompt cache.
@@ -20,6 +21,8 @@ pub(crate) struct PaneClaude {
     pub(crate) command: ForkCommand,
     /// The model its arguments name, if any.
     pub(crate) model: Option<String>,
+    /// The settings of its `--settings`, which a fork runs with its guard.
+    pub(crate) settings: AgentSettings,
 }
 
 impl PaneClaude {
@@ -43,20 +46,26 @@ impl PaneClaude {
         let rest = command
             .get(1 + usize::from(script.is_some())..)
             .unwrap_or_default();
-        let (kept, model) = arguments::kept(rest)?;
+        let kept = arguments::kept(rest)?;
+        let settings = kept
+            .settings
+            .map(|value| AgentSettings::read(&value, &directory))
+            .transpose()?
+            .unwrap_or_default();
         Ok(Self {
             command: ForkCommand {
                 program,
                 arguments: script
                     .cloned()
                     .into_iter()
-                    .chain(kept)
+                    .chain(kept.arguments)
                     .map(OsString::from)
                     .collect(),
                 directory,
                 environment: environment(&environ),
             },
-            model,
+            model: kept.model,
+            settings,
         })
     }
 

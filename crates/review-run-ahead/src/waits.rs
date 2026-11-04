@@ -20,6 +20,10 @@ pub struct ForkWaits {
     pub resume_poll: Duration,
     /// How long a watch waits before it subscribes again after it lost what it watched.
     pub resubscribe: Duration,
+    /// How long the forks of an idle agent wait for its transcript to hold the end of its
+    /// turn, which Claude Code writes after it tells herdr-core that it is idle; then they are
+    /// taken from the transcript as it is.
+    pub transcript: Duration,
 }
 
 impl Default for ForkWaits {
@@ -30,6 +34,7 @@ impl Default for ForkWaits {
             settle: Duration::from_secs(20),
             resume_poll: Duration::from_millis(100),
             resubscribe: Duration::from_secs(1),
+            transcript: Duration::from_secs(5),
         }
     }
 }

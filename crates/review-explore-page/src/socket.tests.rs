@@ -291,6 +291,7 @@ fn working(request: &str) -> RoundStage {
         request: request.into(),
         sent_at_ms: None,
         finishing_since_ms: None,
+        not_prepared: None,
         answer: None,
     }
 }
@@ -611,6 +612,7 @@ async fn a_turn_that_carries_the_answer_shows_it_beside_its_card_with_its_questi
         request: "turn-2".into(),
         sent_at_ms: Some(1_000),
         finishing_since_ms: None,
+        not_prepared: None,
         answer: Some(Box::new(sent_answer(question("q2", "one_way")))),
     });
     let address = serve(owner.clone()).await;
@@ -656,6 +658,26 @@ async fn a_turn_that_carries_the_answer_shows_it_beside_its_card_with_its_questi
 }
 
 #[tokio::test]
+async fn the_card_of_a_turn_no_fork_prepared_says_why() {
+    let owner = Owner::new(no_round());
+    *lock(&owner.overview) = at_question_2(true);
+    let why = "Not prepared: nothing was prepared for this question (the agent is busy)";
+    owner.publish(RoundStage::AgentWorking {
+        request: "turn-2".into(),
+        sent_at_ms: None,
+        finishing_since_ms: None,
+        not_prepared: Some(why.into()),
+        answer: Some(Box::new(sent_answer(question("q2", "one_way")))),
+    });
+    let address = serve(owner.clone()).await;
+    let mut socket = Upgrade::of(address).connect(address).await.unwrap();
+
+    let card = next(&mut socket).await["params"]["view"]["sent"]["card"].clone();
+
+    assert_eq!(card["reason"], format!("{why}."));
+}
+
+#[tokio::test]
 async fn a_turn_a_fork_finishes_says_so_since_the_fork_started_and_stop_gives_it_to_the_agent() {
     let owner = Owner::new(no_round());
     *lock(&owner.overview) = at_question_2(true);
@@ -663,6 +685,7 @@ async fn a_turn_a_fork_finishes_says_so_since_the_fork_started_and_stop_gives_it
         request: "turn-2".into(),
         sent_at_ms: None,
         finishing_since_ms: Some(1_000),
+        not_prepared: None,
         answer: Some(Box::new(sent_answer(question("q2", "one_way")))),
     });
     let address = serve(owner.clone()).await;

@@ -7,19 +7,28 @@ use std::path::{Path, PathBuf};
 use agent_fork::{ForkCommand, ProcessStamp};
 use review_run_ahead::HostFields;
 
+use crate::settings::AgentSettings;
+
 /// Where Claude Code keeps the transcripts of the agent and of its forks.
 const TRANSCRIPTS: &str = "transcripts";
 /// A fork's process, once it started.
 const PROCESS: &str = "process";
 /// The agent's own command, without what picks its session or its interactive mode.
 const COMMAND: &str = "command";
+/// The settings of the agent's `--settings` that a fork keeps.
+const SETTINGS: &str = "settings";
 
 /// The fields of a point whose transcripts are under `transcripts`, of an agent that runs
-/// `command`.
-pub(crate) fn point(transcripts: &Path, command: &ForkCommand) -> HostFields {
+/// `command` with the settings `settings`.
+pub(crate) fn point(
+    transcripts: &Path,
+    command: &ForkCommand,
+    settings: &AgentSettings,
+) -> HostFields {
     let mut fields = HostFields::default();
     fields.set(TRANSCRIPTS, transcripts);
     fields.set(COMMAND, command);
+    fields.set(SETTINGS, settings);
     fields
 }
 
@@ -43,6 +52,11 @@ pub(crate) fn transcripts(fields: &HostFields) -> Option<PathBuf> {
 
 pub(crate) fn command(fields: &HostFields) -> Option<ForkCommand> {
     fields.get(COMMAND)
+}
+
+/// The settings of the agent's `--settings` at the point whose fields are `fields`.
+pub(crate) fn settings(fields: &HostFields) -> Option<AgentSettings> {
+    fields.get(SETTINGS)
 }
 
 /// The process of the fork whose fields are `fields`, once it started.

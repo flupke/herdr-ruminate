@@ -52,7 +52,8 @@ fn not_forked(agent: &Agent) -> String {
 
 impl ForkHost for AgentForks {
     fn watch(&self, pane: &PaneId, report: StatusReport) -> PaneWatch {
-        // Both hosts watch the agent's status through Herdr alike.
+        // Both hosts watch the agent's status through the host alike; Claude Code's watch
+        // also waits for its transcript, and passes a Codex agent's status on at once.
         self.claude.watch(pane, report)
     }
 

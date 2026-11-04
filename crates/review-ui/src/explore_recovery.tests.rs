@@ -582,7 +582,11 @@ fn the_path_run_ahead_took_for_a_turn_shows_under_the_question_it_asked() {
         },
     };
     let lines = [&prepared, &comment].map(|path| path.line().unwrap());
-    let shows = |fixture: &ExploreUi| lines.map(|line| fixture.text().contains(line));
+    let shows = |fixture: &ExploreUi| {
+        lines
+            .each_ref()
+            .map(|line| fixture.text().contains(line.as_ref()))
+    };
     assert_eq!(shows(&fixture), [false, false]);
     let path_of_turn = |path: &TurnPath| ui_events::ExploreTurnPath {
         round: request.instance.clone(),

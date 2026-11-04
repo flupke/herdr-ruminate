@@ -601,6 +601,7 @@ impl Session {
             request: self.turn_id(),
             sent_at_ms: self.sent_at_ms,
             finishing_since_ms: None,
+            not_prepared: None,
             answer: self.turn_answer.clone(),
         }
     }
@@ -1259,6 +1260,7 @@ impl Sessions {
                 request: "turn-0".into(),
                 sent_at_ms: session.sent_at_ms,
                 finishing_since_ms: None,
+                not_prepared: None,
                 answer: None,
             });
         session.publish(stage);

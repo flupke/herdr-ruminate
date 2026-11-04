@@ -1,7 +1,7 @@
 //! The pane agent's arguments as a fork keeps them: without those that pick a session, an
-//! interactive mode or an output format, and without a prompt given on the command line. An
-//! option this table does not know stops the fork: a fork starts with the agent's exact flags
-//! or not at all.
+//! interactive mode or an output format, and without a prompt given on the command line. The
+//! agent's `--settings` comes apart, for the fork to merge with its own. An option this table
+//! does not know stops the fork: a fork starts with the agent's exact flags or not at all.
 
 /// How many values an option of `claude` takes.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -22,8 +22,9 @@ enum Fate {
     /// The fork drops it: it picks a session, an output, an interactive mode or the model,
     /// which the fork sets itself.
     Dropped,
-    /// The fork cannot start with it: run-ahead does not fork the agent.
-    Refused,
+    /// The agent's own settings: the fork brings settings of its own, with its guard, and a
+    /// second `--settings` would replace the first, so the fork merges the two.
+    Settings,
 }
 
 /// Every option of `claude` (2.1), with its values and what a fork does with it.
@@ -110,8 +111,7 @@ const OPTIONS: &[(&[&str], Values, Fate)] = &[
     (&["--safe-mode"], Values::None, Fate::Kept),
     (&["--session-id"], Values::One, Fate::Dropped),
     (&["--setting-sources"], Values::One, Fate::Kept),
-    // A fork brings its own settings, with its guard: two would replace one another.
-    (&["--settings"], Values::One, Fate::Refused),
+    (&["--settings"], Values::One, Fate::Settings),
     (&["--strict-mcp-config"], Values::None, Fate::Kept),
     (&["--system-prompt"], Values::One, Fate::Kept),
     (&["--system-prompt-file"], Values::One, Fate::Kept),
@@ -123,12 +123,26 @@ const OPTIONS: &[(&[&str], Values, Fate)] = &[
     (&["--worktree", "-w"], Values::Optional, Fate::Dropped),
 ];
 
-/// The arguments of the pane agent's command line, after its program, that a fork keeps, and
-/// the model they name, if any; or why the agent cannot be forked with its exact flags.
-pub(crate) fn kept(arguments: &[String]) -> Result<(Vec<String>, Option<String>), String> {
-    let mut kept = Vec::new();
-    let mut model = None;
-    let mut rest = arguments.iter().peekable();
+/// What a fork keeps of the pane agent's command line.
+#[derive(Debug, Default, Eq, PartialEq)]
+pub(crate) struct Kept {
+    /// The arguments the fork starts with, as the agent has them.
+    pub(crate) arguments: Vec<String>,
+    /// The model they name, if any.
+    pub(crate) model: Option<String>,
+    /// The value of the agent's `--settings`, a file or JSON, if it has one.
+    pub(crate) settings: Option<String>,
+}
+
+/// What a fork keeps of the arguments of the pane agent's command line, after its program; or
+/// why the agent cannot be forked with its exact flags.
+pub(crate) fn kept(arguments: &[String]) -> Result<Kept, String> {
+    let mut kept = Kept::default();
+    // What follows `--` is the prompt, as herdr-bowtie gives it.
+    let mut rest = arguments
+        .iter()
+        .take_while(|argument| *argument != "--")
+        .peekable();
     while let Some(argument) = rest.next() {
         // A value outside an option is a prompt: the fork's prompt comes on its input.
         if !argument.starts_with('-') || argument == "-" {
@@ -144,28 +158,32 @@ pub(crate) fn kept(arguments: &[String]) -> Result<(Vec<String>, Option<String>)
                 "the agent's option {option} is unknown to run-ahead"
             ));
         };
-        let taken = if inline.is_none() {
-            option_values(values, &mut rest)
-        } else {
-            Vec::new()
+        let taken = match inline {
+            None => option_values(values, &mut rest),
+            Some(value) => vec![value.to_owned()],
         };
-        if option == "--model" {
-            model = inline.map(str::to_owned).or_else(|| taken.first().cloned());
-        }
+        kept.take(fate, option, argument, taken);
+    }
+    Ok(kept)
+}
+
+impl Kept {
+    /// Keeps what a fork needs of the agent's `option`, given as `argument` with the values
+    /// `taken` (its inline value, when it has one), whose fate is `fate`.
+    fn take(&mut self, fate: Fate, option: &str, argument: &str, taken: Vec<String>) {
         match fate {
             Fate::Kept => {
-                kept.push(argument.clone());
-                kept.extend(taken);
+                self.arguments.push(argument.to_owned());
+                // An inline value is part of the argument.
+                if argument.len() == option.len() {
+                    self.arguments.extend(taken);
+                }
             }
+            Fate::Dropped if option == "--model" => self.model = taken.into_iter().next(),
             Fate::Dropped => {}
-            Fate::Refused => {
-                return Err(format!(
-                    "a fork cannot start with the agent's option {option}"
-                ));
-            }
+            Fate::Settings => self.settings = taken.into_iter().next(),
         }
     }
-    Ok((kept, model))
 }
 
 /// The values of an option that takes `values`, taken from `rest`.

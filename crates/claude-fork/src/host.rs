@@ -5,10 +5,11 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
+use std::time::Duration;
 
 use agent_fork::{Launcher, Wrapper};
 use agent_hooks::AgentHooks;
-use herdr_client::protocol::{Agent, AgentHost, AgentPort, PaneId, PaneProcess};
+use herdr_client::protocol::{Agent, AgentHost, PaneId, PaneProcess};
 use review_run_ahead::{
     ForkEnd, ForkHost, ForkPoint, ForkStart, ForkTrace, ForkWaits, HostFields, OwnedFork,
     PaneWatch, RunAheadLog, StatusReport, SwitchFailure, SwitchTo,
@@ -17,6 +18,7 @@ use review_run_ahead::{
 use crate::fields;
 use crate::guard::SUBMITS;
 use crate::pane::PaneClaude;
+use crate::settings::{AgentSettings, SettingsFile};
 use crate::stream::StreamTally;
 use crate::switch::{AgentPane, ForkProcess, LiveFork, Resume, Switch};
 use crate::transcripts::Transcripts;
@@ -44,15 +46,11 @@ impl ForkTools {
         }
     }
 
-    /// The forks' settings: the guard as their `PreToolUse` hook.
-    fn settings(&self) -> String {
+    /// The settings of a fork of an agent with the settings `agent`: those, with the guard as
+    /// their hook.
+    fn settings(&self, agent: &AgentSettings) -> String {
         let control = self.control.to_string_lossy().replace('\'', r"'\''");
-        serde_json::json!({
-            "hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
-                {"type": "command", "command": format!("'{control}' fork-guard")}
-            ]}]}
-        })
-        .to_string()
+        agent.with_guard(&format!("'{control}' fork-guard"))
     }
 }
 
@@ -149,6 +147,37 @@ impl Drop for ClaudeForks {
     }
 }
 
+/// The Claude Code process of `pane`.
+fn pane_claude(host: &dyn AgentHost, pane: &PaneId) -> Result<PaneClaude, String> {
+    let pid = host
+        .pane_process_info(pane)
+        .map_err(|error| error.to_string())?
+        .foreground_processes
+        .iter()
+        .find(|process| is_claude(process))
+        .map(|process| process.pid)
+        .ok_or("no Claude Code process runs in the agent's pane")?;
+    PaneClaude::read(pid)
+}
+
+/// Waits up to `wait` for the transcript of the Claude Code agent of `pane` to hold the end of
+/// its turn; returns at once for another agent, or one whose session, process or transcript
+/// cannot be read, which run-ahead does not fork.
+fn wait_for_turn_end(host: &dyn AgentHost, pane: &PaneId, wait: Duration) {
+    let Some(session) = host
+        .get_agent(pane)
+        .ok()
+        .flatten()
+        .filter(runs_claude)
+        .and_then(|agent| agent.agent_session)
+    else {
+        return;
+    };
+    if let Ok(claude) = pane_claude(host, pane) {
+        claude.transcripts().turn_end(&session.value, wait);
+    }
+}
+
 /// Whether Herdr reports `agent` as Claude Code.
 fn runs_claude(agent: &Agent) -> bool {
     agent.agent.as_deref() == Some("claude")
@@ -166,6 +195,16 @@ fn is_claude(process: &PaneProcess) -> bool {
 
 impl ForkHost for ClaudeForks {
     fn watch(&self, pane: &PaneId, report: StatusReport) -> PaneWatch {
+        // The agent is idle for run-ahead once its transcript holds the end of its turn, which
+        // Claude Code writes after it reports the turn ended to herdr-core: the watch's thread
+        // waits for it, so that no fork starts from an older entry.
+        let (host, watched, wait) = (Arc::clone(&self.host), pane.clone(), self.waits.transcript);
+        let report: StatusReport = Box::new(move |status| {
+            if status.waits_for_prompt() {
+                wait_for_turn_end(&*host, &watched, wait);
+            }
+            report(status);
+        });
         PaneWatch::host(&self.host, pane, self.waits.resubscribe, report)
     }
 
@@ -195,26 +234,22 @@ impl ForkHost for ClaudeForks {
 
     fn point(&self, agent: &Agent) -> Result<ForkPoint, String> {
         let session = self.forkable(agent)?.1.to_owned();
-        let processes = self
-            .host
-            .pane_process_info(&agent.pane_id)
-            .map_err(|error| error.to_string())?;
-        let pid = processes
-            .foreground_processes
-            .iter()
-            .find(|process| is_claude(process))
-            .map(|process| process.pid)
-            .ok_or("no Claude Code process runs in the agent's pane")?;
-        let pane = PaneClaude::read(pid)?;
+        let pane = pane_claude(&*self.host, &agent.pane_id)?;
         let transcripts = pane.transcripts();
         let last = transcripts
             .last_entry(&session)
             .ok_or_else(|| format!("the session {session} has no transcript"))?;
+        if !last.ends_turn {
+            self.log(&format!(
+                "the transcript of {session} shows no end of the agent's turn: forking from its \
+                 last entry"
+            ));
+        }
         Ok(ForkPoint {
             session,
             entry: last.entry,
             model: last.model.or(pane.model),
-            host: fields::point(transcripts.root(), &pane.command),
+            host: fields::point(transcripts.root(), &pane.command, &pane.settings),
         })
     }
 
@@ -242,6 +277,11 @@ impl ForkHost for ClaudeForks {
         let point = start.point;
         let mut command =
             fields::command(&point.host).ok_or("the point names no Claude Code command")?;
+        let settings = self
+            .tools
+            .settings(&fields::settings(&point.host).unwrap_or_default());
+        let settings = SettingsFile::write(start.fork.session, &settings)
+            .map_err(|error| format!("cannot write the fork's settings: {error}"))?;
         command.arguments.extend(
             [
                 "-p",
@@ -254,7 +294,7 @@ impl ForkHost for ClaudeForks {
                 "stream-json",
                 "--verbose",
                 "--settings",
-                &self.tools.settings(),
+                &settings.path().to_string_lossy(),
                 "--allowedTools",
             ]
             .into_iter()
@@ -270,19 +310,26 @@ impl ForkHost for ClaudeForks {
             live.lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .remove(&session);
+            // The fork read its settings when it started; they go with it.
+            drop(settings);
             ended(end);
         });
         let tally = StreamTally::new(ended);
-        let answered = tally.submit_answered();
-        let fork = self
-            .launcher
-            .spawn(command, prompt, Box::new(tally))
-            .map_err(|error| format!("cannot start {program}: {error}"))?;
+        let (answered, unguarded) = (tally.submit_answered(), tally.unguarded());
+        let fork = Arc::new(
+            self.launcher
+                .spawn(command, prompt, Box::new(tally))
+                .map_err(|error| format!("cannot start {program}: {error}"))?,
+        );
+        unguarded.arm(Box::new({
+            let fork = Arc::clone(&fork);
+            move || fork.terminate()
+        }));
         let stamp = fork.stamp();
         self.live().insert(
             start.fork.session.to_owned(),
             LiveFork {
-                process: Arc::new(fork),
+                process: fork,
                 answered,
             },
         );

@@ -39,8 +39,24 @@ fn each_reason_the_reviewer_can_use_has_a_line_of_its_own() {
 
     assert!(lines.iter().all(Option::is_some), "{lines:?}");
     let distinct: HashSet<_> = lines.iter().collect();
-    // The two `NoForks` say the same.
-    assert_eq!(distinct.len(), shown.len() - 1);
+    assert_eq!(distinct.len(), shown.len());
+}
+
+#[test]
+fn a_question_nothing_was_prepared_for_says_why_when_known() {
+    let why = "the agent's settings disable the hooks, and a fork's guard is one";
+
+    let line = plain(PlainReason::NoForks {
+        why: Some(why.into()),
+    })
+    .line()
+    .unwrap();
+
+    assert_eq!(
+        line,
+        "Not prepared: nothing was prepared for this question (the agent's settings disable the \
+         hooks, and a fork's guard is one)"
+    );
 }
 
 #[test]

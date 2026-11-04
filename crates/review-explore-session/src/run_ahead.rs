@@ -564,7 +564,7 @@ impl ExploreSession {
     }
 
     /// The watched agent's `status`: its first idle takes the forks; an idle after work that
-    /// moved its session takes them again. While the reviewer talks in the round's conversation,
+    /// moved its session, or after a write to its transcript, takes them again. While the reviewer talks in the round's conversation,
     /// its idle after its reply starts the quiet wait instead, and its work stops it.
     fn run_ahead_status(&mut self, generation: u64, status: AgentStatus) {
         let Some(armed) = self
@@ -589,17 +589,18 @@ impl ExploreSession {
             self.run_ahead_idle();
             return;
         };
-        if !std::mem::take(&mut armed.worked) {
-            return;
-        }
+        // A transcript that moved without work holds what the agent wrote of its turn after it
+        // reported it ended, as Claude Code does under herdr-core, after forks taken at once.
+        let worked = std::mem::take(&mut armed.worked);
         let moved = self.run_ahead.host.last_entry(&taken.point) != taken.point.entry
-            || self
-                .agents
-                .get_agent(&armed.asked.pane)
-                .ok()
-                .flatten()
-                .and_then(|agent| self.run_ahead.host.session(&agent))
-                .is_none_or(|session| session != taken.point.session);
+            || worked
+                && self
+                    .agents
+                    .get_agent(&armed.asked.pane)
+                    .ok()
+                    .flatten()
+                    .and_then(|agent| self.run_ahead.host.session(&agent))
+                    .is_none_or(|session| session != taken.point.session);
         if moved {
             self.run_ahead
                 .log("the agent's session moved since the forks were taken: taking them again");

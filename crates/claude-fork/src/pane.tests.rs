@@ -23,6 +23,7 @@ fn the_transcripts_are_under_the_configuration_directory_or_the_home_directory()
             environment: vec![("HOME".into(), "/home/a".into())],
         },
         model: None,
+        settings: AgentSettings::default(),
     };
     assert_eq!(
         pane.transcripts().root(),
