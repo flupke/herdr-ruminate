@@ -7,7 +7,7 @@
 
 **Review the code your agent writes, without reading it twice.**
 
-A code review pane for [Herdr](https://github.com/herdrdev/herdr), beside your coding agent.
+A code review pane for herdr-app, beside your coding agent.
 Works with Git and jj, Claude Code and Codex.
 
 ## Progressive reviews
@@ -58,8 +58,8 @@ the forks spent.
 
 ## Install
 
-On Linux or macOS, install Herdr 0.7.5 or later, Rust, a C compiler, Make, Git, and Claude
-Code's `claude` command, which `make install` runs. For jj repositories, use jj 0.43.0 or later.
+On Linux or macOS, install herdr-app, Rust, a C compiler, Make, Git, jq, and Claude Code's
+`claude` command, which `make install` runs. For jj repositories, use jj 0.43.0 or later.
 
 ```sh
 git clone https://github.com/flupke/herdr-progressive-reviewer.git
@@ -67,20 +67,19 @@ cd herdr-progressive-reviewer
 make install
 ```
 
-Keep the checkout in place, and restart your agent to load the reviewer's tools.
+Keep the checkout in place, and restart your agent to load the reviewer's tools. The install
+adds the reviewer's mod to herdr-app, and binds `ctrl-b d` to it in
+`~/.config/herdr-app/keys.json`; `make install REVIEW_KEY=<key>` binds another key. herdr-app
+then takes that file as yours, and stops adding its new default shortcuts to it.
 
 ## Get started
 
-Add a shortcut to `~/.config/herdr/config.toml`, then run `herdr server reload-config`:
+Focus your agent's terminal in the repository and press `ctrl-b d`: the review pane opens
+beside it, and the same key closes it. Press `?` for every shortcut.
 
-```toml
-[[keys.command]]
-key = "prefix+d"
-type = "plugin_action"
-command = "herdr.progressive-reviewer.toggle"
-description = "toggle progressive reviewer"
-```
-
-Focus your agent's pane in the repository and press `prefix+d`. Press `?` for every shortcut.
+The pane's theme is `theme = "<name>"` in `~/.config/herdr-progressive-reviewer/config.toml`:
+`catppuccin` (the default), `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`,
+`dracula`, `nord`, `gruvbox`, `gruvbox-light`, `one-dark`, `one-light`, `solarized`,
+`solarized-light`, `github-light` or `monokai`.
 
 Contributor instructions are in [AGENTS.md](AGENTS.md).

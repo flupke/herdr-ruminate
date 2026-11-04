@@ -5,3 +5,6 @@
 /.direnv/
 /mutants.out*/
 /.codex/config.toml
+# Written by `herdr-app check herdr-app-mod`.
+/herdr-app-mod/gpui-kit.d.ts
+/herdr-app-mod/jsconfig.json

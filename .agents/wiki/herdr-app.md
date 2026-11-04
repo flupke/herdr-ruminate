@@ -27,7 +27,19 @@ itself Herdr too, and labels its terminals `herdr.*`.
   program with `hc run`, passing `focused().tab` in its environment, and shows it in an
   overlay.
 - `pane.split` takes `direction`, `pane`, `argv`, `mod` and `props`, but no folder;
-  `terminal.open` takes `folder`.
+  `terminal.open` takes `folder`, and runs `argv` as given, with no shell: the terminal's
+  `argv` is the program's. Its `name` does not reach the core terminal's `name`, and neither
+  command sets labels of the caller's (herdr-app 0.1.13).
+- A key reaches a mod's `nextCommand()` only while a copy of it shows. `mod.open:<mod>` opens
+  the mod as the overlay its `mod.json` describes, so a mod with no panel can still act on a
+  key: its `init` reads `focused()`, acts, and closes the overlay at once. `focused()` there is
+  the pane under the overlay. `herdr-app check` runs `init` with `props()` null, and writes
+  `gpui-kit.d.ts` and `jsconfig.json` into the mod's folder.
+- A terminal herdr-app starts that exits nonzero within two seconds shows a toast "Terminal
+  failed to start" with its exit code and, by herdr-app's AGENTS.md, its last output lines;
+  its pane goes.
+- herdr-core gives each terminal its size, `cols` and `rows`, in `terminals()` and
+  `hc get`.
 - herdr-app writes `~/.config/herdr-app/view.json`: the selected space, the selected tab
   of each space, and the focused pane of each tab, by herdr-app's pane IDs.
 - The `herdr-gpui-browser` skill is for Herdr GPUI, a different app; on Linux it opens
@@ -82,7 +94,7 @@ scripts nix Makefile` list the reviewer's uses.
 | Herdr | In herdr-app and herdr-core |
 |---|---|
 | Plugin manifest, `herdr plugin link`, actions, the prefix+d binding (`herdr-plugin.toml`, `Makefile`, `README.md`, `scripts/package.sh`) | A mod, and a binding in `~/.config/herdr-app/keys.json`; no install command |
-| `HERDR_PLUGIN_STATE_DIR`, `HERDR_PLUGIN_CONFIG_DIR`, `HERDR_PLUGIN_ID` | Nothing |
+| `HERDR_PLUGIN_STATE_DIR`, `HERDR_PLUGIN_CONFIG_DIR`, `HERDR_PLUGIN_ID` | Nothing: the reviewer's own folders (`crates/reviewer-dirs`) |
 | `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID` | The `herdr.space` and `herdr.tab` labels of the review pane's terminal |
 | `HERDR_PLUGIN_CONTEXT_JSON` (focused pane, its folder, tab) | A mod's `focused()`; nothing reaches a program unless the mod passes it |
 | `session.snapshot`, `agent.list`, `agent.get` | `terminal.list` and `terminal.get`, filtered by label, with OSC 7501 status and `app` |
@@ -110,11 +122,19 @@ and its agents are Herdr's.
 [ADR 0014](../adr/0014-talk-to-herdr-core-behind-the-host-traits-beside-herdr.md) says why
 both stay.
 
-- Under herdr-core the pane has no focus to follow and no agent session: the target is the
-  tab's only agent, and none when the tab has several.
+- Under herdr-core the pane has no focus to follow and no agent session: its first target is
+  the terminal the mod names with `--focused-terminal`, else the tab's only agent; it does not
+  follow a focus change after it opened.
 - `report_agent_session` (ADR 0012) fails as unsupported, and the reviewer does not hear the
   agents' hooks: their directory needs `HERDR_SOCKET_PATH`.
-- The pane-opening action (`reviewer-control`, `HerdrReader`, `HerdrWriter`) stays Herdr's.
+- The pane-opening action (`reviewer-control`, `HerdrReader`, `HerdrWriter`) stays Herdr's;
+  under herdr-app, `herdr-app-mod/` opens the pane. It tells a review pane by its terminal's
+  argv, a program ending in `/bin/reviewer` and `--focused-terminal`: keep the two in step with
+  `host.rs`. No check parses the mod; `herdr-app check herdr-app-mod` does. Never drive it in the
+  user's window: `herdr-app do` acts on the space the user looks at now, which they may switch
+  at any moment, and `space.new` switches their view. A copy of a mod lives only while it shows,
+  and the launcher's closes at once: following the focus needs a copy that stays, in a layout
+  or a kept window.
 
 The tests of the backend against a real herdr-core are opt-in (Checks, Opt-in tests). A private
 core needs its own `HC_SESSION`, scratch `XDG_*_HOME` folders, and an `XDG_RUNTIME_DIR` short
@@ -124,8 +144,8 @@ while it runs (0.1.17 to 0.1.18 during one session): its terminals keep running.
 
 ## The review pane outside Herdr
 
-The reviewer needs nothing from Herdr to draw its pane and take keys, only Herdr's plugin
-variables: given stand-in values for `HERDR_PLUGIN_STATE_DIR`, `HERDR_PLUGIN_CONTEXT_JSON`,
-`HERDR_WORKSPACE_ID` and `HERDR_TAB_ID`, it runs in a bare `hc` terminal, and talks to that
-terminal's herdr-core unless `HERDR_SOCKET_PATH` is set too. Without them it stops at
-`HERDR_PLUGIN_STATE_DIR is not set`.
+The pane reads its space and tab from its terminal's `herdr.space` and `herdr.tab` labels,
+and keeps its state in its own folder ([Review state](review-state.md)), so it runs in any terminal of herdr-app
+that herdr-core labels: `hc run --label herdr.space=<id> --label herdr.tab=<id> --
+bin/reviewer`. A terminal without the labels stops it with `terminal <id> has no herdr.space
+and herdr.tab labels`.

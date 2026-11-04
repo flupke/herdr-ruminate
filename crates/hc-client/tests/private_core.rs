@@ -285,6 +285,13 @@ fn an_agent_that_exits_leaves_and_labels_reach_its_terminal() {
             .map(String::as_str),
         Some("1")
     );
+    assert_eq!(
+        client.place(&agent).unwrap(),
+        Some((
+            herdr_client::protocol::WorkspaceId("sp1".into()),
+            herdr_client::protocol::TabId("tb1".into())
+        ))
+    );
     // An agent that arrives after the stream started tells that the subscription holds.
     let marker = core.run(folder.path(), &format!("{} read -r line", report("idle")));
     assert!(matches!(

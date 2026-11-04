@@ -51,6 +51,7 @@ review-state-migration = { path = "../review-state-migration" }
 review-store = { path = "../review-store" }
 review-types = { path = "../review-types" }
 review-ui = { path = "../review-ui" }
+reviewer-dirs = { path = "../reviewer-dirs" }
 ui-events = { path = "../ui-events" }
 vision-signal = { path = "../vision-signal" }
 serde_json.workspace = true

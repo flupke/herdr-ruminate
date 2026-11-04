@@ -128,7 +128,7 @@ The list stays open only from 89rem, where the page makes room for the column; b
 lies over the page, so the list closes as the page goes to another screen or round.
 
 The reviewer records the page's address, readable only by the user, under
-`$HERDR_PLUGIN_STATE_DIR/explore-page/`, one record per Herdr workspace. The
+`explore-page/` of the state root, one record per Herdr workspace. The
 Herdr action `explore-page` (`reviewer-control explore-page`) reads the record
 of its workspace, checks that the page answers, and opens it with `$BROWSER`,
 `xdg-open` or `open`. The record keeps the page's token and the review it shows after

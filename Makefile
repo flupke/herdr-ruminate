@@ -135,6 +135,9 @@ mutants:
 # The reviewer's Codex plugin (crates/codex-hooks) is written in bin/codex-plugin, its hook
 # trusted in the Codex home's config.toml; a Codex session loaded before the install runs
 # without it until Codex's daemon loads it again.
+# The herdr-app mod (herdr-app-mod/) opens the review pane on its key, ctrl-b d unless
+# REVIEW_KEY names another (scripts/herdr-app-mod). The uninstall also unlinks the Herdr plugin
+# that installs before herdr-app linked, when Herdr is there.
 CLAUDE_MARKETPLACE = herdr-progressive-reviewer
 CLAUDE_PLUGIN = progressive-reviewer@$(CLAUDE_MARKETPLACE)
 
@@ -144,10 +147,11 @@ install: build
 	claude plugin marketplace add "$(CURDIR)/crates/claude-hooks"
 	claude plugin install $(CLAUDE_PLUGIN) --config control="$(CURDIR)/bin/reviewer-control"
 	bin/reviewer-control codex-plugin install
-	herdr plugin link . --enabled
+	scripts/herdr-app-mod install
 
 uninstall:
-	herdr plugin unlink herdr.progressive-reviewer
+	scripts/herdr-app-mod uninstall
+	if command -v herdr >/dev/null; then herdr plugin unlink herdr.progressive-reviewer || true; fi
 	claude plugin uninstall $(CLAUDE_PLUGIN)
 	claude plugin marketplace remove $(CLAUDE_MARKETPLACE)
 	bin/reviewer-control codex-plugin uninstall

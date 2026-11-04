@@ -18,3 +18,28 @@ fn the_host_is_the_one_whose_socket_the_pane_is_given(
     };
     assert_eq!(host_kind(var), expected);
 }
+
+fn arguments(arguments: &[&str]) -> impl Iterator<Item = String> {
+    arguments
+        .iter()
+        .map(|argument| (*argument).to_owned())
+        .collect::<Vec<_>>()
+        .into_iter()
+}
+
+#[test]
+fn the_mod_names_the_terminal_focused_when_the_pane_opened() {
+    assert_eq!(
+        focused_terminal(arguments(&["--focused-terminal", "t3"])).unwrap(),
+        Some(PaneId("t3".to_owned()))
+    );
+    assert_eq!(focused_terminal(arguments(&[])).unwrap(), None);
+}
+
+#[test_case(&["--focused-terminal"]; "without its terminal")]
+#[test_case(&["t3"]; "a bare terminal")]
+#[test_case(&["--focused-terminal", "t3", "--theme"]; "an unknown option after it")]
+fn other_arguments_are_refused_with_the_usage(given: &[&str]) {
+    let error = focused_terminal(arguments(given)).unwrap_err();
+    assert!(error.to_string().starts_with("usage: reviewer"), "{error}");
+}

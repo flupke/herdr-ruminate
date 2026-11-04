@@ -11,9 +11,9 @@ bin/reviewer-control stats --since 2026-09-15 --until 2026-09-30
   worktree of the repository shares ([review state](review-state.md)). It first merges the
   states that workspaces kept for themselves before, as the pane does, so the rounds of deleted
   task workspaces count too. Without the state directory, it creates nothing.
-- It reads Herdr's state directory for the plugin,
-  `$XDG_STATE_HOME/herdr/plugins/herdr.progressive-reviewer` (by default under
-  `~/.local/state`), or `HERDR_PLUGIN_STATE_DIR` when set.
+- It reads the state root ([Review state](review-state.md)),
+  `~/.local/state/herdr-progressive-reviewer`, or `HERDR_PLUGIN_STATE_DIR` when set; outside
+  Herdr, it first moves the state Herdr kept there, as the pane does.
 - What each row counts is documented on the fields of `review-explore-stats`
   (`sample.rs`, `summary.rs`, `run_ahead.rs`). The run-ahead rows read the record saved beside
   each round (`<round>.forks.json`); a round without one, as every round saved before
