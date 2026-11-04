@@ -989,6 +989,7 @@ fn event_loop_routes_external_events_from_the_central_channel() {
         timings: &timing::Recorder::default(),
         last_frame: Instant::now(),
         batch_budget: Duration::MAX,
+        repaint: false,
     }
     .run()
     .unwrap();
@@ -999,6 +1000,44 @@ fn event_loop_routes_external_events_from_the_central_channel() {
             .iter()
             .any(|event| event.downcast_ref::<RepositoryFilesChanged>().is_some())
     );
+}
+
+#[test]
+fn a_resize_back_to_the_same_size_repaints_the_rows_the_terminal_dropped() {
+    let mut fixture = EffectsFixture::new(RepoType::Git);
+    let mut terminal = Terminal::new(TestBackend::new(80, 20)).unwrap();
+    let mut app = ReviewApplication::default();
+    let mut event_loop = RuntimeEventLoop {
+        effects: &mut fixture.effects,
+        terminal_events: None,
+        terminal: &mut terminal,
+        app: &mut app,
+        events: &mut fixture.inbox,
+        timings: &timing::Recorder::default(),
+        last_frame: Instant::now(),
+        batch_budget: Duration::MAX,
+        repaint: false,
+    };
+    event_loop.redraw().unwrap();
+    let painted = event_loop.terminal.backend().buffer().clone();
+    // herdr-app shrinks a new pane and grows it back at once: the terminal drops rows when it
+    // shrinks, and gives blank ones back when it grows. herdr-core drops the top rows and the
+    // test backend the bottom ones: either loses painted cells.
+    event_loop.terminal.backend_mut().resize(80, 10);
+    event_loop.terminal.backend_mut().resize(80, 20);
+    assert_ne!(event_loop.terminal.backend().buffer(), &painted);
+
+    let resize = UserInput::Resize {
+        width: 80,
+        height: 20,
+    };
+    let flow = event_loop
+        .handle_event(&EventEnvelope::new(resize))
+        .unwrap();
+    assert_eq!(flow, ControlFlow::Continue(true));
+    event_loop.redraw().unwrap();
+
+    assert_eq!(event_loop.terminal.backend().buffer(), &painted);
 }
 
 #[test]

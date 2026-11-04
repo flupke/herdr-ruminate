@@ -120,6 +120,9 @@ struct RuntimeEventLoop<'a, B: Backend> {
     last_frame: Instant,
     /// How long a cycle takes the next queued event before it draws: `EVENT_BATCH_BUDGET`.
     batch_budget: Duration,
+    /// Whether the next frame paints every cell, not only those that changed since the last
+    /// frame: the terminal may have dropped what the last frame painted.
+    repaint: bool,
 }
 
 #[derive(Default)]
@@ -241,6 +244,7 @@ impl Runtime {
             timings: &timings,
             last_frame: Instant::now(),
             batch_budget: EVENT_BATCH_BUDGET,
+            repaint: false,
         }
         .run();
         terminal_events.stop();
@@ -529,6 +533,9 @@ where
         if route.resets_cursor() {
             self.terminal.backend_mut().invalidate_cursor_visibility();
         }
+        if route.repaints() {
+            self.repaint = true;
+        }
         let needs_frame = route.needs_frame();
         let flow = self.dispatch(route, event);
         self.timings.event(event, started);
@@ -608,6 +615,9 @@ where
 
     fn redraw(&mut self) -> eyre::Result<()> {
         let started = Instant::now();
+        if std::mem::take(&mut self.repaint) {
+            self.terminal.clear()?;
+        }
         let area = self.terminal.size()?;
         let _ = self.app.update(UserInput::Resize {
             width: area.width,
@@ -679,7 +689,12 @@ impl TerminalGuard {
                 return Err(error.into());
             }
         };
-        if let Err(error) = enter_terminal_modes(terminal.backend_mut()) {
+        // crossterm hears SIGWINCH from the moment its event source exists, which the first poll
+        // creates: before the first frame, a resize while the pane starts waits for the terminal
+        // reader, as herdr-app's shrink and regrow of a new pane do.
+        if let Err(error) = enter_terminal_modes(terminal.backend_mut())
+            .and_then(|()| crossterm::event::poll(Duration::ZERO).map(|_| ()))
+        {
             let _ = disable_raw_mode();
             let _ = leave_terminal_modes(terminal.backend_mut());
             return Err(error.into());

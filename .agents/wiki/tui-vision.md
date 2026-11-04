@@ -130,6 +130,8 @@ next `turn` returns it.
   topic's `status` is `open`, `accepted` or `needs_follow_up`.
 - `forks` lists every event the stand-ins reported by the time it returns: read the agent's
   sessions there after the action you wait for, since a Herdr report comes before the event.
+- `forks` lists the forks in the order they reported starting, which varies from run to run:
+  run-ahead starts them at once. Find a fork by its `choice`.
 - The Explore page is a client that draws itself from a socket: `curl` shows no round. Open its
   address (`explore_page`) in the dev shell's headless Chromium (`E2E_CHROMIUM`), with Playwright
   from `tests/explore-page` once `make e2e-explore-deps` installed it, or read its text with

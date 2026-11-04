@@ -111,6 +111,14 @@ impl<'a> Route<'a> {
             Self::Input(_) | Self::TerminalFocused | Self::AgentFocused(_)
         )
     }
+
+    /// Whether the terminal may have dropped what the last frame painted, so the next frame
+    /// paints every cell. herdr-core drops the rows above the cursor when a terminal shrinks, and
+    /// gives blank ones back when it grows: a pane that shrinks and grows back before the next
+    /// frame keeps its size, yet lost the top of the last frame.
+    pub(super) fn repaints(&self) -> bool {
+        matches!(self, Self::Input(UserInput::Resize { .. }))
+    }
 }
 
 #[cfg(test)]
