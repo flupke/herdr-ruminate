@@ -32,6 +32,11 @@ pub enum Error {
     #[error("the agent did not start on the prompt: {message}")]
     AgentNotStarted { message: String },
 
+    /// The host refused a prompt before it typed anything, as herdr-core refuses one to an
+    /// agent that waits on its user: the agent's terminal is as it was.
+    #[error("nothing reached the agent: {reason}")]
+    NotTyped { reason: String },
+
     /// An event stream was cancelled before or while it subscribed.
     #[error("the host's event stream was cancelled")]
     Cancelled,

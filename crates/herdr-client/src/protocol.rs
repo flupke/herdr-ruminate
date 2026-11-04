@@ -138,6 +138,14 @@ pub trait AgentPort: Send + Sync {
     fn announces_sessions(&self) -> bool {
         false
     }
+
+    /// Whether the host types a prompt whole: only once nobody typed in the agent's terminal
+    /// for a while, holding the keys pressed while it types, as herdr-core's `terminal.send`
+    /// does. A prompt submitted to the agent meanwhile without the prompt's text then holds
+    /// none of it. Herdr types at once, among the keys someone presses there.
+    fn types_prompts_whole(&self) -> bool {
+        false
+    }
 }
 
 impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
@@ -167,6 +175,10 @@ impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
 
     fn announces_sessions(&self) -> bool {
         (**self).announces_sessions()
+    }
+
+    fn types_prompts_whole(&self) -> bool {
+        (**self).types_prompts_whole()
     }
 }
 

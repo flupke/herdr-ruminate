@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use agent_hooks::{AgentHooks, Heard, HookDirectory, HookedAgent};
+use agent_hooks::{AgentHooks, Heard, HookDirectory, HookedAgent, OtherPrompts};
 use herdr_client::protocol::{Agent, PaneId};
 
 use super::*;
@@ -54,7 +54,8 @@ fn the_prompt_the_reviewer_typed_goes_on_is_heard_and_its_session_runs_the_hook(
     let codex = HookedAgent::Codex {
         session: "thread-1".into(),
     };
-    let expectation = hooks.expect_prompt(&codex, "Reply in review r1", "blocked");
+    let expectation =
+        hooks.expect_prompt(&codex, "Reply in review r1", "blocked", OtherPrompts::Block);
 
     let decision = hook(
         &root,
@@ -72,7 +73,12 @@ fn text_left_in_the_input_box_that_joined_the_typed_prompt_is_blocked_with_the_r
     let codex = HookedAgent::Codex {
         session: "thread-1".into(),
     };
-    let expectation = hooks.expect_prompt(&codex, "Reply in review r1", "empty the box");
+    let expectation = hooks.expect_prompt(
+        &codex,
+        "Reply in review r1",
+        "empty the box",
+        OtherPrompts::Block,
+    );
 
     let decision = hook(
         &root,

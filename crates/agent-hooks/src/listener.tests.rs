@@ -199,7 +199,7 @@ fn each_process_of_a_pane_keeps_the_last_session_it_started_and_one_that_ended_g
 #[test]
 fn the_prompt_the_reviewer_typed_goes_on_and_is_heard() {
     let (_runtime, directory, hooks) = reviewer();
-    let expectation = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked");
+    let expectation = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked", OtherPrompts::Block);
 
     // The agent trims the line's end.
     let block = directory.ask(&submitted("w:p1", TYPED.trim_end()), GUARD);
@@ -211,8 +211,12 @@ fn the_prompt_the_reviewer_typed_goes_on_and_is_heard() {
 #[test]
 fn text_left_in_the_input_box_that_joined_the_typed_prompt_is_blocked_with_its_reason() {
     let (_runtime, directory, hooks) = reviewer();
-    let expectation =
-        hooks.expect_prompt(&in_pane("w:p1"), TYPED, "text in the box met the prompt");
+    let expectation = hooks.expect_prompt(
+        &in_pane("w:p1"),
+        TYPED,
+        "text in the box met the prompt",
+        OtherPrompts::Block,
+    );
     let joined = format!("half a thought{}", TYPED.trim_end());
 
     let block = directory.ask(&submitted("w:p1", &joined), GUARD);
@@ -229,8 +233,8 @@ fn text_left_in_the_input_box_that_joined_the_typed_prompt_is_blocked_with_its_r
 #[test]
 fn the_typed_prompt_on_another_session_is_stopped_even_with_text_left_in_the_box() {
     let (_runtime, directory, hooks) = reviewer();
-    let alone = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked");
-    let joined = hooks.expect_prompt(&in_pane("w:p2"), TYPED, "blocked");
+    let alone = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked", OtherPrompts::Block);
+    let joined = hooks.expect_prompt(&in_pane("w:p2"), TYPED, "blocked", OtherPrompts::Block);
 
     let block = directory.ask(&submitted_on("w:p1", TYPED, Some("nested")), GUARD);
     let joined_block = directory.ask(
@@ -247,7 +251,7 @@ fn the_typed_prompt_on_another_session_is_stopped_even_with_text_left_in_the_box
 #[test]
 fn a_prompt_without_the_typed_one_is_blocked_and_the_reviewer_still_waits_for_its_own() {
     let (_runtime, directory, hooks) = reviewer();
-    let expectation = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked");
+    let expectation = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked", OtherPrompts::Block);
 
     let other = directory.ask(&submitted("w:p1", "hello"), GUARD);
     assert_eq!(other.as_deref(), Some("blocked"));
@@ -262,10 +266,40 @@ fn a_prompt_without_the_typed_one_is_blocked_and_the_reviewer_still_waits_for_it
 }
 
 #[test]
+fn a_prompt_without_the_typed_one_goes_on_where_the_host_types_it_whole() {
+    let (_runtime, directory, hooks) = reviewer();
+    let expectation = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked", OtherPrompts::Pass);
+
+    let other = directory.ask(&submitted("w:p1", "hello"), GUARD);
+    assert_eq!(other, None);
+    assert_eq!(expectation.wait(Duration::ZERO), None);
+    let joined = directory.ask(&submitted("w:p1", &format!("hello{TYPED}")), GUARD);
+
+    assert_eq!(joined.as_deref(), Some("blocked"));
+    assert_eq!(
+        expectation.wait(Duration::ZERO),
+        Some(Heard::Joined {
+            left: "hello".into()
+        })
+    );
+}
+
+#[test]
+fn the_typed_prompt_on_another_session_is_stopped_where_the_host_types_it_whole() {
+    let (_runtime, directory, hooks) = reviewer();
+    let expectation = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "blocked", OtherPrompts::Pass);
+
+    let block = directory.ask(&submitted_on("w:p1", TYPED, Some("nested")), GUARD);
+
+    assert_eq!(block.as_deref(), Some("blocked"));
+    assert_eq!(expectation.wait(Duration::ZERO), Some(Heard::Stopped));
+}
+
+#[test]
 fn a_prompt_and_a_resume_expected_in_one_pane_each_hear_what_they_wait_for() {
     let (_runtime, directory, hooks) = reviewer();
     let resume = hooks.expect_resume(&in_pane("w:p1"), "fork", "resuming");
-    let prompt = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "typing");
+    let prompt = hooks.expect_prompt(&in_pane("w:p1"), TYPED, "typing", OtherPrompts::Block);
 
     // While the agent resumes a session, even the typed prompt is blocked.
     let block = directory.ask(&submitted("w:p1", TYPED), GUARD);
@@ -306,8 +340,13 @@ fn a_codex_hook_reaches_the_reviewer_of_any_herdr_server_that_expects_the_sessio
     let (runtime, _directory, _hooks) = reviewer();
     let other = HookDirectory::for_server(runtime.path(), Path::new("/run/other-herdr.sock"));
     let hooks = AgentHooks::listen(&other).unwrap();
-    let alone = hooks.expect_prompt(&codex("thread-1"), TYPED, "blocked");
-    let joined = hooks.expect_prompt(&codex("thread-2"), TYPED, "text in the box met the prompt");
+    let alone = hooks.expect_prompt(&codex("thread-1"), TYPED, "blocked", OtherPrompts::Block);
+    let joined = hooks.expect_prompt(
+        &codex("thread-2"),
+        TYPED,
+        "text in the box met the prompt",
+        OtherPrompts::Block,
+    );
     let root = HookRoot::new(runtime.path());
 
     let alone_block = root.ask(&codex_submitted("thread-1", TYPED.trim_end()), GUARD);

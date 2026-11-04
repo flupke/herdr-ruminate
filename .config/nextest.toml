@@ -12,9 +12,10 @@ final-status-level = "slow"
 slow-timeout = { period = "10s", terminate-after = 12 }
 
 # The run-ahead contract check waits on real Claude Code turns, each up to 15 minutes
-# (`REAL_TURN` in crates/reviewer/src/runtime/run_ahead/contract.tests.rs).
+# (`REAL_TURN` in crates/reviewer/src/runtime/run_ahead/contract.tests.rs), and so does the
+# contract check of prompt delivery under herdr-core.
 [[profile.default.overrides]]
-filter = "test(/::real_claude_code_/)"
+filter = "test(/::real_claude_code_/) | binary(claude_code_under_hc)"
 slow-timeout = { period = "60s", terminate-after = 60 }
 
 [profile.default.junit]

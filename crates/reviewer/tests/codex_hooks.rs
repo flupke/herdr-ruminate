@@ -9,7 +9,7 @@ use std::fs;
 use std::process::Command;
 use std::sync::mpsc;
 
-use agent_hooks::{AgentHooks, Heard, HookDirectory, HookedAgent};
+use agent_hooks::{AgentHooks, Heard, HookDirectory, HookedAgent, OtherPrompts};
 use herdr_client::protocol::{AgentPort as _, PaneId};
 use review_mcp::{Endpoint, Response, Server};
 use review_test_support::codex::{AppServer, CodexHome, Provider, prompt, wait_output};
@@ -82,13 +82,13 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
         }
     );
 
-    let alone = hooks.expect_prompt(&codex_agent, "typed alone", BLOCKED);
+    let alone = hooks.expect_prompt(&codex_agent, "typed alone", BLOCKED, OtherPrompts::Block);
     prompt(&herdr, &pane, "typed alone");
     assert_eq!(alone.wait(GUARD), Some(Heard::Submitted));
     drop(alone);
     wait_output(&herdr, &pane, "Answered: typed alone");
 
-    let reply = hooks.expect_prompt(&codex_agent, "a reply", BLOCKED);
+    let reply = hooks.expect_prompt(&codex_agent, "a reply", BLOCKED, OtherPrompts::Block);
     leave_in_input_box(&herdr, &pane, "my words");
     prompt(&herdr, &pane, "a reply");
     assert_eq!(
@@ -113,7 +113,7 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
     drop(resume);
 
     // The agent stayed on its session: its next prompt comes from there.
-    let after = hooks.expect_prompt(&codex_agent, "still here", BLOCKED);
+    let after = hooks.expect_prompt(&codex_agent, "still here", BLOCKED, OtherPrompts::Block);
     prompt(&herdr, &pane, "still here");
     assert_eq!(after.wait(GUARD), Some(Heard::Submitted));
     wait_output(&herdr, &pane, "Answered: still here");

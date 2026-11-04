@@ -72,13 +72,27 @@ itself Herdr too, and labels its terminals `herdr.*`.
   `~/.claude/hooks/herdr-agent-state.sh` and `~/.codex/herdr-agent-state.sh`, which exit at
   once without `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`: in herdr-app the reviewer's Claude
   Code hook reports Claude Code's, as a label; nothing reports Codex's (below).
-- `terminal.send` pastes and presses Enter once nobody has typed for about 3 seconds, so it
-  answers 5 seconds later or more. It refuses a `blocked` program unless `force`, types
-  only on an exact status with `if`, and answers `started`: whether the program went
-  `working` within a few seconds (null when it reports no status). With `wait`, it then
-  waits for the end of that turn. `hc` wraps what one terminal sends another in
-  `<hc from="...">` tags unless `notes = false` in `~/.config/herdr-core/config.toml`; a
-  request with no `caller` (the API, not the `hc` command) types the text as it is.
+- `terminal.send` pastes and presses Enter once nobody has typed for about 3 seconds, and
+  holds the keys pressed while it types (`hc schema`). Typed means a person's keys, through
+  an attached window or `hc attach`: `hc keys` does not count. A terminal nobody typed in
+  takes the text at once; while a person types, the send waits until about 3 s after their
+  last key, however long they type (23 s seen with 0.1.18). Then it answers `started`: whether
+  the program went `working` within a few seconds (null when it reports no status). With
+  `wait`, it then waits for the end of that turn. It types only on an exact status with
+  `if`, and refuses a `blocked` program unless `force`, also one that blocked while the send
+  waited: it checks again when it types. The reviewer counts each refusal `hc schema` lists
+  (`blocked`, `finished`, `not_found`, `unavailable`, `machine_unknown`, `status_mismatch`,
+  `invalid_params`, `config`) as one that typed nothing: the opt-in tests show it for
+  `blocked`, `unavailable` says "nothing was typed", and the others check the request or the
+  terminal. `unavailable` refuses a terminal younger than herdr-core's
+  startup age limit whose output does not settle within 5 s, as a person typing there keeps
+  it. `hc` wraps what one terminal sends another in `<hc from="...">` tags unless `notes =
+  false` in `~/.config/herdr-core/config.toml`; a request with no `caller` (the API, not the
+  `hc` command) types the text as it is, even when it comes from a terminal of the core.
+- Claude Code reports `blocked` while a question of its `AskUserQuestion` tool waits on the
+  user (2.1.318).
+- A terminal takes the environment of its core's server, not that of the `hc run` that starts
+  it: start the program through `env` to give it other variables.
 - `events.subscribe` answers a snapshot of the terminals it matches (by label, terminal or
   parent), then sends each fact change as an `event` notification `{type, terminal, seq,
   data}`: `created` (the whole terminal), `status`, `turn`, `foreground`, `labels`,
@@ -155,6 +169,15 @@ both stay.
   terminal (`/proc/<pid>/stat`: tty 0, tpgid -1), while its MCP servers run in its own process
   group, in the terminal's foreground, with its variables: the hook tells a `claude` either
   runs from the agent by whether it leads its terminal's foreground group.
+- Prompts go through `terminal.send`. To an agent that runs the reviewer's hooks, the reviewer
+  arms the hook before it sends, and the send may wait for seconds while the user types there.
+  So under herdr-core the hook lets a prompt without the reviewer's text go on meanwhile
+  (`AgentPort::types_prompts_whole`): herdr-core types the reviewer's text whole, never among
+  the user's keys. Under Herdr, which types at once, it still blocks any other prompt
+  ([Review threads](threads.md#delivery)). A refused send reached nothing: the pane says so,
+  and Retry sends again. Two waits stay as they were: run-ahead's `/resume` (`claude-fork`,
+  `codex-fork`) still blocks every prompt while its send waits, and the one courier that
+  sends all prompts holds every agent's while a send waits for the user typing in one.
 - Nothing names a Codex agent's session under herdr-core: Codex's hook runs in its daemon,
   which cannot tell the terminal, so the Codex resume, which reports a session only when the
   host reports one, reports none there.
@@ -166,8 +189,10 @@ both stay.
   at any moment, and `space.new` switches their view. A copy of a mod lives only while it shows,
   and the launcher's closes at once.
 
-The tests of the backend against a real herdr-core are opt-in (Checks, Opt-in tests). A private
-core needs its own `HC_SESSION`, scratch `XDG_*_HOME` folders, and an `XDG_RUNTIME_DIR` short
+The tests of the backend against a real herdr-core are opt-in (Checks, Opt-in tests), on a
+private core of `crates/hc-test-support`. Its `Person` types as the user does in a window:
+`hc attach` wants a terminal, which `script` gives it. A private core needs its own
+`HC_SESSION`, scratch `XDG_*_HOME` folders, and an `XDG_RUNTIME_DIR` short
 enough for its socket: herdr-core refuses a socket path over 107 bytes, which a scratch folder
 under `$TMPDIR` can exceed; the tests use `/tmp`. herdr-core may update itself and restart
 while it runs (0.1.17 to 0.1.18 during one session): its terminals keep running.
@@ -201,6 +226,35 @@ folder. Use it to see the review pane as herdr-app draws it: `hc read` gives the
 - The reviewers it starts share the checkout's MCP port, so all but the first show a toast
   that the port is in use. Its `XDG_*` folders are its own: direnv has no allowed `.envrc`,
   and the language servers fail.
+
+Never give Claude Code a scratch `XDG_DATA_HOME`, as a private core's terminals have: 2.1.318
+copies itself into `$XDG_DATA_HOME/claude/versions` and points the owner's `~/.local/bin/claude`
+there, even with `DISABLE_AUTOUPDATER`, which leaves the owner a `claude` that is gone with the
+scratch folder. Run it there through `env` with the owner's data, state and configuration
+folders, as the contract check does (below).
+
+## The contract check
+
+`crates/reviewer/tests/claude_code_under_hc.rs` checks that real Claude Code takes the
+reviewer's prompts through herdr-core as the reviewer expects: its hook reports a sent prompt
+as typed, a long one too, and the text left in its input box joined to it; it runs a prompt
+the user submits while the send waits for them; it reports `working` after a send, and
+`blocked` while a question waits on its user, when herdr-core types nothing. It runs the
+owner's `claude` on the owner's login and configuration, with the reviewer's plugin set to
+this build's `reviewer-control` by `--settings`: the plugin must be installed (`make install`).
+Unlike the run-ahead check ([Run-ahead](run-ahead.md#the-contract-check)), which never reads
+`~/.claude`, it needs no token of `claude setup-token`: the owner chose their own login. It
+leaves in the owner's configuration the session of each run, and the trust of its folder,
+`~/.cache/herdr-reviewer/hc-contract-check`, recorded once; it runs their other plugins,
+hooks and MCP servers, on a private core. About 30 s and five Sonnet turns. Run it after an
+upgrade of Claude Code or herdr-core, or a change to the prompts' delivery
+(`review-thread-service`'s `delivery.rs`, `hc-client`'s `send`, `agent-hooks`'s expectations):
+
+```sh
+scripts/dev-shell cargo nextest run -p reviewer --test claude_code_under_hc --run-ignored only
+```
+
+It passed with Claude Code 2.1.318 and herdr-core 0.1.18.
 
 ## The review pane outside Herdr
 

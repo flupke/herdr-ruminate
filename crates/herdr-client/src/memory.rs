@@ -31,6 +31,10 @@ struct Host {
     /// Whether the host claims, as herdr-core does, that its events tell each change of an
     /// agent's session.
     announces_sessions: bool,
+    /// Whether the host claims, as herdr-core does, that it types each prompt whole.
+    types_prompts_whole: bool,
+    /// Why the host refuses each prompt before it types it, if it does.
+    refusing: Option<String>,
 }
 
 impl InMemoryAgents {
@@ -83,6 +87,18 @@ impl InMemoryAgents {
         self.host().announces_sessions = true;
     }
 
+    /// Make the host claim, as herdr-core does, that it types each prompt whole: the hooks let
+    /// a prompt without the reviewer's text go on while the reviewer waits for its own.
+    pub fn type_prompts_whole(&self) {
+        self.host().types_prompts_whole = true;
+    }
+
+    /// Make the host refuse each prompt before it types it, for `reason`, as herdr-core
+    /// refuses one to an agent that waits on its user.
+    pub fn refuse_prompts(&self, reason: &str) {
+        self.host().refusing = Some(reason.to_owned());
+    }
+
     /// Every prompt submitted so far, in submission order.
     pub fn prompts(&self) -> Vec<SentPrompt> {
         self.host().prompts.clone()
@@ -116,7 +132,13 @@ impl AgentPort for InMemoryAgents {
     }
 
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()> {
-        self.host().prompts.push(SentPrompt {
+        let mut host = self.host();
+        if let Some(reason) = &host.refusing {
+            return Err(Error::NotTyped {
+                reason: reason.clone(),
+            });
+        }
+        host.prompts.push(SentPrompt {
             pane_id: pane_id.clone(),
             text: text.to_owned(),
         });
@@ -125,6 +147,11 @@ impl AgentPort for InMemoryAgents {
 
     fn prompt_agent(&self, pane_id: &PaneId, text: &str) -> Result<()> {
         let mut host = self.host();
+        if let Some(reason) = &host.refusing {
+            return Err(Error::NotTyped {
+                reason: reason.clone(),
+            });
+        }
         host.prompts.push(SentPrompt {
             pane_id: pane_id.clone(),
             text: text.to_owned(),
@@ -139,5 +166,9 @@ impl AgentPort for InMemoryAgents {
 
     fn announces_sessions(&self) -> bool {
         self.host().announces_sessions
+    }
+
+    fn types_prompts_whole(&self) -> bool {
+        self.host().types_prompts_whole
     }
 }

@@ -14,6 +14,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+hc-test-support = { path = "../hc-test-support" }
 tempfile.workspace = true
 test-case.workspace = true
 

@@ -86,7 +86,9 @@ scripts/dev-shell cargo nextest run -p hc-client --run-ignored only
 ```
 
 The run-ahead contract check runs real Claude Code turns: see
-[Run-ahead](run-ahead.md#the-contract-check).
+[Run-ahead](run-ahead.md#the-contract-check). So does the contract check of prompt delivery
+under herdr-core, on the owner's own Claude Code: see
+[herdr-app](herdr-app.md#the-contract-check).
 
 ## Mutation testing
 
