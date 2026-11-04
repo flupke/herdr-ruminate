@@ -76,6 +76,7 @@ impl Fixture {
             timings: &timing::Recorder::default(),
             last_frame: std::time::Instant::now(),
             batch_budget: std::time::Duration::MAX,
+            repaint: false,
         }
         .handle_event(event)
         .unwrap();

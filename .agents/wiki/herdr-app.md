@@ -1,7 +1,7 @@
 # herdr-app and herdr-core
 
 How herdr-app and herdr-core behave where the reviewer relies on Herdr, and the reviewer's
-backend for herdr-core. Checked against herdr-app 0.1.12, herdr-core (`hc`) 0.1.17 and
+backend for herdr-core. Checked against herdr-app 0.1.12 and 0.1.13, herdr-core (`hc`) 0.1.17 and
 0.1.18, and Claude Code 2.1.318. On this page, Herdr
 means `herdr`, the older terminal multiplexer whose plugin the reviewer is; herdr-app calls
 itself Herdr too, and labels its terminals `herdr.*`.
@@ -40,6 +40,13 @@ itself Herdr too, and labels its terminals `herdr.*`.
   its pane goes.
 - herdr-core gives each terminal its size, `cols` and `rows`, in `terminals()` and
   `hc get`.
+- A terminal's screen is herdr-core's. When the terminal shrinks, it drops the alternate
+  screen's rows above the cursor, and when it grows, it adds blank rows below: a full-screen
+  program that does not paint every cell again loses the top of its last frame. herdr-app
+  resizes a terminal it opens right of another to 120x40 and back within about 100 ms, so the
+  program may hear one resize to the size it drew at, or none if it is still starting and
+  crossterm does not listen for SIGWINCH yet. The review pane copes with both
+  (`crates/reviewer/src/runtime.rs`).
 - herdr-app writes `~/.config/herdr-app/view.json`: the selected space (`active`), the
   selected tab of each space (`spaces`), and the focused pane of each tab (`tabs.<tab>.focused`),
   by herdr-app's pane IDs, on each focus change and for other reasons, such as an agent's
@@ -165,15 +172,35 @@ enough for its socket: herdr-core refuses a socket path over 107 bytes, which a 
 under `$TMPDIR` can exceed; the tests use `/tmp`. herdr-core may update itself and restart
 while it runs (0.1.17 to 0.1.18 during one session): its terminals keep running.
 
-A private herdr-app window runs off the user's screen on that core: start `Xvfb :97`, then
-`herdr-app` with the core's variables, `HC_TERMINAL_*` and `HC_SCOPE` unset, `DISPLAY=:97`,
-`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json` (software Vulkan), and
-`HERDR_APP_HOME` a short folder under `/tmp`: its control socket lives there, and a longer path
-leaves `herdr-app do`, `ls` and `shot` with no window to reach. `scripts/herdr-app-mod install`
-with that `HERDR_APP_HOME` installs the launcher there; `herdr-app do mod.open:<mod>` presses
-its key, `hc keys` and `hc read` drive and read the review pane, and `herdr-app shot` shows the
-window. The window opens on its welcome overlay (`overlay.close {id: "frame-welcome"}`), and
-the pane needs 40 columns (`app.zoom_out`).
+## A private herdr-app
+
+`scripts/herdr-app-private start [WIDTHxHEIGHT]` starts a herdr-app off the user's screen, with
+its own home and its own herdr-core, and prints an env file; `. <env file>` points `herdr-app`
+and `hc` at them, and `scripts/herdr-app-private stop <env file>` ends both and removes the
+folder. Use it to see the review pane as herdr-app draws it: `hc read` gives the core's screen,
+`herdr-app shot` the pixels.
+
+- Its display is a headless sway (`WLR_RENDERER=gles2`: Vulkan finds no DRM device there);
+  `swaymsg output HEADLESS-1 resolution 2400x1100` resizes the window. The launcher splits
+  right of a terminal with at least two and a half times as many columns as rows, as the
+  default 1600x1000 window gives. Xvfb works too: `herdr-app` with `DISPLAY` on it and
+  `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json` (software Vulkan).
+- `HERDR_APP_HOME` must be a short folder under `/tmp`: the window's control socket lives there,
+  and a longer path leaves `herdr-app do`, `ls` and `shot` with no window to reach.
+- `scripts/herdr-app-mod install` with the env sourced installs the launcher there, running
+  this checkout's `bin/reviewer` (`make build`). `herdr-app do mod.open --name
+  herdr-progressive-reviewer` is what the launcher's key runs; `herdr-app do tab.new --folder
+  <checkout>` first gives it a terminal to open beside. `hc keys` and `hc read` drive and read
+  the review pane. The pane needs 40 columns: `app.zoom_out` in a narrow window.
+- `pane.split --direction down` and `pane.close` shrink and grow the pane; closing its
+  neighbour widens it.
+- The window opens on its welcome overlay, over the middle of the window. `overlay.close {id:
+  "frame-welcome"}` may answer ok and leave it: read what it covers with `hc read`.
+- Whether the pane's first frame survives depends on when herdr-app's shrink and regrow reach
+  it (above): check it on several opens, in fresh tabs, by the first line of `hc read`.
+- The reviewers it starts share the checkout's MCP port, so all but the first show a toast
+  that the port is in use. Its `XDG_*` folders are its own: direnv has no allowed `.envrc`,
+  and the language servers fail.
 
 ## The review pane outside Herdr
 

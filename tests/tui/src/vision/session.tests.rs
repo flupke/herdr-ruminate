@@ -358,16 +358,20 @@ fn the_driver_plays_a_fork_and_a_bare_answer_continues_as_it() {
         .unwrap();
 
     let forks = session.forks(Some(2), GUARD).unwrap();
-    let choices: Vec<_> = forks["forks"]
+    let mut choices: Vec<_> = forks["forks"]
         .as_array()
         .unwrap()
         .iter()
         .map(|fork| fork["choice"].as_str().unwrap())
         .collect();
+    choices.sort_unstable();
     assert_eq!(choices, ["keep", "saturate"], "{forks}");
     let own = forks["agent"]["session"].clone();
-    let keep = forks["forks"][0]["session"].as_str().unwrap().to_owned();
-    assert_eq!(forks["forks"][0]["parent"], own);
+    let keep = fork_of(&forks, "keep")["session"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(fork_of(&forks, "keep")["parent"], own);
     let conclusion: Value =
         serde_json::from_str(include_str!("../../examples/conclusion.json")).unwrap();
     // The reviewer hears the agent's hooks in the session's runtime directory, never in the one
@@ -384,7 +388,7 @@ fn the_driver_plays_a_fork_and_a_bare_answer_continues_as_it() {
         .unwrap();
     assert_eq!(reply["isError"], false, "{reply}");
     let shown = session.forks(None, GUARD).unwrap();
-    assert_eq!(shown["forks"][0]["submitted"], true, "{shown}");
+    assert_eq!(fork_of(&shown, "keep")["submitted"], true, "{shown}");
 
     // A bare answer: the first choice, sent with no comment.
     session
@@ -428,16 +432,27 @@ fn ask_with_run_ahead(session: &mut Session) {
         .unwrap();
 }
 
-/// The forks of the example question, by choice: `keep`, then `saturate`.
+/// The sessions of the forks of the example question: `keep`, then `saturate`.
 fn forks_of_the_question(session: &Session) -> (String, String) {
     let forks = session.forks(Some(2), GUARD).unwrap();
-    let session_of = |index: usize| {
-        forks["forks"][index]["session"]
+    let session_of = |choice: &str| {
+        fork_of(&forks, choice)["session"]
             .as_str()
             .unwrap()
             .to_owned()
     };
-    (session_of(0), session_of(1))
+    (session_of("keep"), session_of("saturate"))
+}
+
+/// The fork that takes `choice` among the `forks` the driver listed: they start at once, so
+/// their order is the order run-ahead's processes happened to report in.
+fn fork_of<'a>(forks: &'a Value, choice: &str) -> &'a Value {
+    forks["forks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|fork| fork["choice"] == choice)
+        .unwrap_or_else(|| panic!("no fork takes {choice}: {forks}"))
 }
 
 /// Answers the first choice with no comment, then answers the agent's turn with the next
@@ -490,8 +505,8 @@ fn the_driver_ends_one_fork_without_a_turn_and_crashes_the_other() {
     session.fork_end(&saturate, true).unwrap();
 
     let forks = session.forks(None, GUARD).unwrap();
-    let ended = |index: usize| {
-        let fork = &forks["forks"][index];
+    let ended = |choice: &str| {
+        let fork = fork_of(&forks, choice);
         (
             fork["submitted"].clone(),
             fork["finished"].clone(),
@@ -499,12 +514,12 @@ fn the_driver_ends_one_fork_without_a_turn_and_crashes_the_other() {
         )
     };
     assert_eq!(
-        ended(0),
+        ended("keep"),
         (false.into(), true.into(), true.into()),
         "{forks}"
     );
     assert_eq!(
-        ended(1),
+        ended("saturate"),
         (false.into(), false.into(), true.into()),
         "{forks}"
     );

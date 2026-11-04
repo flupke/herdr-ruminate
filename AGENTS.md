@@ -5,7 +5,9 @@ would, and fix what you see. Tests prove what you thought of; eyes show what you
 The vision MCP server drives the review pane in a workspace of the user's Herdr: run
 `make vision` once, then use its tools (`.agents/wiki/tui-vision.md`); `make explore-page`
 and `make explore-gallery` show the Explore page, and `make explore-script` acts on it with a
-throwaway script (`.agents/wiki/explore-page-standalone.md`).
+throwaway script (`.agents/wiki/explore-page-standalone.md`); `scripts/herdr-app-private`
+starts a herdr-app off the user's screen, with its own core, where the launcher mod opens the
+pane and `herdr-app shot` shows the render (`.agents/wiki/herdr-app.md`, A private herdr-app).
 When a part of the product has no such tool, build one before you rely on tests alone.
 
 # Standards

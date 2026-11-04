@@ -18,6 +18,7 @@ struct Decision {
     route: String,
     needs_frame: bool,
     resets_cursor: bool,
+    repaints: bool,
 }
 
 fn decide(event: &EventEnvelope) -> Decision {
@@ -31,15 +32,17 @@ fn decide(event: &EventEnvelope) -> Decision {
             .to_owned(),
         needs_frame: route.needs_frame(),
         resets_cursor: route.resets_cursor(),
+        repaints: route.repaints(),
     }
 }
 
 #[test]
-fn each_runtime_event_has_one_route_frame_and_cursor_decision() {
+fn each_runtime_event_has_one_route_frame_cursor_and_repaint_decision() {
     let decision = |route: &str, needs_frame, resets_cursor| Decision {
         route: route.to_owned(),
         needs_frame,
         resets_cursor,
+        repaints: false,
     };
     let cases = [
         (
@@ -73,6 +76,16 @@ fn each_runtime_event_has_one_route_frame_and_cursor_decision() {
         (
             EventEnvelope::new(UserInput::Key(Key::Down)),
             decision("Input", true, true),
+        ),
+        (
+            EventEnvelope::new(UserInput::Resize {
+                width: 80,
+                height: 20,
+            }),
+            Decision {
+                repaints: true,
+                ..decision("Input", true, true)
+            },
         ),
         (
             EventEnvelope::new(review_lsp::Event::Failed {

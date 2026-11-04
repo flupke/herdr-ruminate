@@ -191,6 +191,7 @@ impl Scenario {
             timings: &self.timings,
             last_frame: Instant::now(),
             batch_budget: Duration::MAX,
+            repaint: false,
         }
     }
 
