@@ -1,5 +1,7 @@
 //! A fork's `stream-json` output: the tokens of its own requests, whether its submit has its
-//! answer, and whether its turn ended.
+//! answer, whether its turn ended, and whether it runs its guard: a fork whose `init` comes
+//! without the mark of its settings' `SessionStart` hook started without them, and is stopped at
+//! its `init`, as its first request starts, well before that request can call a tool.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -10,6 +12,7 @@ use review_run_ahead::{ForkEnd, TokenUsage};
 use serde_json::Value;
 
 use crate::guard::SUBMITS;
+use crate::settings::GUARD_MARK;
 
 /// Reads a fork's events as they come, then reports its end with what they told.
 pub(crate) struct StreamTally {
@@ -22,7 +25,50 @@ pub(crate) struct StreamTally {
     answered: Arc<Signal>,
     /// Whether the turn's result came.
     finished: bool,
+    /// Whether the hook that marks the fork's settings read reported its mark.
+    guarded: bool,
+    unguarded: Arc<Unguarded>,
     ended: Box<dyn FnOnce(ForkEnd) + Send>,
+}
+
+/// Stops a fork that started without its guard, once both its stop and that are known.
+#[derive(Default)]
+pub(crate) struct Unguarded(Mutex<UnguardedState>);
+
+#[derive(Default)]
+struct UnguardedState {
+    /// Whether the fork's `init` came without the mark of its settings.
+    found: bool,
+    /// What stops the fork, until it ran.
+    stop: Option<Box<dyn FnOnce() + Send>>,
+}
+
+impl Unguarded {
+    /// What stops the fork, once it started.
+    pub(crate) fn arm(&self, stop: Box<dyn FnOnce() + Send>) {
+        let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if state.found {
+            drop(state);
+            std::thread::spawn(stop);
+        } else {
+            state.stop = Some(stop);
+        }
+    }
+
+    /// The fork started without its guard.
+    fn found(&self) {
+        let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        state.found = true;
+        if let Some(stop) = state.stop.take() {
+            drop(state);
+            std::thread::spawn(stop);
+        }
+    }
+
+    /// Whether the fork started without its guard.
+    fn is_found(&self) -> bool {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner).found
+    }
 }
 
 /// A flag that threads wait for.
@@ -64,8 +110,15 @@ impl StreamTally {
             submits: HashSet::new(),
             answered: Arc::default(),
             finished: false,
+            guarded: false,
+            unguarded: Arc::default(),
             ended,
         }
+    }
+
+    /// What stops the fork when it started without its guard.
+    pub(crate) fn unguarded(&self) -> Arc<Unguarded> {
+        Arc::clone(&self.unguarded)
     }
 
     /// Set once the answer to one of the fork's submits reached it, or once the fork ended:
@@ -144,14 +197,29 @@ impl ForkOutput for StreamTally {
                 }
             }
             Some("result") => self.finished = true,
+            Some("system") => match event.get("subtype").and_then(Value::as_str) {
+                Some("hook_response") => {
+                    self.guarded |= event
+                        .get("stderr")
+                        .and_then(Value::as_str)
+                        .is_some_and(|stderr| stderr.lines().any(|line| line.trim() == GUARD_MARK));
+                }
+                Some("init") if !self.guarded => self.unguarded.found(),
+                _ => {}
+            },
             _ => {}
         }
     }
 
     fn ended(self: Box<Self>, exit: Exit) {
         self.answered.set();
+        let exit = if self.unguarded.is_found() {
+            format!("{exit}, stopped: it started without its guard's settings")
+        } else {
+            exit.to_string()
+        };
         let end = ForkEnd {
-            exit: exit.to_string(),
+            exit,
             usage: self.usage(),
             finished: self.finished,
         };

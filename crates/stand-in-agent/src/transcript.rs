@@ -53,7 +53,7 @@ impl StandInTranscript {
         writeln!(
             file,
             "{prompt}\n\
-             {{\"type\":\"assistant\",\"uuid\":\"answer-{0}\",\"message\":{{\"model\":\"stand-in-model\"}}}}",
+             {{\"type\":\"assistant\",\"uuid\":\"answer-{0}\",\"message\":{{\"model\":\"stand-in-model\",\"stop_reason\":\"end_turn\"}}}}",
             self.turns
         )
         .unwrap();

@@ -388,6 +388,11 @@ impl ExploreSession {
                         .get(&request.request)
                         .and_then(|delivery| delivery.started_at_ms),
                     finishing_since_ms: self.run_ahead_finishing_since(&request.request),
+                    // A prepared turn shows as the fork's own, once the agent continued as it.
+                    not_prepared: match self.run_ahead.turn_paths().get(&request.request) {
+                        Some(path @ TurnPath::Plain { .. }) => path.line().map(Into::into),
+                        _ => None,
+                    },
                     answer,
                 }
             } else {

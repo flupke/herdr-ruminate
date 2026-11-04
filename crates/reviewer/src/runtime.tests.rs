@@ -58,6 +58,8 @@ struct IsolatedHerdrServer {
     events: StandInEvents,
     /// Whether real Claude Code runs in the agent's pane, in place of the stand-in.
     real_agent: bool,
+    /// The arguments the agent starts with.
+    agent_arguments: Vec<String>,
 }
 
 impl IsolatedHerdrServer {
@@ -122,7 +124,8 @@ impl IsolatedHerdrServer {
         lifecycle: AgentLifecycle,
         stand_in: run_ahead::StandIn,
     ) -> Self {
-        let server = Self::create(repository_root, agent, |root| stand_in.environment(root));
+        let mut server = Self::create(repository_root, agent, |root| stand_in.environment(root));
+        server.agent_arguments = stand_in.arguments(server.server.root());
         stand_in_agent::install(&stand_in_program(), &server.agent_binary).unwrap();
         server.start_agent(session, lifecycle);
         server
@@ -187,6 +190,7 @@ impl IsolatedHerdrServer {
             title_read: std::sync::atomic::AtomicBool::new(false),
             events,
             real_agent: false,
+            agent_arguments: Vec::new(),
         }
     }
 
@@ -206,7 +210,7 @@ impl IsolatedHerdrServer {
                 AgentLifecycle::Native => "0",
             }
         );
-        self.run_cli(&[
+        let mut command = vec![
             "pane",
             "run",
             &self.pane_id.0,
@@ -214,7 +218,9 @@ impl IsolatedHerdrServer {
             &session_variable,
             &lifecycle_variable,
             &agent,
-        ]);
+        ];
+        command.extend(self.agent_arguments.iter().map(String::as_str));
+        self.run_cli(&command);
         self.title_read.store(
             lifecycle == AgentLifecycle::Native,
             std::sync::atomic::Ordering::Relaxed,

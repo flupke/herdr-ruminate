@@ -49,6 +49,9 @@ pub enum RoundStage {
         /// the epoch, while the reviewer's bare answer waits for that fork to submit it: the
         /// agent finishes a turn it started while the reviewer was thinking.
         finishing_since_ms: Option<u64>,
+        /// Why the turn is not one a fork prepared, when run-ahead watched the question it
+        /// answers and the reviewer can use the reason: the line its path shows.
+        not_prepared: Option<String>,
         /// The reviewer's answer that the turn carries; `None` for a turn that carries none,
         /// such as the kickoff.
         answer: Option<Box<SentAnswer>>,
@@ -422,7 +425,7 @@ impl TurnResponse {
     }
 
     /// The line the page shows of the turn's path, when the reviewer can use it.
-    pub(crate) fn path_line(&self) -> Option<&'static str> {
+    pub(crate) fn path_line(&self) -> Option<std::borrow::Cow<'static, str>> {
         self.path.as_ref().and_then(TurnPath::line)
     }
 

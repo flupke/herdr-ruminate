@@ -318,7 +318,7 @@ impl ResponseView {
                 })
                 .collect(),
             reply_html: response.reply.as_deref().map(|reply| markdown(reply, 2)),
-            path_line: response.path_line().map(str::to_owned),
+            path_line: response.path_line().map(std::borrow::Cow::into_owned),
             marks_problem: response.marks_problem.clone(),
         }
     }

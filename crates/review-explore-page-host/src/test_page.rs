@@ -56,6 +56,7 @@ pub(crate) fn working() -> RoundStage {
         request: "turn".into(),
         sent_at_ms: None,
         finishing_since_ms: None,
+        not_prepared: None,
         answer: None,
     }
 }

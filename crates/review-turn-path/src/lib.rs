@@ -3,6 +3,8 @@
 //! turn itself (the plain chain), and why. The run-ahead records keep it; the pane and the
 //! Explore page show the reviewer one quiet line of it with the turn.
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 /// The path of the turn after an answer.
@@ -70,10 +72,15 @@ pub enum PlainReason {
 impl TurnPath {
     /// The line the pane and the Explore page show with the turn, or `None` when the path says
     /// nothing the reviewer can use.
-    pub fn line(&self) -> Option<&'static str> {
+    pub fn line(&self) -> Option<Cow<'static, str>> {
         match self {
-            Self::Prepared { .. } => Some("Prepared while you were thinking"),
-            Self::Plain { reason } => reason.line(),
+            Self::Prepared { .. } => Some("Prepared while you were thinking".into()),
+            Self::Plain {
+                reason: PlainReason::NoForks { why: Some(why) },
+            } => {
+                Some(format!("Not prepared: nothing was prepared for this question ({why})").into())
+            }
+            Self::Plain { reason } => reason.line().map(Cow::Borrowed),
         }
     }
 }
@@ -101,8 +108,9 @@ impl PlainReason {
 
     /// The line of a reason that the forks had not done what the answer needs, or that the
     /// switch to a fork did not end with its turn, or `None` for a check that could not be made,
-    /// which is in run-ahead's log. A failed or withdrawn switch leaves the turn waiting for
-    /// Retry, which runs the plain chain: the turn it brings says why it took the agent's time.
+    /// which is in run-ahead's log; [`TurnPath::line`] adds why no fork was taken, when known.
+    /// A failed or withdrawn switch leaves the turn waiting for Retry, which runs the plain
+    /// chain: the turn it brings says why it took the agent's time.
     fn not_ready_line(&self) -> Option<&'static str> {
         match self {
             Self::NoForks { .. } => Some("Not prepared: nothing was prepared for this question"),

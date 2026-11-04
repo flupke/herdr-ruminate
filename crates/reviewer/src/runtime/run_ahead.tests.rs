@@ -31,7 +31,19 @@ pub(super) enum StandIn {
     Forkable,
     /// The same, started without the reviewer's Claude Code plugin.
     Unhooked,
+    /// A forkable stand-in started with settings of its own, as herdr-bowtie starts its agents:
+    /// [`AGENT_SETTINGS`] in `agent-settings.json` of the server's directory.
+    Configured,
+    /// The same, with [`MISCONFIGURED_SETTINGS`], which Claude Code skips as a whole.
+    Misconfigured,
 }
+
+/// The settings of the [`StandIn::Configured`] agent, with a hook a fork must not run.
+const AGENT_SETTINGS: &str = r#"{"env": {"FORCE_HYPERLINK": "1"}, "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "agent-stop"}]}]}}"#;
+
+/// The settings of the [`StandIn::Misconfigured`] agent: an error makes Claude Code skip them,
+/// and a fork's guard with them.
+const MISCONFIGURED_SETTINGS: &str = r#"{"permissions": {"allow": "not a list"}}"#;
 
 impl StandIn {
     /// The workspace variables the stand-in reads, under the server's directory `root`.
@@ -45,9 +57,22 @@ impl StandIn {
         let configuration = format!("CLAUDE_CONFIG_DIR={}", root.join(CLAUDE_CONFIG).display());
         match self {
             Self::Plain => Vec::new(),
-            Self::Forkable => vec![plugin, configuration],
+            Self::Forkable | Self::Configured | Self::Misconfigured => vec![plugin, configuration],
             Self::Unhooked => vec![configuration],
         }
+    }
+
+    /// The arguments the stand-in starts with, its files written under the server's directory
+    /// `root`.
+    pub(super) fn arguments(self, root: &Path) -> Vec<String> {
+        let content = match self {
+            Self::Configured => AGENT_SETTINGS,
+            Self::Misconfigured => MISCONFIGURED_SETTINGS,
+            Self::Plain | Self::Forkable | Self::Unhooked => return Vec::new(),
+        };
+        let settings = root.join("agent-settings.json");
+        fs::write(&settings, content).unwrap();
+        vec!["--settings".into(), settings.display().to_string()]
     }
 }
 
@@ -62,6 +87,8 @@ struct RunAheadFlow {
 fn test_waits() -> review_run_ahead::ForkWaits {
     review_run_ahead::ForkWaits {
         resume_poll: Duration::from_millis(10),
+        // The stand-in writes the end of its turn before it reports it: no test waits for it.
+        transcript: Duration::ZERO,
         ..review_run_ahead::ForkWaits::default()
     }
 }
@@ -248,6 +275,43 @@ fn fork_question(flow: &ExploreFlow, prompt: &str) -> serde_json::Value {
 }
 
 #[test]
+fn a_fork_of_an_agent_with_settings_of_its_own_runs_them_with_its_guard_in_place_of_their_hooks() {
+    let mut run = RunAheadFlow::start_with(StandIn::Configured, test_waits());
+    run.flow.turn(None, 1);
+
+    let sessions = run.wait_for_forks(2);
+
+    let settings: serde_json::Value =
+        serde_json::from_str(&run.fork_file(&sessions[0], "settings")).unwrap();
+    assert_eq!(settings["env"], serde_json::json!({"FORCE_HYPERLINK": "1"}));
+    assert_eq!(
+        settings["hooks"].get("Stop"),
+        None,
+        "the agent's hooks stay with it"
+    );
+    let guard = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"].to_string();
+    assert!(guard.contains("fork-guard"), "{settings}");
+    assert!(
+        run.fork_file(&sessions[0], "args")
+            .lines()
+            .all(|argument| !argument.contains("agent-settings.json")),
+        "the fork passes its own settings only"
+    );
+}
+
+#[test]
+fn a_fork_whose_settings_claude_code_skips_runs_without_its_guard_and_is_stopped() {
+    let mut run = RunAheadFlow::start_with(StandIn::Misconfigured, test_waits());
+    run.flow.turn(None, 1);
+
+    let exit = run.wait_for_saved("a fork's end", |saved| {
+        saved.forks.iter().find_map(|fork| fork.exit.clone())
+    });
+
+    assert!(exit.contains("without its guard"), "{exit}");
+}
+
+#[test]
 fn forks_of_the_agent_take_each_answer_s_turn_which_is_kept_and_an_answer_stops_them() {
     let mut run = RunAheadFlow::start();
     run.flow.turn(None, 1);
@@ -273,7 +337,7 @@ fn forks_of_the_agent_take_each_answer_s_turn_which_is_kept_and_an_answer_stops_
         assert!(has(&["--fork-session"]));
         assert!(has(&["--session-id", session]));
         assert!(has(&["--model", "stand-in-model"]));
-        let settings = &arguments[arguments.iter().position(|a| a == "--settings").unwrap() + 1];
+        let settings = run.fork_file(session, "settings");
         assert!(settings.contains("fork-guard"), "{settings}");
         assert!(
             run.fork_file(session, "env")

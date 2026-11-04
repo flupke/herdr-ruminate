@@ -12,7 +12,9 @@ agent-fork = { path = "../agent-fork" }
 agent-hooks = { path = "../agent-hooks" }
 fork-guard = { path = "../fork-guard" }
 herdr-client = { path = "../herdr-client" }
+notify.workspace = true
 review-run-ahead = { path = "../review-run-ahead" }
+serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 

@@ -426,11 +426,15 @@ impl StatusCard {
             RoundStage::AgentWorking {
                 request,
                 sent_at_ms,
+                not_prepared,
                 ..
             } => Some(Self::working(
                 round,
-                request,
-                *sent_at_ms,
+                Working {
+                    request,
+                    sent_at_ms: *sent_at_ms,
+                    not_prepared: not_prepared.as_deref(),
+                },
                 sent,
                 offers_actions,
             )),
@@ -545,16 +549,19 @@ impl StatusCard {
             .action(Some(StatusAction::stop(Stopped::Start(start))))
     }
 
-    /// The agent works on its turn `request`, whose latest attempt went out at `sent_at_ms`;
-    /// `sent` tells what the turn carries of the reviewer's, `offers_actions` whether the page
-    /// offers Stop waiting.
+    /// The agent works on its turn `working`; `sent` tells what the turn carries of the
+    /// reviewer's, `offers_actions` whether the page offers Stop waiting.
     fn working(
         round: &RoundSnapshot,
-        request: &str,
-        sent_at_ms: Option<u64>,
+        working: Working<'_>,
         sent: Option<Sent>,
         offers_actions: bool,
     ) -> Self {
+        let Working {
+            request,
+            sent_at_ms,
+            not_prepared,
+        } = working;
         let title = match sent {
             Some(sent) => format!("The agent is working on {}", sent.named()),
             None if round.design.is_none() => {
@@ -567,10 +574,14 @@ impl StatusCard {
         } else {
             "You can leave this tab; its title changes when the agent's turn is ready."
         };
-        Self::new(StatusKind::Progress, "waiting", title)
-            .since("Sent", sent_at_ms)
-            .next(next)
-            .action(offers_actions.then(|| StatusAction::stop(Stopped::Turn(request, sent))))
+        let card = Self::new(StatusKind::Progress, "waiting", title);
+        match not_prepared {
+            Some(line) => card.reason(format!("{line}.")),
+            None => card,
+        }
+        .since("Sent", sent_at_ms)
+        .next(next)
+        .action(offers_actions.then(|| StatusAction::stop(Stopped::Turn(request, sent))))
     }
 
     /// The agent finishes, as the turn `request`, the turn a fork started at `since_ms` while
@@ -771,6 +782,16 @@ impl Sent {
             _ => self.noun().to_owned(),
         }
     }
+}
+
+/// The agent's turn the round waits for while the agent works on it.
+#[derive(Clone, Copy)]
+struct Working<'a> {
+    request: &'a str,
+    /// When its latest attempt went out to the agent.
+    sent_at_ms: Option<u64>,
+    /// Why it is not a turn a fork prepared, when the reviewer can use the reason.
+    not_prepared: Option<&'a str>,
 }
 
 /// What a Stop waiting stops: a start, or an agent's turn.

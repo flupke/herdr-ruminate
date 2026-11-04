@@ -32,15 +32,28 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
 - Codex needs its daemon (not `--no-daemon` nor a remote app server), and the reviewer's Codex
   plugin, whose prompt hook ran in the agent's session and whose fork guard is installed and
   trusted ([ADR 0011](../adr/0011-keep-a-codex-fork-read-only-with-the-plugin-s-guard.md)).
-- Claude Code needs to be started with options run-ahead knows and
-  without a `--settings` of its own, and with the hooks of the reviewer's Claude Code plugin
-  (below): the switch waits for them. An agent runs with them when the session the host reports
-  is the one the plugin's `SessionStart` hook recorded for its pane, from a process still in
-  the pane. Without them (an agent started before the install, or with the plugin disabled),
-  run-ahead takes no fork, and each answer runs the plain chain with a line that says to
-  restart the agent. Only Linux has the parent-death signal: elsewhere, macOS
-  included, `fork-exec` refuses and `ClaudeForks` takes no fork, so every answer runs the plain
-  chain, with the reason.
+- Claude Code needs to be started with options run-ahead knows (what follows `--` is a prompt,
+  as herdr-bowtie gives its workers' kickoff), and with the hooks of the
+  reviewer's Claude Code plugin (below): the switch waits for them. An agent runs with the
+  plugin's hooks when the session the host reports is the one the plugin's `SessionStart` hook
+  recorded for its pane, from a process still in the pane. Without them (an agent started
+  before the install, or with the plugin disabled), run-ahead takes no fork, and each answer
+  runs the plain chain with a line that says to restart the agent. Only Linux has the
+  parent-death signal: elsewhere, macOS included, `fork-exec` refuses and `ClaudeForks` takes
+  no fork, so every answer runs the plain chain, with the reason.
+- Claude Code takes only the last `--settings`, and herdr-bowtie starts every agent with a file
+  of them. So a fork passes the agent's settings with its guard as their only hook, in a file
+  only the user reads (a command line is everyone's to read): the hooks of the agent's
+  `--settings` do not run in a fork (those of the user's, the project's and the plugins' do),
+  and the settings set `disableAllHooks` false, which outranks theirs. For settings that
+  disable the hooks, or that a fork cannot read, no fork is taken, and the answer's line says
+  why.
+- Claude Code 2.1.318 skips a settings file with an error as a whole, the guard with it (seen
+  with `"permissions": {"allow": "notalist"}`), and still runs. So the fork's settings carry a
+  `SessionStart` hook that writes a mark on its standard error, which `-p`'s `stream-json`
+  reports as a `hook_response` before its `init`: a fork whose `init` comes without it is
+  stopped there, as its first request starts, well before it can call a tool (`claude-fork`'s
+  `stream.rs`).
 - What the forks do, Claude Code's and Codex's, is written to `run-ahead.log` in the plugin's
   state directory (a Codex fork's tokens from `thread/tokenUsage/updated`, its
   `cachedInputTokens` as read from the cache), and
@@ -94,6 +107,16 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
   returns; `AgentStatuses::forward` reports the current status, then each change); nothing
   polls. An `EventCanceller` ends the
   stream at once by shutting its socket down.
+- Under herdr-core, Claude Code 2.1.318 reports `idle` before it writes the end of its turn
+  to the transcript, which then lacks the turn's last tool calls and answer (seen on every
+  turn of a round). A fork taken at once starts from an older entry, and the answer then runs
+  the plain chain (`SessionMoved`). So `ClaudeForks`' status watch passes an idle on only once
+  the transcript holds an answer that ends the turn (a `stop_reason` of `end_turn`,
+  `stop_sequence`, `max_tokens` or `refusal`; an interrupted turn waits it out), waiting on the
+  transcript directory's events on the watch's thread, or once `ForkWaits::transcript` passed.
+  A question that comes once the agent is idle takes its forks at once, without that wait: its
+  next idle, whose transcript moved since, takes them again. Under Herdr, its `Stop` hook
+  reported idle after that write.
 - After `/resume`, the switch waits for the plugin's `SessionStart` hook with the source
   `resume` and the fork's session, which comes about 0.5 s after Enter (Claude Code 2.1.292).
   Herdr hears of the session from its own hook, which Claude Code runs beside the reviewer's,
@@ -101,7 +124,8 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
   `pane.updated` only when the agent's name changes), so the switch then asks Herdr every
   100 ms until it reports the agent on that session, idle. Both waits end 20 s after the
   `/resume`. `review_run_ahead::ForkWaits` holds these durations, the 10 s wait for a submit's
-  answer and the 1 s before a dropped status watch subscribes again, for both hosts; the
+  answer, the 1 s before a dropped status watch subscribes again and the 5 s wait for the end
+  of a turn in the transcript, for both hosts; the
   reviewer's `RunAheadSetup` passes the defaults, and lets a test pass small ones.
 - Text left in Claude Code's input box joins a typed `/resume` into one prompt, `<text>
   /resume <session>`, which fires `UserPromptSubmit`; a command alone fires none. So while a
@@ -118,6 +142,28 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
 - The test stand-in for Claude Code reports a resumed session to Herdr as Herdr's own hook
   does, with a newer `--seq` and `--session-start-source resume`; without them Herdr kept
   reporting the first session.
+
+## Run-ahead with real Claude Code under herdr-app
+
+Checked once with herdr-app 0.1.13, herdr-core 0.1.18 and Claude Code 2.1.318: forks, the
+`/resume` switch over `terminal.send`, and a prepared conclusion shown about 1 s after a bare
+answer. To check it again after a change to the forks or the switch:
+
+1. `make build`, `scripts/herdr-app-private start 2400x4000` (tall, so the pane shows a
+   question's choices), source its env file, `scripts/herdr-app-mod install`.
+2. Write `$XDG_STATE_HOME/herdr-progressive-reviewer/settings.json` with
+   `"explore_round":{"run_ahead":"recommended"}` and `"explore_page":{"pane_starts":"in_pane"}`.
+3. A scratch jj repository with one change, then `herdr-app do space.new '{"folder": ...}'`.
+4. Type the agent into its terminal with `hc send`: `env` with the `CLAUDE*` variables unset and
+   `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` unset (the owner's,
+   see [herdr-app](herdr-app.md#a-private-herdr-app)), then `claude --settings <file>`, the
+   file holding `pluginConfigs` with this checkout's `bin/reviewer-control` as the plugin's
+   `control`, as herdr-bowtie's agents carry a settings file. Accept the folder's trust with
+   `hc keys <t> down enter`.
+5. `herdr-app do mod.open '{"name":"herdr-progressive-reviewer"}'`; in the pane, `e`, then `p`
+   (Start in the pane). Once `run-ahead.log` in the private state says the fork submitted, `end`,
+   `1`, `ctrl+enter`: the pane shows the next turn with `Prepared while you were thinking`.
+   About ten Sonnet turns on the owner's subscription.
 
 ## The reviewer's Claude Code plugin
 
@@ -173,7 +219,8 @@ The contract check has not had a real run yet: its first needs a token from
 `claude setup-token`. Until that run, the rehearsals are its only proof.
 
 Run the contract check once after an upgrade of Claude Code or of Herdr, or a change to the
-fork's command line (`claude-fork`'s `arguments.rs`, `pane.rs`, `host.rs`) or to the switch and
+fork's command line or its settings (`claude-fork`'s `arguments.rs`, `pane.rs`, `host.rs`,
+`settings.rs`, `stream.rs`) or to the switch and
 the settling (`claude-fork`'s `switch.rs`, the session's `run_ahead/switch.rs` and
 `run_ahead/settle.rs`): one run, not one per ticket. The rehearsals guard the tests the rest of
 the time.

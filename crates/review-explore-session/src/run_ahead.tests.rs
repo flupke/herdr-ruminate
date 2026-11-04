@@ -647,6 +647,24 @@ fn cancelling_the_answer_a_question_followed_discards_its_forks_and_forks_the_qu
 }
 
 #[test]
+fn forks_taken_before_the_agent_wrote_the_end_of_its_turn_are_taken_again_at_its_next_idle() {
+    let mut harness = Harness::start();
+    harness.ask(RunAhead::Every);
+    let first: Vec<_> = harness.forks.started();
+
+    // Claude Code under herdr-core writes the end of its turn after it reported idle.
+    harness.forks.move_session("the-turn-s-end");
+    harness.forks.report(AgentStatus::Idle);
+    harness.pump();
+
+    assert_eq!(
+        harness.forks.discarded(),
+        [first[0].0.clone(), first[1].0.clone()]
+    );
+    assert_eq!(harness.forks.started().len(), 4);
+}
+
+#[test]
 fn forks_are_taken_again_when_the_agent_worked_and_its_session_moved() {
     let mut harness = Harness::start();
     harness.ask(RunAhead::Every);
@@ -2471,6 +2489,23 @@ fn a_question_that_needs_no_fork_is_no_failure() {
     harness.ask(RunAhead::Recommended);
 
     assert_eq!(harness.forks_saved().failed_in_a_row, 0);
+}
+
+#[test]
+fn the_page_says_why_nothing_was_prepared_while_the_agent_works_on_the_answer() {
+    let mut harness = Harness::start();
+    harness.forks.refuse_points("unknown option --frobnicate");
+    harness.ask(RunAhead::Every);
+
+    harness.answer("");
+
+    let RoundStage::AgentWorking { not_prepared, .. } = harness.page.stage() else {
+        panic!("the page shows {:?}", harness.page.stage());
+    };
+    assert_eq!(
+        not_prepared.as_deref(),
+        Some("Not prepared: nothing was prepared for this question (unknown option --frobnicate)")
+    );
 }
 
 #[test]

@@ -592,6 +592,7 @@ mod explore_page {
                 request: "turn".into(),
                 sent_at_ms: None,
                 finishing_since_ms: None,
+                not_prepared: None,
                 answer: None,
             },
         );

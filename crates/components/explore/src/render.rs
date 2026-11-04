@@ -376,7 +376,7 @@ impl ExploreComponent {
     pub(super) fn run_ahead_line(
         &self,
         posted: impl Fn(&InterviewUpdate) -> bool,
-    ) -> Option<&'static str> {
+    ) -> Option<std::borrow::Cow<'static, str>> {
         let exploration = self.exploration.as_ref()?;
         exploration
             .conversation
