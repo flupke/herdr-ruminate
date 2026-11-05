@@ -1,6 +1,7 @@
 //! Terminal and worker integration for the review pane.
 
 mod actions;
+mod agent_environment;
 mod auto_review;
 mod document;
 mod editor;
@@ -53,8 +54,10 @@ use review_explore_page_host::{Browser, PageDirectory, PageHost, PageOpener, Tun
 use review_explore_page_settings::ExplorePageSettings;
 use review_explore_session as explore_session;
 use review_repository::repository::Repository;
+use review_significance::JevClassifier;
 use review_store::ReviewStore;
 use review_ui::{Action, Key, ReviewApplication, TerminalAction, Theme, UserInput};
+use reviewer_config::ReviewerConfig;
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGTERM};
 use signal_hook::flag;
 use terminal::{PaneBackend, TerminalBackend};
@@ -85,6 +88,8 @@ pub struct Runtime {
     /// Herdr, or herdr-core under herdr-app.
     host: Arc<dyn AgentHost>,
     theme: Theme,
+    /// Jev, when a `TypeSafe` API key enables it.
+    jev: JevClassifier,
 }
 
 struct TerminalGuard {
@@ -132,10 +137,15 @@ struct MouseClicks {
 
 impl Runtime {
     /// Read the pane context that Herdr, or herdr-app and its mod, supply.
+    ///
+    /// Under herdr-core, it first runs the program again with the environment of the agent it
+    /// opened beside, as it had under Herdr.
     pub fn from_env() -> eyre::Result<Self> {
+        agent_environment::adopt();
         // The state root may move the state Herdr kept: only once the pane runs in a host and
         // a repository.
         let host = host::Host::from_env(env::args().skip(1))?;
+        let config = ReviewerConfig::from_env()?;
         let repository = Repository::discover(env::current_dir()?)?;
         let state_dir = reviewer_dirs::create_state_root()?;
         let repository = repository.with_state_root(&state_dir);
@@ -146,7 +156,8 @@ impl Runtime {
             tab_id: host.tab_id,
             initial_agent: host.initial_agent,
             host: host.agents,
-            theme: Theme::from_env()?,
+            theme: Theme::from_config(&config)?,
+            jev: jev::classifier(&config)?,
         })
     }
 
@@ -186,7 +197,7 @@ impl Runtime {
                 agents: Arc::clone(&self.host),
                 endpoint: review_mcp::Endpoint::from_env(self.repository.root()),
                 theme: self.theme,
-                jev: jev::classifier_from_env(),
+                jev: self.jev.clone(),
                 turns: vision_turns_from_env(),
                 source_watches: Some(watcher.source_requests()),
                 page: page_round,

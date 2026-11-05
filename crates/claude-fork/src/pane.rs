@@ -2,7 +2,6 @@
 
 use std::ffi::OsString;
 use std::fs;
-use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
 
 use agent_fork::ForkCommand;
@@ -33,7 +32,7 @@ impl PaneClaude {
         let program = fs::read_link(proc.join("exe")).map_err(|_| read("program"))?;
         let directory = fs::read_link(proc.join("cwd")).map_err(|_| read("directory"))?;
         let command = fs::read(proc.join("cmdline")).map_err(|_| read("command line"))?;
-        let environ = fs::read(proc.join("environ")).map_err(|_| read("environment"))?;
+        let environment = process_environment::read(pid).map_err(|_| read("environment"))?;
         let command: Vec<String> = command
             .split(|byte| *byte == 0)
             .filter(|argument| !argument.is_empty())
@@ -62,7 +61,7 @@ impl PaneClaude {
                     .map(OsString::from)
                     .collect(),
                 directory,
-                environment: environment(&environ),
+                environment,
             },
             model: kept.model,
             settings,
@@ -83,25 +82,6 @@ impl PaneClaude {
             .unwrap_or_else(|| PathBuf::from("/nonexistent/.claude"));
         Transcripts::at(configuration.join("projects"))
     }
-}
-
-/// The variables of a process environment, as `/proc/<pid>/environ` holds them, except those
-/// of Herdr and of herdr-core.
-fn environment(environ: &[u8]) -> Vec<(OsString, OsString)> {
-    environ
-        .split(|byte| *byte == 0)
-        .filter_map(|entry| {
-            let at = entry.iter().position(|byte| *byte == b'=')?;
-            let (name, value) = entry.split_at(at);
-            let host = name.starts_with(b"HERDR_") || name.starts_with(b"HC_");
-            (!host).then(|| {
-                (
-                    OsString::from_vec(name.to_vec()),
-                    OsString::from_vec(value[1..].to_vec()),
-                )
-            })
-        })
-        .collect()
 }
 
 #[cfg(test)]

@@ -82,4 +82,8 @@ The pane's theme is `theme = "<name>"` in `~/.config/herdr-progressive-reviewer/
 `dracula`, `nord`, `gruvbox`, `gruvbox-light`, `one-dark`, `one-light`, `solarized`,
 `solarized-light`, `github-light` or `monokai`.
 
+Jev, which marks changed lines too insignificant to review, runs with a TypeSafe API key:
+`TYPESAFE_API_KEY` in the review pane's environment (under herdr-app, the one your agent
+started with), or `typesafe_api_key = "<key>"` in that `config.toml`; keep the file readable by you alone (`chmod 600`). The environment's key wins.
+
 Contributor instructions are in [AGENTS.md](AGENTS.md).

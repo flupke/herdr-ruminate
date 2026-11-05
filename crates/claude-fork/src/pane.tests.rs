@@ -2,18 +2,6 @@ use super::*;
 use agent_fork::ForkCommand;
 
 #[test]
-fn a_fork_inherits_no_variable_of_herdr_or_herdr_core() {
-    let environ = b"HOME=/home/a\0HERDR_PANE_ID=w1:p1\0HERDR_SOCKET_PATH=/s\0HC_TERMINAL_ID=t7\0HC_TERMINAL_SOCKET=/c\0PATH=/bin\0";
-
-    let names: Vec<_> = environment(environ)
-        .into_iter()
-        .map(|(name, _)| name)
-        .collect();
-
-    assert_eq!(names, ["HOME", "PATH"]);
-}
-
-#[test]
 fn the_transcripts_are_under_the_configuration_directory_or_the_home_directory() {
     let mut pane = PaneClaude {
         command: ForkCommand {

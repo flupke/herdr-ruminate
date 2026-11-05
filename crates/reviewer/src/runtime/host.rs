@@ -20,9 +20,9 @@ const HERDR_APP_HOME: &str = "--herdr-app-home";
 
 /// What herdr-app's mod tells the review pane, in its arguments.
 #[derive(Debug, Default, Eq, PartialEq)]
-struct Arguments {
+pub(super) struct Arguments {
     /// The terminal focused when the pane opened.
-    focused_terminal: Option<PaneId>,
+    pub(super) focused_terminal: Option<PaneId>,
     /// The home of the window whose focus the pane follows.
     herdr_app_home: Option<PathBuf>,
 }
@@ -40,7 +40,7 @@ pub(super) struct Host {
 
 /// Which host runs the review pane.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum HostKind {
+pub(super) enum HostKind {
     Herdr,
     /// herdr-core (`hc`), the core of herdr-app.
     HerdrCore,
@@ -49,7 +49,7 @@ enum HostKind {
 /// Which host runs the review pane, by the variable each gives its terminals, which `var`
 /// reads. Herdr's wins: a Herdr started from a terminal of herdr-app may pass that terminal's
 /// herdr-core variables on to its panes, while its agents live in Herdr.
-fn host_kind(var: impl Fn(&str) -> Option<OsString>) -> Option<HostKind> {
+pub(super) fn host_kind(var: impl Fn(&str) -> Option<OsString>) -> Option<HostKind> {
     let set = |name: &str| var(name).is_some_and(|value| !value.is_empty());
     if set("HERDR_SOCKET_PATH") {
         Some(HostKind::Herdr)
@@ -122,7 +122,7 @@ fn focus_home(named: Option<PathBuf>, var: impl Fn(&str) -> Option<OsString>) ->
 
 impl Arguments {
     /// The options among the reviewer's `arguments`, its program name left out, in any order.
-    fn parse(mut arguments: impl Iterator<Item = String>) -> eyre::Result<Self> {
+    pub(super) fn parse(mut arguments: impl Iterator<Item = String>) -> eyre::Result<Self> {
         let usage = || {
             eyre::eyre!(
                 "usage: reviewer [{FOCUSED_TERMINAL} <terminal>] [{HERDR_APP_HOME} <folder>]"

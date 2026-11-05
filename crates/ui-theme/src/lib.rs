@@ -2,11 +2,8 @@
 
 #![allow(clippy::unreadable_literal)]
 
-use std::fs;
-use std::io::ErrorKind;
-use std::path::Path;
-
 use ratatui::style::Color;
+use reviewer_config::ReviewerConfig;
 use two_face::theme::EmbeddedThemeName;
 
 const DEFAULT: &str = "catppuccin";
@@ -61,30 +58,16 @@ struct ThemeDefinition {
 }
 
 impl Theme {
-    /// Read the optional theme from the reviewer's `config.toml`.
-    pub fn from_env() -> eyre::Result<Self> {
-        let Some(directory) = reviewer_dirs::config_dir() else {
+    /// The theme the reviewer's `config` names, else the default.
+    ///
+    /// # Errors
+    /// Fails when `theme` is not the name of a theme.
+    pub fn from_config(config: &ReviewerConfig) -> eyre::Result<Self> {
+        let Some(name) = config.string("theme")? else {
             return Ok(Self::default());
         };
-        Self::from_config_dir(&directory)
-    }
-
-    fn from_config_dir(directory: &Path) -> eyre::Result<Self> {
-        let path = directory.join("config.toml");
-        let source = match fs::read_to_string(&path) {
-            Ok(source) => source,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Self::default()),
-            Err(error) => return Err(error.into()),
-        };
-        let config: toml::Value = toml::from_str(&source)?;
-        let Some(value) = config.get("theme") else {
-            return Ok(Self::default());
-        };
-        let name = value
-            .as_str()
-            .ok_or_else(|| eyre::eyre!("`theme` in {} must be a string", path.display()))?;
         Self::resolve(name)
-            .ok_or_else(|| eyre::eyre!("unknown theme {name:?} in {}", path.display()))
+            .ok_or_else(|| eyre::eyre!("unknown theme {name:?} in {}", config.path().display()))
     }
 
     fn resolve(name: &str) -> Option<Self> {

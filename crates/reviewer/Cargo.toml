@@ -38,6 +38,7 @@ herdr-app-focus = { path = "../herdr-app-focus" }
 herdr-client = { path = "../herdr-client" }
 ignore.workspace = true
 notify.workspace = true
+process-environment = { path = "../process-environment" }
 ratatui = { workspace = true, features = ["crossterm"] }
 review-repository = { path = "../review-repository" }
 review-source = { path = "../review-source" }
@@ -52,6 +53,7 @@ review-state-migration = { path = "../review-state-migration" }
 review-store = { path = "../review-store" }
 review-types = { path = "../review-types" }
 review-ui = { path = "../review-ui" }
+reviewer-config = { path = "../reviewer-config" }
 reviewer-dirs = { path = "../reviewer-dirs" }
 ui-events = { path = "../ui-events" }
 vision-signal = { path = "../vision-signal" }
