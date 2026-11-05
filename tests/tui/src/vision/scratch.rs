@@ -2,7 +2,8 @@
 //! reviewer: its private state, its stand-in agent, browser and Jev script, and the turns it
 //! records. The stand-in agent and its forks keep their transcripts there too, never in the
 //! user's Claude Code configuration; the reviewer's hooks listen in the app sandbox's runtime
-//! directory.
+//! directory. None of it is in the host's `/tmp`, which the bubblewrap sandbox does not show: the
+//! sandbox's processes reach each file at its own path.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -16,10 +17,15 @@ use herdr_client::protocol::{PluginContext, WorkspaceId};
 use review_explore_page_settings::ExplorePageSettings;
 use review_repository::repository::RepoType;
 use review_test_support::{
-    ReviewRepositoryFixture, TestPort, repository_fixture, write_reviewer_settings,
+    ReviewRepositoryFixture, TestPort, repository_fixture_in, write_reviewer_settings,
 };
 
 use super::session::AGENT;
+
+/// Where scratch repositories go: the bubblewrap sandbox shows the host's `/var/tmp`, unlike its
+/// `/tmp`, and no `.envrc` covers it, unlike the checkout's, which direnv would refuse in the
+/// sandbox, failing the pane's language servers.
+const REPOSITORIES: &str = "/var/tmp";
 
 /// The loopback interface, which stands in for a network interface in a vision session.
 #[cfg(target_os = "linux")]
@@ -55,17 +61,17 @@ impl Seed {
     }
 }
 
-/// A scratch repository and the session's files, in `directory`, which outlives the session.
+/// A scratch repository, and the session's files in `directory`, which outlives the session.
 pub(crate) struct Scratch {
     repository: Box<dyn ReviewRepositoryFixture>,
     /// The root of the workspace of the repository the reviewer and its agent run in: the
     /// repository's own, or one `enter_workspace` added.
     workspace: PathBuf,
     directory: PathBuf,
-    /// The stand-ins' event socket's directory: a temporary directory, since a socket's path is
-    /// short and the session directory's may not be.
-    runtime: tempfile::TempDir,
+    /// The reviewer's MCP port.
     port: TestPort,
+    /// The first port of the Explore page's network listener.
+    page_port: TestPort,
 }
 
 impl Scratch {
@@ -76,7 +82,7 @@ impl Scratch {
                 .context("the session directory needs a parent")?,
         )?;
         fs::create_dir(&directory).context("the session directory must be new")?;
-        let repository = repository_fixture(kind);
+        let repository = repository_fixture_in(kind, Path::new(REPOSITORIES));
         for (path, content) in &seed.base {
             repository.write(path, content.as_bytes());
         }
@@ -88,18 +94,18 @@ impl Scratch {
             workspace: repository.root().to_owned(),
             repository,
             directory,
-            runtime: tempfile::Builder::new().prefix("vision-").tempdir()?,
             port: TestPort::new(),
+            page_port: TestPort::new(),
         };
         fs::create_dir_all(scratch.state())?;
         fs::create_dir_all(scratch.turns())?;
         fs::create_dir_all(scratch.agent_directory().path())?;
         // The Explore page's network listener, and the pane's QR code, on the loopback
-        // interface: shown as on a real network, reachable from this machine only, on any free
-        // port.
+        // interface: shown as on a real network, reachable from this machine only, on a port
+        // free on the host, which the session forwards from the sandbox's loopback.
         let mut settings = ExplorePageSettings::default();
         settings.network.set_interface(LOOPBACK);
-        settings.network.first_port = 0;
+        settings.network.first_port = scratch.page_port.number();
         write_reviewer_settings(&scratch.state(), &settings);
         scratch.write_browser()?;
         Ok(scratch)
@@ -139,6 +145,12 @@ impl Scratch {
         self.port.number()
     }
 
+    /// The first port the Explore page's network listener tries: the one it takes in the
+    /// sandbox, whose loopback only the reviewer listens on.
+    pub(crate) fn page_port(&self) -> u16 {
+        self.page_port.number()
+    }
+
     /// The reviewer's private state directory.
     fn state(&self) -> PathBuf {
         self.directory.join("state")
@@ -157,15 +169,6 @@ impl Scratch {
     /// The Claude Code configuration of the stand-in agent and its forks, with their transcripts.
     pub(crate) fn claude_config(&self) -> PathBuf {
         self.directory.join("claude-config")
-    }
-
-    pub(crate) fn runtime(&self) -> &Path {
-        self.runtime.path()
-    }
-
-    /// The socket the stand-in agent and its forks report on.
-    pub(crate) fn events_socket(&self) -> PathBuf {
-        self.runtime().join("stand-in.sock")
     }
 
     /// The script the `jev` tool writes; the reviewer reads it in place of the paid classifier.
@@ -209,10 +212,17 @@ impl Scratch {
     /// The program of the stand-in agent's terminal, on its new session `session`: it plays
     /// Claude Code, reports on the session's event socket and, with `hooks`, runs the hooks of
     /// the reviewer's Claude Code plugin through the `reviewer-control` beside `reviewer`. Each
-    /// turn ends by itself, unless the driver holds turns.
-    pub(crate) fn agent_command(&self, reviewer: &Path, session: &str, hooks: bool) -> Vec<String> {
+    /// turn ends by itself, unless the driver holds turns. `events` is the session's event
+    /// socket, as the sandbox's processes see it.
+    pub(crate) fn agent_command(
+        &self,
+        reviewer: &Path,
+        session: &str,
+        hooks: bool,
+        events: &Path,
+    ) -> Vec<String> {
         let mut variables = vec![
-            (variables::EVENTS, path_string(&self.events_socket())),
+            (variables::EVENTS, path_string(events)),
             (
                 variables::DIRECTORY,
                 path_string(self.agent_directory().path()),
@@ -221,7 +231,6 @@ impl Scratch {
             (variables::SESSION, session.to_owned()),
             (variables::TURNS, "auto".to_owned()),
             ("CLAUDE_CONFIG_DIR", path_string(&self.claude_config())),
-            ("BROWSER", path_string(&self.browser())),
         ];
         if hooks {
             variables.push((
@@ -230,9 +239,7 @@ impl Scratch {
             ));
         }
         // The reviewer takes on its agent's environment under herdr-core: what it must not see
-        // goes from the agent's too, and its browser comes from there. The browser goes here
-        // rather than in the sandbox's environment, where herdr-common's app sandbox sets its
-        // own after the caller's variables (a gap of herdr-common's).
+        // goes from the agent's too.
         ["/usr/bin/env", "-u", "TYPESAFE_API_KEY", "-u", "NO_COLOR"]
             .into_iter()
             .map(str::to_owned)
@@ -247,19 +254,12 @@ impl Scratch {
 
     /// The program of the reviewer's terminal: `reviewer`, following the agent's terminal
     /// `agent` and the focus of the app whose home is `app_home`, as the launcher mod opens it,
-    /// without the paid classifier's key, in colors whatever the user's terminal says, with the
-    /// session's browser.
-    pub(crate) fn reviewer_command(
-        &self,
-        reviewer: &Path,
-        agent: &str,
-        app_home: &str,
-    ) -> Vec<String> {
+    /// without the paid classifier's key, in colors whatever the user's terminal says.
+    pub(crate) fn reviewer_command(reviewer: &Path, agent: &str, app_home: &str) -> Vec<String> {
         ["/usr/bin/env", "-u", "TYPESAFE_API_KEY", "-u", "NO_COLOR"]
             .into_iter()
             .map(str::to_owned)
             .chain([
-                format!("BROWSER={}", path_string(&self.browser())),
                 path_string(reviewer),
                 "--focused-terminal".to_owned(),
                 agent.to_owned(),
@@ -270,7 +270,8 @@ impl Scratch {
     }
 
     /// The variables every process of the app sandbox gets: the reviewer's in a vision session,
-    /// with private state, and a `PATH` that finds the stand-in agent as `claude` first.
+    /// with private state, the session's browser, and a `PATH` that finds the stand-in agent as
+    /// `claude` first.
     pub(crate) fn sandbox_environment(&self) -> Vec<(OsString, OsString)> {
         let mut path = OsString::from(self.agent_bin());
         if let Some(inherited) = std::env::var_os("PATH") {
@@ -286,6 +287,7 @@ impl Scratch {
             ),
             ("HERDR_REVIEWER_JEV_SCRIPT", self.jev_script().into()),
             ("HERDR_REVIEWER_VISION_TURNS", self.turns().into()),
+            ("BROWSER", self.browser().into()),
             ("PATH", path),
         ]
         .into_iter()
@@ -294,9 +296,14 @@ impl Scratch {
     }
 
     /// Run the Herdr action that opens the Explore page, as Herdr would run it in the reviewer's
-    /// space `space`, with a browser that records the address it opens. Returns that address,
-    /// with its token.
-    pub(crate) fn open_explore_page(&self, reviewer: &Path, space: &str) -> Result<String> {
+    /// space `space`, with a browser that records the address it opens: `action` runs
+    /// `reviewer-control` in the sandbox, where the action checks that the page answers. Returns
+    /// that address, with its token.
+    pub(crate) fn open_explore_page(
+        &self,
+        mut action: std::process::Command,
+        space: &str,
+    ) -> Result<String> {
         let opened = self.directory.join("explore-page-url");
         let _ = fs::remove_file(&opened);
         let browser = self.directory.join("browser");
@@ -310,15 +317,13 @@ impl Scratch {
             focused_pane_id: None,
             focused_pane_cwd: Some(self.root().to_owned()),
         };
-        let output = std::process::Command::new(reviewer.with_file_name("reviewer-control"))
+        let output = action
             .arg("explore-page")
             .env(
                 "HERDR_PLUGIN_CONTEXT_JSON",
                 serde_json::to_string(&context)?,
             )
-            .env("HERDR_PLUGIN_STATE_DIR", self.state())
             .env("BROWSER", &browser)
-            .current_dir(self.root())
             .output()?;
         ensure!(
             output.status.success(),

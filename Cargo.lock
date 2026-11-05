@@ -1157,7 +1157,7 @@ dependencies = [
 [[package]]
 name = "fake-agent"
 version = "0.1.0"
-source = "git+https://github.com/flupke/herdr-common#e483a4c508dc6c66efd01d7fe2a1a6f43bbec57c"
+source = "git+https://github.com/flupke/herdr-common#fd4260b486b57a72aa462caaec3d54fcbff103b7"
 dependencies = [
  "rustix 1.1.4",
  "serde",
@@ -6301,7 +6301,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "vision-signal"
 version = "0.1.0"
-source = "git+https://github.com/flupke/herdr-common#e483a4c508dc6c66efd01d7fe2a1a6f43bbec57c"
+source = "git+https://github.com/flupke/herdr-common#fd4260b486b57a72aa462caaec3d54fcbff103b7"
 
 [[package]]
 name = "vision-turns"

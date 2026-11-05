@@ -3,7 +3,8 @@
 # `.mcp.json` registers it; `make vision` builds it. A missing or stale server is built first, in
 # the dev shell, with a note and the build output on standard error: standard output carries the
 # MCP messages. The server gets the dev shell's pinned herdr-app, hc, Weston and Vulkan driver,
-# which its app sandbox runs, and replaces this script, so the client's signals reach it.
+# which its app sandbox runs, and its PATH, where the sandbox finds bubblewrap, nsenter and socat,
+# and replaces this script, so the client's signals reach it.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 server="$root/tests/tui/target/debug/reviewer-vision"
@@ -21,5 +22,5 @@ if stale; then
 fi
 # shellcheck disable=SC2016
 eval "$(scripts/dev-shell bash -c 'for name in TEST_HERDR_APP_BIN_PATH TEST_HC_BIN_PATH \
-  TEST_WESTON_BIN_PATH TEST_HERDR_APP_VULKAN_DRIVER; do printf "export %s=%q\n" "$name" "${!name}"; done')"
+  TEST_WESTON_BIN_PATH TEST_HERDR_APP_VULKAN_DRIVER PATH; do printf "export %s=%q\n" "$name" "${!name}"; done')"
 exec "$server"

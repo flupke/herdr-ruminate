@@ -32,6 +32,10 @@ const DISPLAY_SIZE: (u16, u16) = (1600, 1000);
 /// The stand-in agent's name on the event socket.
 pub(crate) const AGENT: &str = "agent";
 
+/// The event socket the stand-in agent and its forks report on, in the sandbox's directory: its
+/// path there is short, as a socket's must be, and both sides reach it.
+const EVENTS_SOCKET: &str = "stand-in.sock";
+
 /// The prefix of the reviewer's MCP tools, as Claude Code names them in a fork's output.
 const MCP_TOOL_PREFIX: &str = "mcp__herdr_reviewer__";
 
@@ -76,21 +80,21 @@ impl Session {
     ) -> Result<(Self, Vision, Screen)> {
         let scratch = Scratch::create(options.repository, &options.seed, directory)?;
         scratch.install_agent()?;
-        let events = Events::listen(&scratch.events_socket())?;
-        // Plain, not bubblewrap: the server reaches the reviewer's MCP endpoint and Explore page
-        // on the loopback interface, and the session's sockets and repository in /tmp, which
-        // bubblewrap gives the sandbox a private copy of. Its environment still names its own
-        // display, herdr-app and core alone. A gap of herdr-common's app sandbox (#14): back to
-        // bubblewrap once it reaches a port of the sandbox's loopback from outside.
         let sandbox = AppSandbox::start(
             &Programs::pinned().map_err(from_eyre)?,
             &Options {
-                isolation: Isolation::Plain,
+                isolation: Isolation::Bubblewrap,
                 display_size: DISPLAY_SIZE,
                 environment: scratch.sandbox_environment(),
             },
         )
         .map_err(from_eyre)?;
+        // The server calls the reviewer's MCP endpoint as the agent and its forks, and the
+        // Explore page's network listener is for a browser on the host.
+        for port in [scratch.mcp_port(), scratch.page_port()] {
+            sandbox.forward(port).map_err(from_eyre)?;
+        }
+        let events = Events::listen(&sandbox.directory().join(EVENTS_SOCKET))?;
         let vision = Vision::start(sandbox).map_err(from_eyre)?;
         let space = vision
             .sandbox()
@@ -152,7 +156,7 @@ impl Session {
             "agent_hooks": self.agent_hooks,
             "run_ahead_log": self.scratch.run_ahead_log(),
             "claude_config": self.scratch.claude_config(),
-            "runtime": self.scratch.runtime(),
+            "page_port": self.scratch.page_port(),
         })
     }
 
@@ -160,15 +164,13 @@ impl Session {
         self.scratch.directory()
     }
 
-    /// Ask the reviewer for an acknowledgement, with no input of its own, and return the screen
-    /// of the frame that names it: the reviewer's reaction to what reached it meanwhile, such as
-    /// an agent's tool call. The reviewer takes the focus first: the request goes to the
-    /// focused terminal.
+    /// Ask the reviewer for an acknowledgement, with no input, and return the screen of the
+    /// frame that names it: the reviewer's reaction to what reached it meanwhile, such as an
+    /// agent's tool call. The reviewer takes the focus first: the request goes to the focused
+    /// terminal.
     pub(crate) fn settle(&self, vision: &mut Vision) -> Result<Screen> {
         self.focus_reviewer(vision)?;
-        // No key, then the core's acknowledgement request. A gap of herdr-common's vision core
-        // (#15), which has no such call of its own.
-        let (_, screen) = vision.act(&Input::Keys(&[])).map_err(from_eyre)?;
+        let (_, screen) = vision.settle().map_err(from_eyre)?;
         screen.context("the reviewer's pane shows no terminal")
     }
 
@@ -350,9 +352,14 @@ impl Session {
         self.settle(vision)
     }
 
-    pub(crate) fn explore_page(&self) -> Result<String> {
-        self.scratch
-            .open_explore_page(&self.reviewer_program, &self.space)
+    /// Run the Herdr action that opens the Explore page in the sandbox, and return the address
+    /// it opened, which the host reaches once its port is forwarded.
+    pub(crate) fn explore_page(&self, vision: &Vision) -> Result<String> {
+        let sandbox = vision.sandbox();
+        let action = sandbox.command(&self.reviewer_program.with_file_name("reviewer-control"));
+        let page = self.scratch.open_explore_page(action, &self.space)?;
+        sandbox.forward(loopback_port(&page)?).map_err(from_eyre)?;
+        Ok(page)
     }
 
     /// Start the reviewer and its stand-in agent again, in a new tab, on the same repository
@@ -468,11 +475,12 @@ fn open_agent(
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
     let from = events.try_received().map_err(|error| anyhow!(error))?.len();
+    let events_socket = vision.sandbox().inside().join(EVENTS_SOCKET);
     let agent = do_command(
         vision,
         "terminal.open",
         &json!({
-            "argv": scratch.agent_command(reviewer, &session, agent_hooks),
+            "argv": scratch.agent_command(reviewer, &session, agent_hooks, &events_socket),
             "folder": scratch.root(),
             "place": "tab",
             "name": "stand-in agent",
@@ -517,7 +525,7 @@ fn open_reviewer(
         vision,
         "terminal.open",
         &json!({
-            "argv": scratch.reviewer_command(reviewer, &agent, &app_home),
+            "argv": Scratch::reviewer_command(reviewer, &agent, &app_home),
             "folder": scratch.root(),
             "place": "right",
             "name": "reviewer",
@@ -623,6 +631,17 @@ fn wait_listed(
     let _ = events.kill();
     let _ = events.wait();
     waited
+}
+
+/// The port of `address`, a page's address on the loopback interface
+/// (`http://127.0.0.1:<port>/…`).
+fn loopback_port(address: &str) -> Result<u16> {
+    let port = address
+        .strip_prefix("http://127.0.0.1:")
+        .and_then(|rest| rest.split(['/', '?']).next())
+        .with_context(|| format!("not an address on the loopback interface: {address}"))?;
+    port.parse()
+        .with_context(|| format!("no port in the address {address}"))
 }
 
 fn string(value: &Value) -> Result<String> {

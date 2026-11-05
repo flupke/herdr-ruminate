@@ -159,8 +159,9 @@ user's live Herdr server or panes during tests.
 
 The vision MCP server and herdr-common's `app-sandbox` run herdr-app in a sandbox of their own,
 on a headless display, with their own core and environment, and act on nothing of the user's
-Herdr or herdr-app. The vision server's sandbox is plain, not bubblewrap
-(`.agents/wiki/tui-vision.md`): its processes could still reach the user's sockets by path.
+Herdr or herdr-app. The vision server's sandbox runs in bubblewrap, where its processes reach
+none of the user's Herdr, herdr-app or hc sockets, nor those of their runtime directory
+(`.agents/wiki/tui-vision.md`); the rest of the host's files show at their own paths.
 
 The Codex Linux sandbox blocks Unix-domain socket bind and connect operations.
 Run tests in the normal sandbox first. If an E2E test fails with `EPERM` while

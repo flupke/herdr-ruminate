@@ -76,11 +76,29 @@ pub enum JjLayout {
     Colocated,
 }
 
+/// A new directory under `parent` for a repository fixture, named so that one a killed test left
+/// behind is easy to find.
+fn fixture_directory(parent: &Path) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix("review-repository-")
+        .tempdir_in(parent)
+        .unwrap()
+}
+
 /// Create a temporary repository for one backend.
 pub fn repository_fixture(repository_type: RepoType) -> Box<dyn ReviewRepositoryFixture> {
+    repository_fixture_in(repository_type, &std::env::temp_dir())
+}
+
+/// Create a temporary repository for one backend in a new directory under `parent`, such as
+/// one that a sandbox without the host's `/tmp` sees.
+pub fn repository_fixture_in(
+    repository_type: RepoType,
+    parent: &Path,
+) -> Box<dyn ReviewRepositoryFixture> {
     match repository_type {
-        RepoType::Git => Box::new(GitFixture::new()),
-        RepoType::Jj => Box::new(JjFixture::new(JjLayout::NonColocated)),
+        RepoType::Git => Box::new(GitFixture::new_in(parent)),
+        RepoType::Jj => Box::new(JjFixture::new_in(JjLayout::NonColocated, parent)),
     }
 }
 
@@ -134,7 +152,12 @@ pub struct GitFixture {
 impl GitFixture {
     /// Create an empty Git repository with one base commit.
     pub fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap();
+        Self::new_in(&std::env::temp_dir())
+    }
+
+    /// [`Self::new`], in a new directory under `parent`.
+    fn new_in(parent: &Path) -> Self {
+        let directory = fixture_directory(parent);
         let root = directory.path().join("repository");
         fs::create_dir(&root).unwrap();
         let fixture = Self {
@@ -239,7 +262,12 @@ impl ReviewRepositoryFixture for GitFixture {
 impl JjFixture {
     /// Create an empty repository with the selected layout.
     pub fn new(layout: JjLayout) -> Self {
-        let directory = tempfile::tempdir().unwrap();
+        Self::new_in(layout, &std::env::temp_dir())
+    }
+
+    /// [`Self::new`], in a new directory under `parent`.
+    fn new_in(layout: JjLayout, parent: &Path) -> Self {
+        let directory = fixture_directory(parent);
         let root = directory.path().join("repository");
         let layout_argument = match layout {
             JjLayout::NonColocated => "--no-colocate",

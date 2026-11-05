@@ -11,7 +11,8 @@ Run `make vision` first: it builds the server and the reviewer, and prints how t
 `.mcp.json` registers the server as `reviewer-vision` through `scripts/vision-mcp`, which
 runs the built server, or builds it first when it is missing or older than the sources
 (slower, and it says so on standard error), with the dev shell's pinned herdr-app, hc, Weston
-and Vulkan driver, which the sandbox runs. Claude Code asks once to approve a project's
+and Vulkan driver, which the sandbox runs, and the dev shell's `PATH`, where it finds
+bubblewrap, nsenter and socat. Claude Code asks once to approve a project's
 server. A session whose server was missing or stale when Claude Code connected may get its
 instructions but no tools: run `make vision`, then drive the server over stdio with a small
 MCP client (`initialize`, then `tools/call`), from one process, since a client that leaves
@@ -34,11 +35,23 @@ it, as the launcher mod opens it (`--focused-terminal`, `--herdr-app-home`): the
 its hc backend. The reviewer's terminal has the focus, so `key` and `type` reach it; `screenshot`
 is the whole window, as herdr-app draws it. The window is 1600x1000.
 
-The sandbox is plain, not in bubblewrap: bubblewrap gives the sandbox a private `/tmp` and
-network, where the server would no longer reach the reviewer's MCP endpoint (`reply`), the
-Explore page, or the scratch repository and event socket, which live in `/tmp`. Its processes
-still get only its own display, app and core in their environment, but, unlike in bubblewrap,
-one could still reach the user's sockets by their path.
+The sandbox runs in bubblewrap: its `/tmp`, network and runtime directory are its own, and the
+user's Herdr, herdr-app and hc directories show empty, so its processes reach none of their
+sockets, nor those of the user's display. The rest of the host's files show at their own paths,
+so another socket, such as Docker's, stays reachable by its path. What the server shares with it
+lives elsewhere:
+
+- The reviewer's MCP endpoint (`reply`, `fork_submit`) and the Explore page's network listener
+  take ports the server leases free on the host, and `start` forwards both from the sandbox's
+  loopback (`AppSandbox::forward`, which runs `socat` from the dev shell inside). The page's
+  own loopback address takes any port free in the sandbox: `explore_page` runs the Herdr action
+  in the sandbox, then forwards the port of the address it opened. A forward fails when that
+  port is taken on the host.
+- The scratch repository is in `/var/tmp`, which the sandbox shows: the host's `/tmp` it does
+  not, and the session directory sits under the checkout, whose `.envrc` direnv would refuse in
+  the sandbox, failing the pane's language servers.
+- The stand-in agent's event socket is in the sandbox's own `/tmp`, which the server reaches
+  through `AppSandbox::directory`: a socket's path must be short.
 
 The stand-in agent is herdr-common's fake agent, run from `crates/stand-in-agent`
 ([test stand-ins](test-stand-ins.md)), named `claude`: it reports its state to herdr-core in
@@ -50,8 +63,10 @@ configuration. Under herdr-core the reviewer takes on its agent's environment, s
 command drops `TYPESAFE_API_KEY` and `NO_COLOR` too.
 
 `stop`, or a client that leaves or signals the server, stops the sandbox and every process in
-it; a `SIGKILL` of the server leaves them, and the sandbox's files in `/tmp`, behind. `reopen` closes the reviewer's and the agent's panes and waits for herdr-core to report both
-ended before it starts the new ones, which bind the same MCP port.
+it; after a `SIGKILL` of the server the kernel still ends them and frees the sandbox's `/tmp`,
+but the scratch repository stays in `/var/tmp`, as `review-repository-*`. `reopen` closes the
+reviewer's and the agent's panes and waits for herdr-core to report both ended before it starts
+the new ones, which bind the same MCP port.
 
 ## How the tools wait
 
@@ -64,7 +79,8 @@ pastes an acknowledgement request that the reviewer never hands to the applicati
 reviewer names it in the next frame's marker, so an action returns the screen of the frame that
 followed its input, with no delay of its own. The reviewer's own tools that act through
 something else (`reply`, `fork_submit`, `fork_end`, `jev`, `agent_prompt`) send a request with no
-key after it, and return the frame that names it. Asynchronous work (a refresh, a diff loading,
+input (the core's `Vision::settle`), and return the frame that names it, with `changed_rows`
+as the core's tools give it. Asynchronous work (a refresh, a diff loading,
 Jev, an agent's turn) shows later: `wait_for` it, which checks the screen at once, then after
 each frame.
 
@@ -75,14 +91,12 @@ These are gaps of herdr-common, for its owner to fill (its issues in brackets); 
 - `click` and `drag` take the window's pixels only: no click on a terminal cell or on a text
   (#17). Read the pixels off a `screenshot`, or use the reviewer's keys (`e` opens Explore, `p`
   starts a round in the pane).
-- `screen` gives text only: no styled screen (colors as ANSI, #17), and no rows-that-changed
-  summary (#15); each action returns the whole screen, without its size.
-- The vision core has no call that asks for an acknowledgement with no input: the reviewer's
-  own tools press no key, then ask (#15).
-- The app sandbox in bubblewrap cannot reach a port of the host's loopback, nor the host's
-  `/tmp`, hence the plain sandbox above (#14).
-- The app sandbox sets its own `BROWSER` after the caller's variables: the session's browser goes
-  in the reviewer's and the agent's commands instead.
+- `screen` gives text only: no styled screen (colors as ANSI, #17); each action returns the
+  whole screen, without its size.
+- A forward keeps the host's side of a connection open after the server inside closed its own,
+  until the host closes it: socat's `STDIO` keeps its output open until its input ends (#20). The
+  server's MCP client reads each answer by its `Content-Length`, and cannot half-close instead:
+  the reviewer drops a request whose client closed its side.
 - `actions.jsonl` records the server's own tools only: the core's go through its router
   untouched.
 

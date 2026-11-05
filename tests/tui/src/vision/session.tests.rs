@@ -20,9 +20,12 @@ impl Fixture {
         Self::start_with(true)
     }
 
-    /// A session whose stand-in agent runs the reviewer's plugin hooks with `agent_hooks`.
+    /// A session whose stand-in agent runs the reviewer's plugin hooks with `agent_hooks`, in a
+    /// directory under `target`: the bubblewrap sandbox does not show the host's `/tmp`.
     fn start_with(agent_hooks: bool) -> (Self, Screen) {
-        let directory = tempfile::tempdir().unwrap();
+        let sessions = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/vision-tests");
+        fs::create_dir_all(&sessions).unwrap();
+        let directory = tempfile::tempdir_in(sessions).unwrap();
         let reviewer = std::env::var_os("REVIEWER_BIN_PATH")
             .expect("run with make e2e-tui, which builds the reviewer");
         let (session, vision, screen) = Session::start(
@@ -108,6 +111,40 @@ fn the_stand_in_agent_answers_an_explore_round_in_the_pane() {
     fixture.wait_for("math.rs");
     fixture.keys(&["e", "p"]);
     fixture.ask();
+}
+
+#[test]
+fn the_host_reaches_the_explore_page_the_action_opened_in_the_sandbox() {
+    let (mut fixture, _) = Fixture::start();
+    fixture.wait_for("math.rs");
+    fixture.keys(&["e", "p"]);
+    fixture.ask();
+    let page = fixture.session.explore_page(&fixture.vision).unwrap();
+    let port = loopback_port(&page).unwrap();
+    let path = page.split_once(&format!(":{port}")).unwrap().1;
+    // The page's token admits the request, which the page answers by setting its cookie.
+    assert_eq!(status_line(port, path), "HTTP/1.1 303 See Other", "{page}");
+    // The network listener refuses a request without a token, as on a real network.
+    let network = fixture.session.scratch.page_port();
+    assert!(
+        status_line(network, "/").starts_with("HTTP/1.1 403"),
+        "port {network}"
+    );
+}
+
+/// The status line of the answer to `GET <path>` on the host's `127.0.0.1:<port>`.
+fn status_line(port: u16, path: &str) -> String {
+    use std::io::Write;
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream.set_read_timeout(Some(GUARD)).unwrap();
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"
+    )
+    .unwrap();
+    let mut status = String::new();
+    BufReader::new(stream).read_line(&mut status).unwrap();
+    status.trim_end().to_owned()
 }
 
 #[test]
@@ -272,14 +309,14 @@ fn the_driver_plays_a_fork_and_a_bare_answer_continues_as_it() {
     assert_eq!(fork_of(&forks, "keep")["parent"], own);
     // The reviewer hears the agent's hooks in the sandbox's runtime directory, never in the
     // one this process has, which stands for the user's.
-    let runtime = fixture
-        .vision
-        .sandbox()
-        .variable("XDG_RUNTIME_DIR")
-        .unwrap();
-    assert!(Path::new(runtime).join("herdr-reviewer").exists());
+    let sandbox = fixture.vision.sandbox();
+    let runtime = Path::new(sandbox.variable("XDG_RUNTIME_DIR").unwrap());
+    let outside = sandbox
+        .directory()
+        .join(runtime.strip_prefix(sandbox.inside()).unwrap());
+    assert!(outside.join("herdr-reviewer").exists());
     assert_ne!(
-        Some(runtime),
+        Some(runtime.as_os_str()),
         std::env::var_os("XDG_RUNTIME_DIR").as_deref()
     );
     let conclusion: Value =
@@ -612,4 +649,17 @@ fn wait_agent_session(session: &Session, started: &str) {
             forks::agent_sessions(received).session.as_deref() == Some(started)
         })
         .unwrap();
+}
+
+#[test]
+fn a_loopback_address_gives_its_port() {
+    assert_eq!(
+        loopback_port("http://127.0.0.1:8790/?token=abc").unwrap(),
+        8790
+    );
+    assert_eq!(
+        loopback_port("http://127.0.0.1:41000?token=abc").unwrap(),
+        41000
+    );
+    assert!(loopback_port("http://192.168.1.2:8790/?token=abc").is_err());
 }

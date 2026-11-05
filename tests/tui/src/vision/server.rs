@@ -293,6 +293,9 @@ impl Outcome {
             if let Some(frame) = screen.frame {
                 self.summary["frame"] = json!(frame);
             }
+            if let Some(changed) = &screen.changed_rows {
+                self.summary["changed_rows"] = json!(changed);
+            }
         }
         let mut content = vec![ContentBlock::text(self.summary.to_string())];
         if let Some(screen) = self.screen {
@@ -580,7 +583,7 @@ impl Server {
         Parameters(_): Parameters<NoInput>,
     ) -> Result<CallToolResult, ErrorData> {
         self.on_session("explore_page", json!({}), move |running| {
-            let page = running.session.explore_page()?;
+            let page = running.session.explore_page(running.vision)?;
             Ok(Outcome::summary(json!({"status": "opened", "page": page})))
         })
         .await

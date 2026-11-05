@@ -74,11 +74,12 @@
               # native compiler.
               pkgs.typescript
             ]
-            # The app sandbox (herdr-common's app-sandbox) runs bubblewrap, and enters it with
-            # nsenter.
+            # The app sandbox (herdr-common's app-sandbox) runs bubblewrap, enters it with
+            # nsenter, and relays each connection to a port it forwards through socat inside.
             ++ pkgs.lib.optionals isLinux [
               pkgs.bubblewrap
               pkgs.util-linux
+              pkgs.socat
             ];
             # Not on PATH: `herdr` there stays the installed Herdr, which
             # `make install` and the live server use.

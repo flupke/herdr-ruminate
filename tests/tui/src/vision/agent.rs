@@ -2,7 +2,7 @@
 //! records every prompt it sent as a numbered turn; `turn` reads the next one and
 //! `reply` answers it through the reviewer's real MCP endpoint.
 
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -172,12 +172,7 @@ impl ScriptedAgent {
             body.len()
         )?;
         stream.write_all(&body)?;
-        let mut response = String::new();
-        stream.read_to_string(&mut response)?;
-        let (head, payload) = response
-            .split_once("\r\n\r\n")
-            .context("the MCP endpoint sent no HTTP body")?;
-        let status = head.lines().next().unwrap_or_default();
+        let (status, payload) = read_response(&mut BufReader::new(stream))?;
         if !status.contains(" 200 ") {
             bail!("MCP call failed: {status}: {payload}");
         }
@@ -185,6 +180,46 @@ impl ScriptedAgent {
             .with_context(|| format!("unexpected MCP reply: {payload}"))?;
         Ok(reply.get("result").cloned().unwrap_or(reply))
     }
+}
+
+/// Read an HTTP response's status line and body: its `Content-Length` bytes, else up to the
+/// connection's end. Not to the end when the length is known: herdr-common's forward keeps the
+/// host's side of a connection open, after the reviewer closed its own, until the host closes
+/// it too (a gap of herdr-common's forward, #20), and the reviewer drops a request whose client
+/// closed its side first. An answer without a length ends only at the read timeout then; the
+/// reviewer's endpoint gives JSON answers, with their length.
+fn read_response(response: &mut impl BufRead) -> Result<(String, String)> {
+    let mut status = String::new();
+    response.read_line(&mut status)?;
+    ensure!(!status.is_empty(), "the MCP endpoint sent no HTTP response");
+    let mut length = None;
+    loop {
+        let mut header = String::new();
+        ensure!(
+            response.read_line(&mut header)? > 0,
+            "the MCP endpoint's HTTP headers ended early"
+        );
+        let header = header.trim_end();
+        if header.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = header.split_once(':')
+            && name.eq_ignore_ascii_case("content-length")
+        {
+            length = Some(value.trim().parse::<usize>()?);
+        }
+    }
+    let mut payload = Vec::new();
+    match length {
+        Some(length) => {
+            payload.resize(length, 0);
+            response.read_exact(&mut payload)?;
+        }
+        None => {
+            response.read_to_end(&mut payload)?;
+        }
+    }
+    Ok((status.trim_end().to_owned(), String::from_utf8(payload)?))
 }
 
 fn number(turn: &Value) -> u64 {
