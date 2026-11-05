@@ -93,10 +93,6 @@ These are gaps of herdr-common, for its owner to fill (its issues in brackets); 
   starts a round in the pane).
 - `screen` gives text only: no styled screen (colors as ANSI, #17); each action returns the
   whole screen, without its size.
-- A forward keeps the host's side of a connection open after the server inside closed its own,
-  until the host closes it: socat's `STDIO` keeps its output open until its input ends (#20). The
-  server's MCP client reads each answer by its `Content-Length`, and cannot half-close instead:
-  the reviewer drops a request whose client closed its side.
 - `actions.jsonl` records the server's own tools only: the core's go through its router
   untouched.
 

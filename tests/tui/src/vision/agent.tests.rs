@@ -150,20 +150,3 @@ fn an_interpretation_is_about_the_turns_answer_unless_it_names_one() {
     identity.fill("submit_conclusion", &mut none).unwrap();
     assert_eq!(none["interpretation"], Value::Null);
 }
-
-#[test]
-fn a_response_ends_at_its_content_length() {
-    let response =
-        b"HTTP/1.1 200 OK\r\ncontent-length: 7\r\nconnection: close\r\n\r\n{\"a\":1}trailing";
-    let (status, payload) = read_response(&mut &response[..]).unwrap();
-    assert_eq!(status, "HTTP/1.1 200 OK");
-    assert_eq!(payload, r#"{"a":1}"#);
-}
-
-#[test]
-fn a_response_without_a_length_ends_with_the_connection() {
-    let response = b"HTTP/1.1 400 Bad Request\r\n\r\nrefused";
-    let (status, payload) = read_response(&mut &response[..]).unwrap();
-    assert_eq!(status, "HTTP/1.1 400 Bad Request");
-    assert_eq!(payload, "refused");
-}
