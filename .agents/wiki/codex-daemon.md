@@ -1,8 +1,9 @@
 # Codex's app-server daemon
 
 How Codex's daemon, its hooks and its forks behave, what `crates/codex-daemon` relies on, the
-reviewer's Codex plugin, and the gotchas of running a Codex TUI in a test. Checked with Codex 0.162.1 (and a daemon that
-updated itself to 0.164.0) and Herdr 0.9.5. Why the reviewer hears Codex this way is in
+reviewer's Codex plugin, and the gotchas of running a Codex TUI in a test. Checked with Codex
+0.162.1 (and a daemon that updated itself to 0.164.0) and Herdr 0.9.5; the tests that run a
+Codex TUI pass with 0.166.0. Why the reviewer hears Codex this way is in
 [ADR 0009](../adr/0009-hear-codex-through-its-app-server-daemon.md).
 
 ## The daemon and its socket
@@ -156,6 +157,12 @@ reviewer's tool the test replies with, through Codex's `exec` tool. What they wo
 - A model migration notice at start (`gpt-5.6-terra` to `gpt-6-sol`) drops what is typed
   meanwhile, and Herdr refuses a prompt to an agent it has not detected: the test uses a model
   with no migration and waits for Herdr's first `idle`.
+- With 0.166.0 (not 0.162.1), in a Git repository, `/new` asks "Where should the new
+  conversation run?" (current worktree or a new one) in place of the input box, and takes the
+  next Enter for the answer, so the prompt typed next is lost; no setting turns it off (the
+  `worktrees` feature is `removed`). `review_test_support::codex::new_session` answers it, and
+  waits for the question: with an older Codex, it times out. The start screen the TUI opens on
+  takes a prompt typed at once.
 - A daemon restart right after a `/resume`, before the TUI took a turn, left it with "This
   conversation is unavailable … input is paused": the test takes a turn first.
 - The server says `app-server control socket listening` under

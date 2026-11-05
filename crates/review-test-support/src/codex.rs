@@ -23,6 +23,23 @@ pub fn prompt(herdr: &HerdrTestServer, pane: &PaneId, text: &str) {
     herdr.run_cli(&["agent", "prompt", &pane.0, text]);
 }
 
+/// What Codex asks once `/new` is typed in a Git repository, before it starts the session.
+const WHERE_TO_RUN: &str = "Where should the new conversation run?";
+
+/// What the input box of the agent of a Codex pane shows while it is empty.
+const EMPTY_INPUT_BOX: &str = "Ask Codex to do anything";
+
+/// Starts a new agent session in the agent of `pane`, in its current Git worktree, and returns
+/// once its input box takes the next prompt: Codex asks where the session runs, and would take
+/// that prompt's Enter for the answer.
+pub fn new_session(herdr: &HerdrTestServer, pane: &PaneId) {
+    prompt(herdr, pane, "/new");
+    wait_output(herdr, pane, WHERE_TO_RUN);
+    // The first choice, selected already: "Use current Git worktree".
+    herdr.run_cli(&["pane", "send-keys", &pane.0, "enter"]);
+    wait_output(herdr, pane, EMPTY_INPUT_BOX);
+}
+
 /// Waits until the pane `pane` of `herdr` shows `text`, as Herdr reads it.
 pub fn wait_output(herdr: &HerdrTestServer, pane: &PaneId, text: &str) {
     let guard = GUARD.as_millis().to_string();

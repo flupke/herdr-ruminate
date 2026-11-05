@@ -11,7 +11,9 @@ use codex_daemon::{Daemon, NoDaemon, SessionEvent, SessionStatus, TurnEnd};
 use herdr_client::protocol::AgentPort as _;
 use review_mcp::{Endpoint, Response, Server};
 use review_mcp_config::{Client, UserConfig};
-use review_test_support::codex::{AppServer, CodexHome, Provider, prompt, wait_output};
+use review_test_support::codex::{
+    AppServer, CodexHome, Provider, new_session, prompt, wait_output,
+};
 use review_test_support::{GUARD, HerdrTestServer, TestPort};
 
 #[test]
@@ -64,7 +66,7 @@ fn the_reviewer_follows_a_codex_agent_s_session_through_its_daemon() {
         "the reviewer's own join is no resume: {heard:?}"
     );
 
-    prompt(&herdr, &pane, "/new");
+    new_session(&herdr, &pane);
     prompt(&herdr, &pane, &format!("/resume {session}"));
     let typed = Instant::now();
     events.until("the resume", |event| *event == SessionEvent::Resumed);

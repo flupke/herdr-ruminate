@@ -12,7 +12,9 @@ use std::sync::mpsc;
 use agent_hooks::{AgentHooks, Heard, HookDirectory, HookedAgent, OtherPrompts};
 use herdr_client::protocol::{AgentPort as _, PaneId};
 use review_mcp::{Endpoint, Response, Server};
-use review_test_support::codex::{AppServer, CodexHome, Provider, prompt, wait_output};
+use review_test_support::codex::{
+    AppServer, CodexHome, Provider, new_session, prompt, wait_output,
+};
 use review_test_support::{GUARD, HerdrTestServer, TestPort};
 
 /// Why the reviewer blocks a prompt, as Codex shows it.
@@ -66,7 +68,7 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
 
     prompt(&herdr, &pane, "call the reviewer");
     let earlier = session();
-    prompt(&herdr, &pane, "/new");
+    new_session(&herdr, &pane);
     prompt(&herdr, &pane, "call the reviewer");
     let current = session();
     assert_ne!(current, earlier);
