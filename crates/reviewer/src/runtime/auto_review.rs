@@ -323,7 +323,8 @@ impl Worker {
         );
         eyre::ensure!(
             self.jev.is_enabled(),
-            "Set TYPESAFE_API_KEY to automatically review files with Jev"
+            "Set TYPESAFE_API_KEY, or typesafe_api_key in config.toml, to automatically review files \
+             with Jev"
         );
         let review = AutoReview::prepare(&self.repository, &self.tracker, &self.store, checkpoint)?;
         eyre::ensure!(

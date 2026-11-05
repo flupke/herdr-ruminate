@@ -1,0 +1,11 @@
+[package]
+name = "process-environment"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The environment a running process started with, less the variables of the Herdr or herdr-core terminal it runs in."
+
+[lints]
+workspace = true

@@ -437,6 +437,7 @@ dependencies = [
  "fork-guard",
  "herdr-client",
  "notify",
+ "process-environment",
  "review-run-ahead",
  "serde",
  "serde_json",
@@ -3658,6 +3659,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-environment"
+version = "0.2.0"
+
+[[package]]
 name = "prodash"
 version = "31.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4665,6 +4670,7 @@ dependencies = [
  "herdr-client",
  "ignore",
  "notify",
+ "process-environment",
  "ratatui 0.30.2",
  "reqwest",
  "review-explore",
@@ -4692,6 +4698,7 @@ dependencies = [
  "review-threads",
  "review-types",
  "review-ui",
+ "reviewer-config",
  "reviewer-dirs",
  "rmcp",
  "serde",
@@ -4710,6 +4717,16 @@ dependencies = [
  "uuid",
  "vision-signal",
  "vision-turns",
+]
+
+[[package]]
+name = "reviewer-config"
+version = "0.2.0"
+dependencies = [
+ "eyre",
+ "reviewer-dirs",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]
@@ -6137,9 +6154,8 @@ version = "0.2.0"
 dependencies = [
  "eyre",
  "ratatui 0.30.2",
- "reviewer-dirs",
+ "reviewer-config",
  "tempfile",
- "toml",
  "two-face",
 ]
 

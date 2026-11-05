@@ -93,6 +93,8 @@ itself Herdr too, and labels its terminals `herdr.*`.
   user (2.1.318).
 - A terminal takes the environment of its core's server, not that of the `hc run` that starts
   it: start the program through `env` to give it other variables.
+- `/proc/<pid>/environ` holds the variables a process started with: a shell's lists none it
+  exported since, as from `~/.zshrc`, while a program the shell starts has them.
 - `events.subscribe` answers a snapshot of the terminals it matches (by label, terminal or
   parent), then sends each fact change as an `event` notification `{type, terminal, seq,
   data}`: `created` (the whole terminal), `status`, `turn`, `foreground`, `labels`,
@@ -152,6 +154,18 @@ and its agents are Herdr's.
 [ADR 0014](../adr/0014-talk-to-herdr-core-behind-the-host-traits-beside-herdr.md) says why
 both stay.
 
+- Under herdr-core the pane first runs its program again with the environment of the
+  foreground process of the terminal the mod names (`runtime/agent_environment.rs`), as it had
+  the user's shell's under Herdr: herdr-core gives it the core server's, which lacks what the
+  user's shell exports, such as `TYPESAFE_API_KEY` or `EDITOR`. The agent's values win; the
+  pane keeps its own `HERDR_*` (but takes the agent's `HERDR_REVIEWER_*` settings, such as
+  `HERDR_REVIEWER_MCP_PORT`), `HC_*`, `PWD`, `OLDPWD`, `_`; its `HOME`, `XDG_STATE_HOME`
+  and `XDG_CONFIG_HOME`, so its state and `config.toml` stay where every pane keeps them; and
+  its temporary folders, since a nix-shell deletes its own when it exits, while the pane may
+  outlive it. The rest of the agent's dev shell comes along: `IN_NIX_SHELL`, `DIRENV_*`. It
+  runs again once at most (`HERDR_REVIEWER_ADOPTED_AGENT_ENVIRONMENT`). A plain shell's
+  process gives only what it started with (above), and one it cannot read leaves the pane's
+  own.
 - Under herdr-core the pane's first target is the terminal the mod names with
   `--focused-terminal`; it follows the focus of the window whose home the mod names with
   `--herdr-app-home`, else `~/.config/herdr-app`, through `view.json` and the layout

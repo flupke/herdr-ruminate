@@ -1,4 +1,9 @@
 use super::Theme;
+use reviewer_config::ReviewerConfig;
+
+fn from_config_dir(directory: &std::path::Path) -> eyre::Result<Theme> {
+    Theme::from_config(&ReviewerConfig::from_dir(directory)?)
+}
 
 #[test]
 fn resolves_dark_and_light_palettes() {
@@ -17,7 +22,7 @@ fn missing_plugin_config_uses_the_default() {
         if let Some(config) = config {
             std::fs::write(directory.path().join("config.toml"), config).unwrap();
         }
-        let theme = Theme::from_config_dir(directory.path()).unwrap();
+        let theme = from_config_dir(directory.path()).unwrap();
         assert_eq!(theme.palette.text, default, "{config:?}");
     }
 }
@@ -32,10 +37,7 @@ fn reads_the_palette_from_plugin_config() {
     .unwrap();
 
     assert_eq!(
-        Theme::from_config_dir(directory.path())
-            .unwrap()
-            .palette
-            .text,
+        from_config_dir(directory.path()).unwrap().palette.text,
         Theme::resolve("gruvbox").unwrap().palette.text
     );
 }

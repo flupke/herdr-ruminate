@@ -13,6 +13,7 @@ agent-hooks = { path = "../agent-hooks" }
 fork-guard = { path = "../fork-guard" }
 herdr-client = { path = "../herdr-client" }
 notify.workspace = true
+process-environment = { path = "../process-environment" }
 review-run-ahead = { path = "../review-run-ahead" }
 serde.workspace = true
 serde_json.workspace = true

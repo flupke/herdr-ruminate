@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use super::{
     Candidate, MAX_RATE_LIMIT_RETRIES, ProviderRequestError, RATE_LIMIT_BACKOFF_CAP, classify_with,
-    optimized, rate_limit_backoff, retry_rate_limited, retryable_status,
+    key, optimized, rate_limit_backoff, retry_rate_limited, retryable_status,
 };
 
 fn prepared(index: usize) -> optimized::Prepared {
@@ -213,4 +213,45 @@ fn retries_stop_after_the_bound_and_other_errors_are_not_retried() {
     assert_eq!(permanent.unwrap_err(), "Provider HTTP 401");
     assert_eq!(attempts, 1);
     assert!(waits.is_empty());
+}
+
+fn configured(key: Option<&'static str>) -> impl FnOnce() -> eyre::Result<Option<&'static str>> {
+    move || Ok(key)
+}
+
+#[test]
+fn the_environment_s_key_wins_over_the_configured_one() {
+    assert_eq!(
+        key(Some("from-env".into()), configured(Some("from-config"))).unwrap(),
+        Some("from-env".into())
+    );
+}
+
+#[test]
+fn a_malformed_configured_key_does_not_matter_with_one_in_the_environment() {
+    let malformed = || Err(eyre::eyre!("`typesafe_api_key` must be a string"));
+
+    assert_eq!(
+        key(Some("from-env".into()), malformed).unwrap(),
+        Some("from-env".into())
+    );
+    assert!(key(None, malformed).is_err());
+}
+
+#[test]
+fn the_configured_key_runs_jev_without_one_in_the_environment() {
+    assert_eq!(
+        key(None, configured(Some("from-config"))).unwrap(),
+        Some("from-config".into())
+    );
+    assert_eq!(
+        key(Some("  ".into()), configured(Some("from-config"))).unwrap(),
+        Some("from-config".into())
+    );
+}
+
+#[test]
+fn a_blank_key_disables_jev() {
+    assert_eq!(key(None, configured(Some(" \n"))).unwrap(), None);
+    assert_eq!(key(Some(String::new()), configured(None)).unwrap(), None);
 }
