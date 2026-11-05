@@ -21,7 +21,6 @@ pub use port::TestPort;
 mod detection_rules;
 mod herdr;
 mod herdr_events;
-pub mod stand_in;
 pub mod turn;
 pub use herdr::{HerdrTestServer, write_reviewer_settings};
 pub use herdr_events::{AgentStatusWatch, HerdrEventWatch};

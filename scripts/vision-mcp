@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Runs the vision MCP server on standard input and output, for an agent inside Herdr
-# (.agents/wiki/tui-vision.md). `.mcp.json` registers it; `make vision` builds it. A missing or
-# stale server is built first, in the dev shell, with a note and the build output on standard
-# error: standard output carries the MCP messages. The server replaces this script, so the
-# client's signals reach it.
+# Runs the vision MCP server on standard input and output (.agents/wiki/tui-vision.md).
+# `.mcp.json` registers it; `make vision` builds it. A missing or stale server is built first, in
+# the dev shell, with a note and the build output on standard error: standard output carries the
+# MCP messages. The server gets the dev shell's pinned herdr-app, hc, Weston and Vulkan driver,
+# which its app sandbox runs, and replaces this script, so the client's signals reach it.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 server="$root/tests/tui/target/debug/reviewer-vision"
@@ -19,4 +19,7 @@ if stale; then
     --bin reviewer-vision >&2
   touch "$server"
 fi
+# shellcheck disable=SC2016
+eval "$(scripts/dev-shell bash -c 'for name in TEST_HERDR_APP_BIN_PATH TEST_HC_BIN_PATH \
+  TEST_WESTON_BIN_PATH TEST_HERDR_APP_VULKAN_DRIVER; do printf "export %s=%q\n" "$name" "${!name}"; done')"
 exec "$server"

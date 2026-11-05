@@ -2,12 +2,13 @@
 
 Give yourself eyes and hands on what you build: run it, look at it, act on it as its user
 would, and fix what you see. Tests prove what you thought of; eyes show what you did not.
-The vision MCP server drives the review pane in a workspace of the user's Herdr: run
-`make vision` once, then use its tools (`.agents/wiki/tui-vision.md`); `make explore-page`
-and `make explore-gallery` show the Explore page, and `make explore-script` acts on it with a
-throwaway script (`.agents/wiki/explore-page-standalone.md`); `scripts/herdr-app-private`
-starts a herdr-app off the user's screen, with its own core, where the launcher mod opens the
-pane and `herdr-app shot` shows the render (`.agents/wiki/herdr-app.md`, A private herdr-app).
+The vision MCP server runs the review pane in herdr-common's app sandbox, a private herdr-app
+on a headless display that never shows on the user's screen: run `make vision` once, then use
+its tools (`.agents/wiki/tui-vision.md`); `make explore-page` and `make explore-gallery` show
+the Explore page, and `make explore-script` acts on it with a throwaway script
+(`.agents/wiki/explore-page-standalone.md`); herdr-common's `app-sandbox` command keeps a
+private herdr-app running across shell commands, where the launcher mod opens the pane and
+`app-sandbox shot` shows the render (`.agents/wiki/herdr-app.md`, A private herdr-app).
 When a part of the product has no such tool, build one before you rely on tests alone.
 
 # Standards
@@ -156,10 +157,10 @@ Herdr E2E tests start an isolated background server with private socket,
 config, state, workspace, and agent paths. Never use, restart, or modify the
 user's live Herdr server or panes during tests.
 
-The vision MCP server is the one exception, and only outside tests: its
-`start` runs the reviewer in a new "reviewer vision" workspace of the user's
-live Herdr, so the user watches it, and its `stop` closes that workspace. Touch
-nothing else of the user's Herdr.
+The vision MCP server and herdr-common's `app-sandbox` run herdr-app in a sandbox of their own,
+on a headless display, with their own core and environment, and act on nothing of the user's
+Herdr or herdr-app. The vision server's sandbox is plain, not bubblewrap
+(`.agents/wiki/tui-vision.md`): its processes could still reach the user's sockets by path.
 
 The Codex Linux sandbox blocks Unix-domain socket bind and connect operations.
 Run tests in the normal sandbox first. If an E2E test fails with `EPERM` while

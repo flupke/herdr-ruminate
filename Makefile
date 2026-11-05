@@ -54,8 +54,11 @@ check-changed:
 check-with-e2e: check
 	$(MAKE) e2e-explore
 
+# The sessions install the stand-in agent built in tests/tui's workspace, whose fake agent is
+# herdr-common's checkout beside this one, as the tests' own: the root workspace's comes from git.
 e2e-tui:
-	cargo build --locked -p reviewer --bin reviewer --bin reviewer-control -p stand-in-agent --bin stand-in-agent
+	cargo build --locked -p reviewer --bin reviewer --bin reviewer-control
+	cargo build --locked --manifest-path tests/tui/Cargo.toml -p stand-in-agent --bin stand-in-agent
 	cargo clippy --locked --manifest-path tests/tui/Cargo.toml --all-targets
 	REVIEWER_BIN_PATH="$(CURDIR)/target/debug/reviewer" cargo nextest run --locked --manifest-path tests/tui/Cargo.toml
 
@@ -117,8 +120,8 @@ explore-types:
 # Builds the vision MCP server and the reviewer it runs, and says how an agent uses it
 # (.agents/wiki/tui-vision.md). `.mcp.json` registers the server through scripts/vision-mcp.
 vision:
-	cargo build --locked -p reviewer --bin reviewer --bin reviewer-control -p stand-in-agent --bin stand-in-agent
-	cargo build --locked --manifest-path tests/tui/Cargo.toml --bin reviewer-vision
+	cargo build --locked -p reviewer --bin reviewer --bin reviewer-control
+	cargo build --locked --manifest-path tests/tui/Cargo.toml -p reviewer-tui-tests --bin reviewer-vision -p stand-in-agent --bin stand-in-agent
 	touch tests/tui/target/debug/reviewer-vision
 	@tests/tui/target/debug/reviewer-vision --help
 

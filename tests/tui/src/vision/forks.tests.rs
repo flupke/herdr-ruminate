@@ -1,19 +1,21 @@
 use super::*;
 
-fn from(role: StandInRole, event: StandInEvent) -> Reported {
+fn from(role: Role, event: Event) -> Reported {
     Reported { from: role, event }
 }
 
-fn fork(session: &str) -> StandInRole {
-    StandInRole::Fork {
-        session: session.into(),
-    }
+fn fork(session: &str) -> Role {
+    Role::fork(session)
+}
+
+fn agent() -> Role {
+    Role::agent(AGENT)
 }
 
 fn started(session: &str, choice: &str) -> Reported {
     from(
         fork(session),
-        StandInEvent::ForkStarted {
+        Event::ForkStarted {
             parent: "agent".into(),
             prompt: format!("Explore round: r\nSelected option ID: {choice}\n"),
         },
@@ -23,12 +25,19 @@ fn started(session: &str, choice: &str) -> Reported {
 #[test]
 fn each_fork_shows_its_choice_and_how_far_it_got() {
     let received = [
-        from(fork("a"), StandInEvent::Hello { role: fork("a") }),
+        from(fork("a"), Event::Hello { role: fork("a") }),
         started("a", "keep"),
         started("b", "change"),
-        from(fork("a"), StandInEvent::ForkSubmitted),
-        from(fork("b"), StandInEvent::ForkFinished),
-        from(fork("b"), StandInEvent::Disconnected),
+        from(
+            fork("a"),
+            Event::Obeyed {
+                command: Command::CallTool {
+                    name: "mcp__herdr_reviewer__submit_question".into(),
+                },
+            },
+        ),
+        from(fork("b"), Event::TurnEnded { blocked: None }),
+        from(fork("b"), Event::Disconnected),
     ];
 
     let forks = forks(&received);
@@ -56,39 +65,25 @@ fn each_fork_shows_its_choice_and_how_far_it_got() {
 }
 
 #[test]
-fn the_agent_s_session_is_the_one_it_reported_last() {
+fn the_agent_s_session_is_the_one_it_started_last() {
+    let started = |session: &str, start: &str| Event::SessionStarted {
+        session: session.into(),
+        start: start.into(),
+    };
     let received = [
+        from(agent(), started("own", "startup")),
         from(
-            StandInRole::Agent,
-            StandInEvent::SessionReported {
-                session: "own".into(),
-                start: "startup".into(),
-            },
-        ),
-        from(
-            StandInRole::Agent,
-            StandInEvent::ResumeReceived {
+            agent(),
+            Event::ResumeReceived {
                 session: "fork".into(),
             },
         ),
-        from(
-            StandInRole::Agent,
-            StandInEvent::SessionReported {
-                session: "fork".into(),
-                start: "resume".into(),
-            },
-        ),
+        from(agent(), started("fork", "resume")),
         // A fork's own session is no session of the agent's.
+        from(fork("other"), started("other", "fork")),
         from(
             fork("other"),
-            StandInEvent::SessionReported {
-                session: "other".into(),
-                start: "startup".into(),
-            },
-        ),
-        from(
-            fork("other"),
-            StandInEvent::ResumeReceived {
+            Event::ResumeReceived {
                 session: "other".into(),
             },
         ),

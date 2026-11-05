@@ -155,14 +155,14 @@ impl ConversationFixture {
         let received = self.server.events().wait_until(
             "the second agent's comment notifications",
             |received| {
-                prompts_of(&StandInRole::SecondAgent, received)
+                prompts_of(&second_agent_role(), received)
                     .iter()
                     .map(|prompt| prompt.matches("get_new_messages").count())
                     .sum::<usize>()
                     >= wakeups
             },
         );
-        let prompts = prompts_of(&StandInRole::SecondAgent, &received).concat();
+        let prompts = prompts_of(&second_agent_role(), &received).concat();
         let (_, tail) = prompts.rsplit_once("review access value `").unwrap();
         tail.split('`').next().unwrap().to_owned()
     }

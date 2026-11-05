@@ -2,28 +2,37 @@
 
 How tests run a private Herdr with a stand-in agent and stand-in forks, and wait on what these
 do instead of polling. The rule they serve is in [Unit tests](unit-tests.md). The types are
-documented in `review_test_support` (`HerdrTestServer`, `HerdrEventWatch`, `AgentStatusWatch`,
-`stand_in`) and in [`crates/stand-in-agent`](../../crates/stand-in-agent).
+documented in `review_test_support` (`HerdrTestServer`, `HerdrEventWatch`, `AgentStatusWatch`),
+in herdr-common's `fake_agent` and in [`crates/stand-in-agent`](../../crates/stand-in-agent).
 
 ## The stand-in agent's program
 
 The stand-in agent and its forks are one program, `stand-in-agent`, which the reviewer's tests
-and `make vision` ([terminal UI exploration](tui-vision.md)) run: its library says what they
-agree with it on, the variables it reads and the files it reads and writes. A test links it into
-its server's directory under the agent's name (`claude`, `codex`), which Herdr detects the agent
-by; started with Claude Code's `--fork-session`, it plays a fork. Cargo builds it for a test run
+and `make vision` ([terminal UI exploration](tui-vision.md)) run: herdr-common's fake agent
+(`fake_agent::run`) with the reviewer's `stand_in_agent::APP`, which runs the plugin's hooks
+through `reviewer-control agent-hook` and reads a prompt with its turn's files. It reads the
+`FAKE_AGENT_*` variables (`fake_agent::variables`), and keeps its transcripts under
+`projects/fake-agent` of Claude Code's configuration (`fake_agent::transcript`). Every stand-in
+of the reviewer's tests gets `CLAUDE_CONFIG_DIR` (`claude-config` in the server's directory),
+which keeps its transcripts out of any `CLAUDE_CONFIG_DIR` the test runner has. A test links it
+into its server's directory under the agent's name (`claude`, `codex`), which Herdr detects the
+agent by; started in print mode (`-p`), it plays a fork. Cargo builds it for a test run
 of the whole workspace (`cargo nextest run --workspace`, `make mutants`), since its crate has an
 integration test; `make test`, with or without `CRATES`, `make e2e-tui` and `make vision` build
 it first (`cargo build -p stand-in-agent`). A build that names programs with `--bin` names it
 too (`--bin stand-in-agent`): `--bin` selects among the programs of every package given. A bare `cargo nextest run -p reviewer` does not: it
 runs the program built last, or fails with that command when none was.
 
+The workspace takes `fake-agent` from git, never by path, so that a clone of this repository
+alone builds: `Cargo.lock` pins a herdr-common revision, and a change to the fake agent reaches
+these tests once it is pushed and `cargo update -p fake-agent` moves the pin.
+
 ## Real Claude Code in the stand-in's place
 
 The run-ahead contract check ([run-ahead](run-ahead.md#the-contract-check)) runs real Claude
 Code in the agent's pane, and its rehearsals run the stand-in there, with one test body. Real
 Claude Code runs `stand-in-agent observe` from hooks of its configuration
-(`stand_in_agent::observing_hooks`), which reports the prompts it reads and the sessions it
+(`fake_agent::observing_hooks`), which reports the prompts it reads and the sessions it
 starts and resumes as the stand-in agent reports them, so the body waits on the same events.
 A hook sees a prompt as it is submitted, not as a turn starts, and runs a process per event:
 each one connects as the agent, then a `Disconnected` follows. A fork inherits the agent's
@@ -48,12 +57,18 @@ detection is what counts.
 
 ## The stand-in event socket
 
-Every `IsolatedHerdrServer` names an event socket to the stand-in agent and its forks; a
-stand-in refuses to run without one. Each stand-in's events arrive in the order it wrote them;
+Every `IsolatedHerdrServer` names an event socket (`fake_agent::Events`, `FAKE_AGENT_EVENTS`) to
+the stand-in agent and its forks; a stand-in refuses to run without one. The stand-in agent
+connects as `Role::agent("agent")` (`FAKE_AGENT_NAME`, which the agent's workspace sets), a fork
+as `Role::fork(<its session>)`. A stand-in answers each command with `Obeyed` once it is done
+(`Events::obey` waits for it), but `Crash`, after which it is gone. A fork submits its turn as
+Claude Code shows it, with `CallTool` of `mcp__herdr_reviewer__submit_question`, and ends with
+`EndTurn`. Each stand-in's events arrive in the order it wrote them;
 events of different stand-ins have no order between them. A `Disconnected` event says that a
 stand-in's process ended, however it ended, a fork the reviewer stopped included.
 
-`StandInEvents` keeps every event it received. A test waits on them in turn with
+`Events` keeps every event it received; `IsolatedHerdrServer::received` takes those that wait
+to be read too. A test waits on them in turn with
 `events_until` and `wait_for`, each going on after the events the previous wait went through,
 or on all of them together with `wait_until`: the prompts the agent read
 (`IsolatedHerdrServer::prompts`, `wait_for_prompts`), the sessions it resumed, the forks that
@@ -68,17 +83,18 @@ the stand-ins report the prompt with those files appended
 stand-in agent, a stand-in fork, and the session tests' agents and forks. A test reads the
 turn's fields from the reported prompt, never from the directory later.
 
-The stand-in agent of a second pane connects as `StandInRole::SecondAgent`
-(`REVIEW_AGENT_E2E_ROLE=second`). The test's switches that must reach the agent before a
+The stand-in agent of a second pane connects as `Role::agent("second")`: its command line sets
+`FAKE_AGENT_NAME=second` over the workspace's. The test's switches that must reach the agent before a
 prompt, in the order Herdr types them, stay files in the server's directory, which the agent
 reads as it reads the prompt: `swallow` makes it read each prompt without starting on it
 (decided before it reports the prompt read, so a test may remove the file once it saw that
 report), `unreported-resume` keeps Herdr and the reviewer from hearing of its next `/resume`, or, when it
 holds a number of milliseconds, has them hear of it that late.
 
-The Claude Code stand-in of the run-ahead and hooked delivery tests (`REVIEW_AGENT_E2E_HOOKS`)
+The Claude Code stand-in of the run-ahead and hooked delivery tests (`FAKE_AGENT_HOOK`)
 runs the hooks of the reviewer's Claude Code plugin as Claude Code does, through the
-`reviewer-control` that variable names, and does not start on a prompt they
+`reviewer-control` that variable names (`SessionStart`, `UserPromptSubmit`, `Stop` and
+`SessionEnd`), and does not start on a prompt they
 block (`PromptBlocked`), which it puts back in its input box as Claude Code 2.1.309 does: a test
 clears the box (`herdr pane send-keys <pane> ctrl+u`) before its next prompt or marker. A marker
 is no prompt to the hooks. Every prompt the reviewer types to it is confirmed by its hook, not by
@@ -102,10 +118,13 @@ no other `/resume` came checks it once later work could not have started without
 ### Turns
 
 Herdr sees the stand-in agent's turns through its title. A turn ends as soon as Herdr reported
-the agent working since the turn started, or, while the test holds turns (`hold_turns`, which
-returns once the agent says `TurnsHeld`), when the test ends it. An agent whose state is
-reported to Herdr ends its turns at once, since Herdr does not read its title, until the test
-releases it (`release_agent`): the test tells the agent (`Release`), which says `Released`.
+the agent working since the turn started (`FAKE_AGENT_TURNS=auto`, which the agent's workspace
+sets), or, while the test holds turns (`hold_turns`), when the test ends it (`EndTurn`). An
+`EndTurn` runs the `Stop` hook and reports `TurnEnded` even when no turn is under way: a test
+ends only a turn it saw start. An agent whose state is
+reported to Herdr (`FAKE_AGENT_REPORT_STATE=1`) ends its turns at once, since Herdr does not
+read its title, until the test releases it (`release_agent`): the test tells the agent
+(`Release`).
 Herdr says that it released an agent (`AgentDetected` with `released: true`) only when it did
 not detect the agent by name yet, which a loaded machine makes rare: a test that needs a Herdr
 event waits for one Herdr always sends, such as a pane's focus. Herdr 0.9.3 ignores a

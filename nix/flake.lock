@@ -17,6 +17,32 @@
         "type": "github"
       }
     },
+    "herdr-common": {
+      "inputs": {
+        "cccc": [
+          "cccc"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793897300,
+        "narHash": "sha256-36VXheJ7qV3P+NP5y2We0OxLQfszaO7XXbqqXmSTyPY=",
+        "owner": "flupke",
+        "repo": "herdr-common",
+        "rev": "4ea252d993b97cabb6314eed166c0ba0024cba06",
+        "type": "github"
+      },
+      "original": {
+        "owner": "flupke",
+        "repo": "herdr-common",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1791260994,
@@ -36,6 +62,7 @@
     "root": {
       "inputs": {
         "cccc": "cccc",
+        "herdr-common": "herdr-common",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }

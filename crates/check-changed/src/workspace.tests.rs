@@ -9,7 +9,8 @@ fn set(names: &[&str]) -> BTreeSet<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
 }
 
-/// `server` uses `core` and `serde`, and tests with `fixture`; `core` builds with `build-helper`.
+/// `server` uses `core` and `serde`, and tests with `fixture` and `sandbox`, a path dependency
+/// beside the repository; `core` builds with `build-helper`.
 fn graph() -> Graph {
     let package = |name: &str, local: bool| {
         json!({
@@ -19,6 +20,12 @@ fn graph() -> Graph {
             "manifest_path": format!("/repository/crates/{name}/Cargo.toml"),
         })
     };
+    let beside = json!({
+        "name": "sandbox",
+        "id": "sandbox-id",
+        "source": null,
+        "manifest_path": "/common/crates/sandbox/Cargo.toml",
+    });
     let dependency = |name: &str, kind: Option<&str>| json!({ "pkg": format!("{name}-id"), "dep_kinds": [{ "kind": kind }] });
     let metadata = json!({
         "packages": [
@@ -27,6 +34,7 @@ fn graph() -> Graph {
             package("fixture", true),
             package("serde", false),
             package("build-helper", false),
+            beside,
         ],
         "workspace_members": ["server-id", "core-id", "fixture-id"],
         "resolve": { "nodes": [
@@ -34,16 +42,19 @@ fn graph() -> Graph {
                 dependency("core", None),
                 dependency("serde", None),
                 dependency("fixture", Some("dev")),
+                dependency("sandbox", Some("dev")),
             ] },
             { "id": "core-id", "deps": [dependency("build-helper", Some("build"))] },
             { "id": "fixture-id", "deps": [dependency("core", None)] },
             { "id": "serde-id", "deps": [] },
             { "id": "build-helper-id", "deps": [] },
+            { "id": "sandbox-id", "deps": [] },
         ] },
     });
     Graph::new(Path::new("/repository"), &metadata).unwrap()
 }
 
+/// A local package outside the repository, `sandbox`, is none of the repository's.
 #[test]
 fn local_packages_are_found_by_their_directory_and_members_by_their_id() {
     let graph = graph();

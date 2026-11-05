@@ -88,12 +88,13 @@ impl Graph {
         for package in array(metadata, "packages")? {
             let name = text(package, "name")?;
             names.insert(text(package, "id")?.to_owned(), name.to_owned());
-            if package["source"].is_null() {
-                let manifest = Path::new(text(package, "manifest_path")?);
-                let directory = manifest
+            // A path dependency outside the repository, such as herdr-common's test tooling
+            // beside the checkout, is another repository's: none of this one's files are its.
+            if package["source"].is_null()
+                && let Some(directory) = Path::new(text(package, "manifest_path")?)
                     .parent()
                     .and_then(|directory| directory.strip_prefix(root).ok())
-                    .context("a local package outside the repository")?;
+            {
                 packages.insert(directory.display().to_string(), name.to_owned());
             }
         }

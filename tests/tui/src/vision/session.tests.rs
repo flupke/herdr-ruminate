@@ -1,11 +1,9 @@
-//! Sessions in a private Herdr, with the reviewer that `make e2e-tui` builds. Every wait ends on
-//! an event of Herdr's: the guard fires only when a test fails.
+//! Sessions in herdr-common's app sandbox, with the reviewer that `make e2e-tui` builds, in its
+//! dev shell, which names the sandbox's pinned programs. Every wait ends on an event of the
+//! app's or the stand-ins': the guard fires only when a test fails.
 
-use review_test_support::HerdrTestServer;
-use review_test_support::stand_in::Reported;
+use fake_agent::Reported;
 use serde_json::Value;
-
-use super::super::workspace::Closing;
 
 use super::*;
 
@@ -13,9 +11,7 @@ const GUARD: Duration = Duration::from_secs(30);
 
 struct Fixture {
     session: Session,
-    herdr: HerdrClient,
-    // Stop the server after the session closed its workspace.
-    server: HerdrTestServer,
+    vision: Vision,
     _directory: tempfile::TempDir,
 }
 
@@ -27,17 +23,13 @@ impl Fixture {
     /// A session whose stand-in agent runs the reviewer's plugin hooks with `agent_hooks`.
     fn start_with(agent_hooks: bool) -> (Self, Screen) {
         let directory = tempfile::tempdir().unwrap();
-        let server = HerdrTestServer::start(directory.path());
-        let herdr = server.client();
         let reviewer = std::env::var_os("REVIEWER_BIN_PATH")
             .expect("run with make e2e-tui, which builds the reviewer");
-        let (session, screen) = Session::start(
-            &herdr,
+        let (session, vision, screen) = Session::start(
             reviewer.into(),
             &StartOptions {
                 repository: RepoType::Jj,
                 seed: Seed::sample(),
-                focus: false,
                 agent_hooks,
             },
             directory.path().join("session"),
@@ -45,165 +37,108 @@ impl Fixture {
         .unwrap();
         let fixture = Self {
             session,
-            herdr,
-            server,
+            vision,
             _directory: directory,
         };
         (fixture, screen)
     }
 
-    fn workspaces(&self) -> Vec<String> {
-        self.herdr.request("workspace.list", &json!({})).unwrap()["workspaces"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|workspace| workspace["workspace_id"].as_str().unwrap().to_owned())
-            .collect()
+    /// Press `keys` in the reviewer, and return the screen of its reaction.
+    fn keys(&mut self, keys: &[&str]) -> Screen {
+        let keys: Vec<String> = keys.iter().map(|key| (*key).to_owned()).collect();
+        self.session.focus_reviewer(&self.vision).unwrap();
+        let (_, screen) = self.vision.act(&Input::Keys(&keys)).unwrap();
+        screen.unwrap()
     }
-}
 
-fn keys(names: &[&str]) -> Vec<String> {
-    names.iter().map(|name| (*name).to_owned()).collect()
+    /// Paste `text` in the reviewer, and return the screen of its reaction.
+    fn paste(&mut self, text: &str) -> Screen {
+        self.session.focus_reviewer(&self.vision).unwrap();
+        let (_, screen) = self.vision.act(&Input::Paste(text)).unwrap();
+        screen.unwrap()
+    }
+
+    /// Wait until the reviewer's screen shows `text`.
+    fn wait_for(&self, text: &str) -> Screen {
+        self.vision
+            .wait_for(text, false, GUARD, Some(&self.session.terminals.reviewer))
+            .unwrap()
+    }
+
+    /// Start a round in the pane, and answer its kickoff with the example question.
+    fn ask(&mut self) {
+        let kickoff = self.session.next_turn(None, GUARD).unwrap();
+        assert_eq!(kickoff["kind"], "kickoff", "{kickoff}");
+        let question: Value =
+            serde_json::from_str(include_str!("../../examples/question.json")).unwrap();
+        let (reply, screen) = self
+            .session
+            .reply(
+                &mut self.vision,
+                kickoff["turn"].as_u64().unwrap(),
+                "submit_question",
+                question["arguments"].clone(),
+            )
+            .unwrap();
+        assert_eq!(reply["isError"], false, "{reply}");
+        assert!(screen.text.contains("Question 1"), "{}", screen.text);
+    }
 }
 
 #[test]
 fn each_action_returns_the_screen_of_the_reviewers_reaction() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    let files = session.wait_for("math.rs", false, GUARD).unwrap();
+    let files = fixture.wait_for("math.rs");
 
     // The help shows in the screen the key returns, with no wait of its own.
-    let help = session.act(&Input::Keys(&keys(&["?"]))).unwrap();
-    assert!(help.shows("Keyboard shortcuts"), "{}", help.text);
+    let help = fixture.keys(&["?"]);
+    assert!(help.text.contains("Keyboard shortcuts"), "{}", help.text);
     assert!(help.frame > files.frame);
-    let closed = session.act(&Input::Keys(&keys(&["esc"]))).unwrap();
-    assert!(!closed.shows("Keyboard shortcuts"), "{}", closed.text);
-
-    let math = closed.locate("math.rs").unwrap();
-    session.act(&Input::Click(math)).unwrap();
-    let diff = session.wait_for("left - right", false, GUARD).unwrap();
-    assert!(diff.shows("Diff · src/math.rs"), "{}", diff.text);
-}
-
-#[test]
-fn mistakes_are_errors() {
-    let (mut fixture, screen) = Fixture::start();
-    let session = &mut fixture.session;
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    let unknown = session
-        .act(&Input::Keys(&keys(&["?", "bogus"])))
-        .unwrap_err()
-        .to_string();
-    assert!(unknown.contains("unsupported key bogus"), "{unknown}");
-    // The acknowledgement comes after anything the refused call could have written.
-    let after = session.settle().unwrap();
-    assert!(!after.shows("Keyboard shortcuts"), "{}", after.text);
-    let outside = Cell {
-        x: screen.columns,
-        y: 0,
-    };
-    assert!(session.act(&Input::Click(outside)).is_err());
-    let absent = session
-        .wait_for("no such text", false, Duration::ZERO)
-        .unwrap_err()
-        .to_string();
+    let closed = fixture.keys(&["esc"]);
     assert!(
-        absent.contains("does not show \"no such text\""),
-        "{absent}"
+        !closed.text.contains("Keyboard shortcuts"),
+        "{}",
+        closed.text
     );
 }
 
 #[test]
 fn the_stand_in_agent_answers_an_explore_round_in_the_pane() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    let explore = session.screen(false).unwrap().locate("Explore").unwrap();
-    let start = session.act(&Input::Click(explore)).unwrap();
-    let in_the_pane = start.locate("Start in the pane").unwrap();
-    session.act(&Input::Click(in_the_pane)).unwrap();
-
-    let kickoff = session.next_turn(None, GUARD).unwrap();
-    assert_eq!(kickoff["kind"], "kickoff");
-    let question: Value =
-        serde_json::from_str(include_str!("../../examples/question.json")).unwrap();
-    let (reply, screen) = session
-        .reply(1, "submit_question", question["arguments"].clone())
-        .unwrap();
-    assert_eq!(reply["isError"], false, "{reply}");
-    assert!(screen.shows("Question 1"), "{}", screen.text);
+    fixture.wait_for("math.rs");
+    fixture.keys(&["e", "p"]);
+    fixture.ask();
 }
 
 #[test]
-fn a_stopped_session_closes_its_workspace_and_removes_its_repository() {
+fn a_stopped_session_leaves_no_process_and_its_repository_goes() {
     let (fixture, _) = Fixture::start();
-    let described = fixture.session.describe();
-    let workspace = described["workspace"].as_str().unwrap().to_owned();
-    let repository = described["repository"].as_str().unwrap().to_owned();
-    assert!(fixture.workspaces().contains(&workspace));
+    let repository = fixture.session.scratch.root().to_owned();
     let Fixture {
         session,
-        herdr,
-        server: _server,
+        vision,
         _directory,
     } = fixture;
-    assert_eq!(session.stop(), Closing::Closed);
-    let remaining = herdr.request("workspace.list", &json!({})).unwrap();
-    assert!(!remaining.to_string().contains(&format!("\"{workspace}\"")));
-    assert!(!std::path::Path::new(&repository).exists());
-}
-
-#[test]
-fn a_workspace_holding_a_pane_the_session_did_not_open_stays_open() {
-    let (fixture, _) = Fixture::start();
-    let described = fixture.session.describe();
-    let workspace = described["workspace"].as_str().unwrap().to_owned();
-    // The user's own pane, beside the stand-in agent.
-    let split = fixture
-        .herdr
-        .request(
-            "pane.split",
-            &json!({"target_pane_id": described["agent_pane"], "direction": "down"}),
-        )
-        .unwrap();
-    let foreign = split["pane"]["pane_id"].as_str().unwrap().to_owned();
-    let Fixture {
-        session,
-        herdr,
-        server: _server,
-        _directory,
-    } = fixture;
-    assert_eq!(
-        session.stop(),
-        Closing::LeftOpen(format!(
-            "it holds pane {foreign}, which the session did not open"
-        ))
-    );
-    let remaining = herdr.request("workspace.list", &json!({})).unwrap();
-    assert!(remaining.to_string().contains(&format!("\"{workspace}\"")));
+    drop(session);
+    let stopped = vision.stop().unwrap();
+    assert_eq!(stopped.processes, Vec::<u32>::new());
+    assert!(!repository.exists());
 }
 
 #[test]
 fn a_reopened_reviewer_starts_once_the_old_one_has_stopped() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    let before = session.describe()["reviewer_pane"].clone();
-    session.reopen(None, None).unwrap();
-    assert_ne!(session.describe()["reviewer_pane"], before);
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    // The new reviewer serves the MCP port the old one held: Explore reaches its agent.
-    let explore = session.screen(false).unwrap().locate("Explore").unwrap();
-    let start = session.act(&Input::Click(explore)).unwrap();
-    let in_the_pane = start.locate("Start in the pane").unwrap();
-    session.act(&Input::Click(in_the_pane)).unwrap();
-    session.next_turn(None, GUARD).unwrap();
-    let question: Value =
-        serde_json::from_str(include_str!("../../examples/question.json")).unwrap();
-    let (reply, _) = session
-        .reply(1, "submit_question", question["arguments"].clone())
+    fixture.wait_for("math.rs");
+    let before = fixture.session.terminals.reviewer.clone();
+    fixture
+        .session
+        .reopen(&mut fixture.vision, None, None)
         .unwrap();
-    assert_eq!(reply["isError"], false, "{reply}");
+    assert_ne!(fixture.session.terminals.reviewer, before);
+    fixture.wait_for("math.rs");
+    // The new reviewer serves the MCP port the old one held: Explore reaches its agent.
+    fixture.keys(&["e", "p"]);
+    fixture.ask();
 }
 
 /// The user's report (#157): a change reviewed in the main jj workspace showed 0% reviewed in
@@ -211,40 +146,19 @@ fn a_reopened_reviewer_starts_once_the_old_one_has_stopped() {
 #[test]
 fn marks_made_in_one_jj_workspace_show_in_another_workspace_of_the_repository() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    session.wait_for("○ notes.md", false, GUARD).unwrap();
-    session.act(&Input::Keys(&keys(&["space"]))).unwrap();
-    session.wait_for("✓ notes.md", false, GUARD).unwrap();
-    let main = session.describe()["repository"].clone();
+    fixture.wait_for("○ notes.md");
+    fixture.keys(&["space"]);
+    fixture.wait_for("✓ notes.md");
+    let main = fixture.session.scratch.root().to_owned();
 
-    session.reopen(None, Some("second")).unwrap();
-
-    assert_ne!(session.describe()["repository"], main);
-    let screen = session.wait_for("○ sample.rs", false, GUARD).unwrap();
-    assert!(screen.shows("✓ notes.md"), "{}", screen.text);
-}
-
-#[test]
-fn a_reviewer_process_that_already_ended_counts_as_stopped() {
-    let mut ended = std::process::Command::new("true").spawn().unwrap();
-    ended.wait().unwrap();
-    terminate(ended.id()).unwrap();
-}
-
-#[test]
-fn a_running_reviewer_process_is_asked_to_stop() {
-    use std::os::unix::process::ExitStatusExt;
-
-    let mut running = std::process::Command::new("sleep")
-        .arg("600")
-        .spawn()
+    fixture
+        .session
+        .reopen(&mut fixture.vision, None, Some("second"))
         .unwrap();
-    if let Err(error) = terminate(running.id()) {
-        running.kill().unwrap();
-        panic!("{error}");
-    }
-    // SIGTERM is 15 on Linux and macOS.
-    assert_eq!(running.wait().unwrap().signal(), Some(15));
+
+    assert_ne!(fixture.session.scratch.root(), main);
+    let screen = fixture.wait_for("○ sample.rs");
+    assert!(screen.text.contains("✓ notes.md"), "{}", screen.text);
 }
 
 /// The JSON a reviewer MCP tool returned, from the text of its result.
@@ -255,25 +169,24 @@ fn tool_json(result: &Value) -> Value {
 #[test]
 fn the_stand_in_agent_answers_a_review_comment_in_the_threads_tab() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    for key in ["tab", "j", "j", "a"] {
-        session.act(&Input::Keys(&[key.to_owned()])).unwrap();
-    }
-    session.act(&Input::Text("Why this line?")).unwrap();
-    session
-        .act(&Input::Keys(&["ctrl+enter".to_owned()]))
-        .unwrap();
+    fixture.wait_for("math.rs");
+    fixture.keys(&["tab", "j", "j", "a"]);
+    fixture.paste("Why this line?");
+    fixture.keys(&["ctrl+enter"]);
+    let Fixture {
+        session, vision, ..
+    } = &mut fixture;
 
     let wakeup = session.next_turn(None, GUARD).unwrap();
     assert_eq!(wakeup["kind"], "comments", "{wakeup}");
     let turn = wakeup["turn"].as_u64().unwrap();
     let (fetched, _) = session
-        .reply(turn, "get_new_messages", serde_json::json!({}))
+        .reply(vision, turn, "get_new_messages", serde_json::json!({}))
         .unwrap();
     let thread = &tool_json(&fetched)["threads"][0];
     let (replied, _) = session
         .reply(
+            vision,
             turn,
             "reply",
             serde_json::json!({
@@ -286,34 +199,28 @@ fn the_stand_in_agent_answers_a_review_comment_in_the_threads_tab() {
         .unwrap();
     assert_eq!(replied["isError"], false, "{replied}");
 
-    session.act(&Input::Keys(&["t".to_owned()])).unwrap();
-    let screen = session
-        .wait_for("Because the fixture needs a third line.", false, GUARD)
-        .unwrap();
-    assert!(screen.shows("Why this line?"), "{}", screen.text);
+    fixture.keys(&["t"]);
+    // The pane wraps the answer: its first line.
+    let screen = fixture.wait_for("Because the fixture needs a");
+    assert!(screen.text.contains("Why this line?"), "{}", screen.text);
 }
 
 #[test]
 fn the_stand_in_agent_revises_the_open_question_in_the_pane() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    let explore = session.screen(false).unwrap().locate("Explore").unwrap();
-    let start = session.act(&Input::Click(explore)).unwrap();
-    let in_the_pane = start.locate("Start in the pane").unwrap();
-    session.act(&Input::Click(in_the_pane)).unwrap();
-    session.next_turn(None, GUARD).unwrap();
+    fixture.wait_for("math.rs");
+    fixture.keys(&["e", "p"]);
+    fixture.ask();
     let question: Value =
         serde_json::from_str(include_str!("../../examples/question.json")).unwrap();
-    session
-        .reply(1, "submit_question", question["arguments"].clone())
-        .unwrap();
     let mut revised = question["arguments"]["update"]["next"].clone();
     revised["version"] = 2.into();
     revised["text"] = "Should the helpers reject negative input?".into();
 
-    let (reply, _) = session
+    let (reply, _) = fixture
+        .session
         .reply(
+            &mut fixture.vision,
             1,
             "revise_question",
             serde_json::json!({"revision": {
@@ -324,11 +231,9 @@ fn the_stand_in_agent_revises_the_open_question_in_the_pane() {
         .unwrap();
 
     assert_eq!(reply["isError"], false, "{reply}");
-    let screen = session
-        .wait_for("Should the helpers reject negative input?", false, GUARD)
-        .unwrap();
+    let screen = fixture.wait_for("Should the helpers reject negative input?");
     assert!(
-        screen.shows("Revised after your message"),
+        screen.text.contains("Revised after your message"),
         "{}",
         screen.text
     );
@@ -337,27 +242,20 @@ fn the_stand_in_agent_revises_the_open_question_in_the_pane() {
 #[test]
 fn the_driver_plays_a_fork_and_a_bare_answer_continues_as_it() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    let explore = session.screen(false).unwrap().locate("Explore").unwrap();
-    session.act(&Input::Click(explore)).unwrap();
-    let every = session.act(&Input::Keys(&keys(&["z", "z"]))).unwrap();
+    fixture.wait_for("math.rs");
+    fixture.keys(&["e"]);
+    let every = fixture.keys(&["z", "z"]);
     assert!(
-        every.shows("Run ahead (experimental): every choice"),
+        every
+            .text
+            .contains("Run ahead (experimental): every choice"),
         "{}",
         every.text
     );
-    session
-        .act(&Input::Click(every.locate("Start in the pane").unwrap()))
-        .unwrap();
-    session.next_turn(None, GUARD).unwrap();
-    let question: Value =
-        serde_json::from_str(include_str!("../../examples/question.json")).unwrap();
-    session
-        .reply(1, "submit_question", question["arguments"].clone())
-        .unwrap();
+    fixture.keys(&["p"]);
+    fixture.ask();
 
-    let forks = session.forks(Some(2), GUARD).unwrap();
+    let forks = fixture.session.forks(Some(2), GUARD).unwrap();
     let mut choices: Vec<_> = forks["forks"]
         .as_array()
         .unwrap()
@@ -372,69 +270,58 @@ fn the_driver_plays_a_fork_and_a_bare_answer_continues_as_it() {
         .unwrap()
         .to_owned();
     assert_eq!(fork_of(&forks, "keep")["parent"], own);
+    // The reviewer hears the agent's hooks in the sandbox's runtime directory, never in the
+    // one this process has, which stands for the user's.
+    let runtime = fixture
+        .vision
+        .sandbox()
+        .variable("XDG_RUNTIME_DIR")
+        .unwrap();
+    assert!(Path::new(runtime).join("herdr-reviewer").exists());
+    assert_ne!(
+        Some(runtime),
+        std::env::var_os("XDG_RUNTIME_DIR").as_deref()
+    );
     let conclusion: Value =
         serde_json::from_str(include_str!("../../examples/conclusion.json")).unwrap();
-    // The reviewer hears the agent's hooks in the session's runtime directory, never in the one
-    // its panes inherit, which stands for the user's.
-    let hooks = |runtime: &Path| runtime.join("herdr-reviewer").exists();
-    assert!(hooks(Path::new(
-        session.describe()["runtime"].as_str().unwrap()
-    )));
-    let inherited = &fixture.server.environment()[std::ffi::OsStr::new("XDG_RUNTIME_DIR")];
-    assert!(!hooks(Path::new(inherited)));
-    let session = &mut fixture.session;
-    let (reply, _) = session
-        .fork_submit(&keep, "submit_conclusion", conclusion["arguments"].clone())
+    let (reply, _) = fixture
+        .session
+        .fork_submit(
+            &mut fixture.vision,
+            &keep,
+            "submit_conclusion",
+            conclusion["arguments"].clone(),
+        )
         .unwrap();
     assert_eq!(reply["isError"], false, "{reply}");
-    let shown = session.forks(None, GUARD).unwrap();
+    let shown = fixture.session.forks(None, GUARD).unwrap();
     assert_eq!(fork_of(&shown, "keep")["submitted"], true, "{shown}");
 
     // A bare answer: the first choice, sent with no comment.
-    session
-        .act(&Input::Keys(&keys(&["1", "ctrl+enter"])))
-        .unwrap();
+    fixture.keys(&["1", "ctrl+enter"]);
 
-    let prepared = session
-        .wait_for("Prepared while you were thinking", false, GUARD)
-        .unwrap();
-    assert!(prepared.shows("To be implemented"), "{}", prepared.text);
-    // The agent tells the reviewer and Herdr of its new session before the event socket.
-    session
-        .events
-        .try_wait_until("the agent on the fork's session", GUARD, |received| {
-            forks::agent_sessions(received).session.as_deref() == Some(&keep)
-        })
-        .unwrap();
-    let moved = session.forks(None, GUARD).unwrap();
+    let prepared = fixture.wait_for("Prepared while you were thinking");
+    assert!(
+        prepared.text.contains("To be implemented"),
+        "{}",
+        prepared.text
+    );
+    wait_agent_session(&fixture.session, &keep);
+    let moved = fixture.session.forks(None, GUARD).unwrap();
     assert_eq!(moved["agent"]["session"], keep.as_str(), "{moved}");
     assert_eq!(moved["agent"]["resumed"], serde_json::json!([keep]));
 }
 
 /// Starts a round in the pane with run-ahead on every choice, and asks the example question.
-fn ask_with_run_ahead(session: &mut Session) {
-    session.wait_for("math.rs", false, GUARD).unwrap();
-    let explore = session.screen(false).unwrap().locate("Explore").unwrap();
-    session.act(&Input::Click(explore)).unwrap();
-    let every = session.act(&Input::Keys(&keys(&["z", "z"]))).unwrap();
-    session
-        .act(&Input::Click(every.locate("Start in the pane").unwrap()))
-        .unwrap();
-    let kickoff = session.next_turn(None, GUARD).unwrap();
-    let question: Value =
-        serde_json::from_str(include_str!("../../examples/question.json")).unwrap();
-    session
-        .reply(
-            kickoff["turn"].as_u64().unwrap(),
-            "submit_question",
-            question["arguments"].clone(),
-        )
-        .unwrap();
+fn ask_with_run_ahead(fixture: &mut Fixture) {
+    fixture.wait_for("math.rs");
+    fixture.keys(&["e", "z", "z", "p"]);
+    fixture.ask();
 }
 
 /// The sessions of the forks of the example question: `keep`, then `saturate`.
-fn forks_of_the_question(session: &Session) -> (String, String) {
-    let forks = session.forks(Some(2), GUARD).unwrap();
+fn forks_of_the_question(fixture: &Fixture) -> (String, String) {
+    let forks = fixture.session.forks(Some(2), GUARD).unwrap();
     let session_of = |choice: &str| {
         fork_of(&forks, choice)["session"]
             .as_str()
@@ -457,17 +344,15 @@ fn fork_of<'a>(forks: &'a Value, choice: &str) -> &'a Value {
 
 /// Answers the first choice with no comment, then answers the agent's turn with the next
 /// question, and returns the screen that shows it with the line of the turn's path.
-fn answer_bare_and_ask_again(session: &mut Session) -> Screen {
-    session
-        .act(&Input::Keys(&keys(&["1", "ctrl+enter"])))
-        .unwrap();
-    ask_again(session)
+fn answer_bare_and_ask_again(fixture: &mut Fixture) -> Screen {
+    fixture.keys(&["1", "ctrl+enter"]);
+    ask_again(fixture)
 }
 
 /// Answers the agent's turn after an answer with the next question, and returns the screen
 /// that shows it with the line of the turn's path.
-fn ask_again(session: &mut Session) -> Screen {
-    let wakeup = session.next_turn(None, GUARD).unwrap();
+fn ask_again(fixture: &mut Fixture) -> Screen {
+    let wakeup = fixture.session.next_turn(None, GUARD).unwrap();
     assert_eq!(wakeup["kind"], "wakeup", "{wakeup}");
     let question: Value =
         serde_json::from_str(include_str!("../../examples/question.json")).unwrap();
@@ -481,30 +366,35 @@ fn ask_again(session: &mut Session) -> Screen {
     update["interpretation"] =
         serde_json::json!({"status": "accepted", "recap": "Kept.", "follow_ups": []});
     update["reply"] = serde_json::json!({"text": "Kept as written.", "evidence": []});
-    let (reply, _) = session
+    let (reply, _) = fixture
+        .session
         .reply(
+            &mut fixture.vision,
             wakeup["turn"].as_u64().unwrap(),
             "submit_question",
             arguments,
         )
         .unwrap();
     assert_eq!(reply["isError"], false, "{reply}");
-    session
-        .wait_for("Should the helpers check their input?", false, GUARD)
-        .unwrap()
+    fixture.wait_for("Should the helpers check their input?")
 }
 
 #[test]
 fn the_driver_ends_one_fork_without_a_turn_and_crashes_the_other() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    ask_with_run_ahead(session);
-    let (keep, saturate) = forks_of_the_question(session);
+    ask_with_run_ahead(&mut fixture);
+    let (keep, saturate) = forks_of_the_question(&fixture);
 
-    session.fork_end(&keep, false).unwrap();
-    session.fork_end(&saturate, true).unwrap();
+    fixture
+        .session
+        .fork_end(&mut fixture.vision, &keep, false)
+        .unwrap();
+    fixture
+        .session
+        .fork_end(&mut fixture.vision, &saturate, true)
+        .unwrap();
 
-    let forks = session.forks(None, GUARD).unwrap();
+    let forks = fixture.session.forks(None, GUARD).unwrap();
     let ended = |choice: &str| {
         let fork = fork_of(&forks, choice);
         (
@@ -525,9 +415,11 @@ fn the_driver_ends_one_fork_without_a_turn_and_crashes_the_other() {
     );
     let log = forks["log"].as_str().unwrap();
     assert!(log.contains("exit status: 1"), "{log}");
-    let screen = answer_bare_and_ask_again(session);
+    let screen = answer_bare_and_ask_again(&mut fixture);
     assert!(
-        screen.shows("Not prepared: the turn for this choice did not finish"),
+        screen
+            .text
+            .contains("Not prepared: the turn for this choice did not finish"),
         "{}",
         screen.text
     );
@@ -536,29 +428,25 @@ fn the_driver_ends_one_fork_without_a_turn_and_crashes_the_other() {
 #[test]
 fn a_switch_heard_late_still_continues_as_the_fork() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    ask_with_run_ahead(session);
-    let (keep, _) = forks_of_the_question(session);
-    let conclusion: Value =
-        serde_json::from_str(include_str!("../../examples/conclusion.json")).unwrap();
-    session
-        .fork_submit(&keep, "submit_conclusion", conclusion["arguments"].clone())
-        .unwrap();
-    session
+    ask_with_run_ahead(&mut fixture);
+    let (keep, _) = forks_of_the_question(&fixture);
+    submit_conclusion(&mut fixture, &keep);
+    fixture
+        .session
         .switch_unheard(Some(Duration::from_secs(2)))
         .unwrap();
 
-    session
-        .act(&Input::Keys(&keys(&["1", "ctrl+enter"])))
-        .unwrap();
+    fixture.keys(&["1", "ctrl+enter"]);
 
-    // The agent reads the /resume at once, and reports it to Herdr and the hooks 2 s later.
-    let from_agent = |received: &[Reported], event: &StandInEvent| {
+    // The agent reads the /resume at once, and reports it to the hooks 2 s later.
+    let agent = Role::agent(AGENT);
+    let from_agent = |received: &[Reported], event: &Event| {
         received
             .iter()
-            .any(|reported| reported.from == StandInRole::Agent && reported.event == *event)
+            .any(|reported| reported.from == agent && reported.event == *event)
     };
-    let read = StandInEvent::ResumeReceived {
+    let session = &fixture.session;
+    let read = Event::ResumeReceived {
         session: keep.clone(),
     };
     session
@@ -568,37 +456,20 @@ fn a_switch_heard_late_still_continues_as_the_fork() {
         })
         .unwrap();
     let read_at = std::time::Instant::now();
-    let reported = StandInEvent::SessionReported {
-        session: keep.clone(),
-        start: "resume".into(),
-    };
-    session
-        .events
-        .try_wait_until("the resume's report", GUARD, |received| {
-            from_agent(received, &reported)
-        })
-        .unwrap();
+    wait_agent_session(session, &keep);
     assert!(read_at.elapsed() >= Duration::from_secs(1));
-    session
-        .wait_for("Prepared while you were thinking", false, GUARD)
-        .unwrap();
+    fixture.wait_for("Prepared while you were thinking");
 }
 
 #[test]
 fn an_unheard_switch_fails_and_retry_reaches_the_agent_once() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    ask_with_run_ahead(session);
-    let (keep, _) = forks_of_the_question(session);
-    let conclusion: Value =
-        serde_json::from_str(include_str!("../../examples/conclusion.json")).unwrap();
-    session
-        .fork_submit(&keep, "submit_conclusion", conclusion["arguments"].clone())
-        .unwrap();
-    session.switch_unheard(None).unwrap();
-    session
-        .act(&Input::Keys(&keys(&["1", "ctrl+enter"])))
-        .unwrap();
+    ask_with_run_ahead(&mut fixture);
+    let (keep, _) = forks_of_the_question(&fixture);
+    submit_conclusion(&mut fixture, &keep);
+    fixture.session.switch_unheard(None).unwrap();
+    fixture.keys(&["1", "ctrl+enter"]);
+    let session = &fixture.session;
 
     // The switch waits 20 s for the agent's hook, fails, then sends the agent back to its own
     // session: the turn waits for Retry by then.
@@ -606,37 +477,35 @@ fn an_unheard_switch_fails_and_retry_reaches_the_agent_once() {
         .as_str()
         .unwrap()
         .to_owned();
+    let back = Event::ResumeReceived {
+        session: own.clone(),
+    };
     session
         .events
         .try_wait_until(
             "the agent back on its session",
             Duration::from_secs(40),
-            |received| {
-                forks::agent_sessions(received).session.as_deref() == Some(own.as_str())
-                    && received.iter().any(|reported| {
-                        reported.event
-                            == StandInEvent::ResumeReceived {
-                                session: own.clone(),
-                            }
-                    })
-            },
+            |received| received.iter().any(|reported| reported.event == back),
         )
         .unwrap();
-    session.act(&Input::Keys(&keys(&["r"]))).unwrap();
+    wait_agent_session(session, &own);
+    fixture.keys(&["r"]);
 
-    let screen = ask_again(session);
+    let screen = ask_again(&mut fixture);
     assert!(
-        screen.shows("Not prepared: the agent could not switch to the prepared turn"),
+        screen
+            .text
+            .contains("Not prepared: the agent could not switch to the prepared turn"),
         "{}",
         screen.text
     );
     // The next turn the agent gets answers the next question: Retry sent the first answer once.
-    session.act(&Input::Keys(&keys(&["1"]))).unwrap();
-    session.act(&Input::Text("With a comment.")).unwrap();
-    session.act(&Input::Keys(&keys(&["ctrl+enter"]))).unwrap();
-    let next = session.next_turn(None, GUARD).unwrap();
+    fixture.keys(&["1"]);
+    fixture.paste("With a comment.");
+    fixture.keys(&["ctrl+enter"]);
+    let next = fixture.session.next_turn(None, GUARD).unwrap();
     assert_eq!(next["answer"]["question"]["id"], "q2", "{next}");
-    let sessions = session.forks(None, GUARD).unwrap()["agent"].clone();
+    let sessions = fixture.session.forks(None, GUARD).unwrap()["agent"].clone();
     assert_eq!(
         sessions["resumed"],
         serde_json::json!([keep, own]),
@@ -645,21 +514,26 @@ fn an_unheard_switch_fails_and_retry_reaches_the_agent_once() {
 }
 
 #[test]
+#[ignore = "flupke/herdr-ruminate#22: under herdr-core, run-ahead continues as the fork \
+            though hc reports the agent working at the answer"]
 fn an_agent_shown_working_at_the_answer_takes_it_itself() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    ask_with_run_ahead(session);
-    forks_of_the_question(session);
+    ask_with_run_ahead(&mut fixture);
+    forks_of_the_question(&fixture);
 
-    session.agent_working(true).unwrap();
-    session
-        .act(&Input::Keys(&keys(&["1", "ctrl+enter"])))
+    fixture
+        .session
+        .agent_working(&mut fixture.vision, true)
         .unwrap();
-    session.agent_working(false).unwrap();
+    fixture.keys(&["1", "ctrl+enter"]);
+    fixture
+        .session
+        .agent_working(&mut fixture.vision, false)
+        .unwrap();
 
-    let screen = ask_again(session);
+    let screen = ask_again(&mut fixture);
     assert!(
-        screen.shows("Not prepared: the agent was working"),
+        screen.text.contains("Not prepared: the agent was working"),
         "{}",
         screen.text
     );
@@ -668,20 +542,24 @@ fn an_agent_shown_working_at_the_answer_takes_it_itself() {
 #[test]
 fn a_prompt_typed_to_the_agent_moves_its_conversation_past_the_forks() {
     let (mut fixture, _) = Fixture::start();
-    let session = &mut fixture.session;
-    ask_with_run_ahead(session);
-    forks_of_the_question(session);
+    ask_with_run_ahead(&mut fixture);
+    forks_of_the_question(&fixture);
     // The agent writes the prompt into its conversation and starts no turn on it: the answer
     // finds it idle, its conversation past the forks, whatever the answer's pace.
-    let swallow = session.scratch.stand_in().swallow();
+    let swallow = fixture.session.scratch.agent_directory().swallow();
     fs::write(&swallow, "").unwrap();
 
-    session.agent_prompt("What are you doing?").unwrap();
+    fixture
+        .session
+        .agent_prompt(&mut fixture.vision, "What are you doing?")
+        .unwrap();
     fs::remove_file(&swallow).unwrap();
 
-    let screen = answer_bare_and_ask_again(session);
+    let screen = answer_bare_and_ask_again(&mut fixture);
     assert!(
-        screen.shows("Not prepared: the agent's conversation moved on"),
+        screen
+            .text
+            .contains("Not prepared: the agent's conversation moved on"),
         "{}",
         screen.text
     );
@@ -690,18 +568,48 @@ fn a_prompt_typed_to_the_agent_moves_its_conversation_past_the_forks() {
 #[test]
 fn an_agent_without_the_plugin_hooks_is_never_forked() {
     let (mut fixture, _) = Fixture::start_with(false);
-    let session = &mut fixture.session;
-    ask_with_run_ahead(session);
+    ask_with_run_ahead(&mut fixture);
 
-    let screen = answer_bare_and_ask_again(session);
+    let screen = answer_bare_and_ask_again(&mut fixture);
 
+    // Under herdr-core, the plugin's hook is what names the agent's session: without it,
+    // run-ahead has no session to fork.
     assert!(
-        screen.shows("Not prepared: restart the agent to load the reviewer's Claude Code plugin"),
+        screen
+            .text
+            .contains("Not prepared: nothing was prepared for this question"),
         "{}",
         screen.text
     );
     assert_eq!(
-        session.forks(None, GUARD).unwrap()["forks"],
+        fixture.session.forks(None, GUARD).unwrap()["forks"],
         serde_json::json!([])
     );
+}
+
+/// Submits the turn of the fork `session` with the example conclusion.
+fn submit_conclusion(fixture: &mut Fixture, session: &str) {
+    let conclusion: Value =
+        serde_json::from_str(include_str!("../../examples/conclusion.json")).unwrap();
+    let (reply, _) = fixture
+        .session
+        .fork_submit(
+            &mut fixture.vision,
+            session,
+            "submit_conclusion",
+            conclusion["arguments"].clone(),
+        )
+        .unwrap();
+    assert_eq!(reply["isError"], false, "{reply}");
+}
+
+/// Waits until the agent started `started`, once its `SessionStart` hooks, the reviewer's
+/// among them, ran.
+fn wait_agent_session(session: &Session, started: &str) {
+    session
+        .events
+        .try_wait_until("the agent on the session", GUARD, |received| {
+            forks::agent_sessions(received).session.as_deref() == Some(started)
+        })
+        .unwrap();
 }

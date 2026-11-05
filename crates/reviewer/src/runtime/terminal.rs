@@ -50,6 +50,17 @@ impl<W: Write> TerminalBackend<W> {
         self.markers = Some(FrameMarker::default());
         self
     }
+
+    /// Empties the terminal title, which ends the frame markers of a vision session, as the
+    /// reviewer quits: the driver stops waiting on frames the shell left behind never paints.
+    /// Without frame markers, writes nothing.
+    pub(super) fn end_frame_markers(&mut self) -> io::Result<()> {
+        if self.markers.take().is_some() {
+            self.inner.write_all(FrameMarker::RESET.as_bytes())?;
+            Backend::flush(&mut self.inner)?;
+        }
+        Ok(())
+    }
 }
 
 impl<W: Write> PaneBackend for TerminalBackend<W> {

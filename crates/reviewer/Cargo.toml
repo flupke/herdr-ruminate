@@ -56,7 +56,9 @@ review-ui = { path = "../review-ui" }
 reviewer-config = { path = "../reviewer-config" }
 reviewer-dirs = { path = "../reviewer-dirs" }
 ui-events = { path = "../ui-events" }
-vision-signal = { path = "../vision-signal" }
+# The frame signal of a vision session, shared with herdr-common's vision core: from git, so a
+# clone of this repository alone still builds (herdr-common's ADR 0003).
+vision-signal = { git = "https://github.com/flupke/herdr-common" }
 serde_json.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
@@ -77,8 +79,10 @@ uuid.workspace = true
 rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest"] }
 tokio.workspace = true
 review-test-support = { path = "../review-test-support" }
-# The tests run its program in the agent's pane, which `make test` builds.
+# The tests run its program in the agent's pane, which `make test` builds, and drive it through
+# herdr-common's fake agent's event socket.
 stand-in-agent = { path = "../stand-in-agent" }
+fake-agent.workspace = true
 test-case.workspace = true
 tempfile.workspace = true
 

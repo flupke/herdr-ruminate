@@ -719,6 +719,7 @@ impl Drop for TerminalGuard {
         let _ = disable_raw_mode();
         let _ = leave_terminal_modes(self.terminal.backend_mut());
         let _ = self.terminal.show_cursor();
+        let _ = self.terminal.backend_mut().end_frame_markers();
     }
 }
 

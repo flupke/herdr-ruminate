@@ -137,6 +137,30 @@ fn the_next_frame_marker_names_an_acknowledged_request() {
 }
 
 #[test]
+fn quitting_a_vision_session_empties_the_title_after_the_last_marker() {
+    let output = CapturedOutput::default();
+    let mut terminal = marked_terminal(&output);
+    terminal
+        .draw(|frame| frame.render_widget(Paragraph::new("visible"), frame.area()))
+        .unwrap();
+    terminal.backend_mut().end_frame_markers().unwrap();
+    let expected = format!("{}{}", marker(1, 0), vision_signal::FrameMarker::RESET);
+    assert!(
+        String::from_utf8_lossy(&output.0.borrow()).ends_with(&expected),
+        "{:?}",
+        output.0.borrow()
+    );
+}
+
+#[test]
+fn without_frame_markers_quitting_leaves_the_title_alone() {
+    let mut fixture = Fixture::new();
+    fixture.draw("Review this file", Style::default());
+    fixture.terminal.backend_mut().end_frame_markers().unwrap();
+    assert!(!String::from_utf8_lossy(&fixture.output.0.borrow()).contains("\x1b]2;"));
+}
+
+#[test]
 fn without_frame_markers_an_acknowledgement_writes_nothing() {
     let mut fixture = Fixture::new();
     fixture.terminal.backend_mut().acknowledge_input(5);

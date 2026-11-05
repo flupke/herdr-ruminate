@@ -26,11 +26,23 @@ mod explore_flow;
 #[path = "runtime/run_ahead.tests.rs"]
 mod run_ahead;
 
+use fake_agent::{Events, Reported, Role, variables};
 use herdr_client::protocol::AgentStatus;
-use review_test_support::stand_in::{
-    Reported, StandInCommand, StandInEvent, StandInEvents, StandInRole,
-};
-use stand_in_agent::{StandInDirectory, variables};
+
+/// The name the stand-in agent in the agent's pane reports under ([`variables::NAME`]).
+const AGENT_NAME: &str = "agent";
+/// The name a second stand-in agent, in a pane of its own, reports under.
+const SECOND_AGENT_NAME: &str = "second";
+
+/// The stand-in agent in the agent's pane, on the event socket.
+fn agent_role() -> Role {
+    Role::agent(AGENT_NAME)
+}
+
+/// A second stand-in agent, in a pane of its own, on the event socket.
+fn second_agent_role() -> Role {
+    Role::agent(SECOND_AGENT_NAME)
+}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum AgentLifecycle {
@@ -55,7 +67,7 @@ struct IsolatedHerdrServer {
     /// Whether Herdr reads the title of the agent that runs now.
     title_read: std::sync::atomic::AtomicBool,
     /// What the stand-in agent and its forks report.
-    events: StandInEvents,
+    events: Events,
     /// Whether real Claude Code runs in the agent's pane, in place of the stand-in.
     real_agent: bool,
     /// The arguments the agent starts with.
@@ -139,11 +151,14 @@ impl IsolatedHerdrServer {
         more: impl FnOnce(&Path) -> Vec<String>,
     ) -> Self {
         let server = HerdrTestServer::start(repository_root);
-        let events = StandInEvents::listen(&server.root().join("stand-in.sock"));
+        let events = Events::listen(&server.root().join("stand-in.sock")).unwrap();
         let mut environment = vec![
             format!("{}={}", variables::DIRECTORY, server.root().display()),
             format!("{}={}", variables::HERDR, server.binary().display()),
-            format!("{}={agent}", variables::AGENT),
+            format!("{}={agent}", variables::PLAYS),
+            format!("{}={AGENT_NAME}", variables::NAME),
+            // A turn ends once Herdr saw it, unless the test holds turns.
+            format!("{}=auto", variables::TURNS),
             events.environment(),
         ];
         environment.extend(more(server.root()));
@@ -199,12 +214,13 @@ impl IsolatedHerdrServer {
     /// agent that runs where it released one before, whatever the agent reports.
     fn start_agent(&self, session: Option<&str>, lifecycle: AgentLifecycle) {
         let detected = self.server.events();
-        let from = self.events.received().len();
+        let from = self.received().len();
         let agent = self.agent_binary.to_string_lossy();
+        // Empty, it names no session: the agent starts none.
         let session_variable = format!("{}={}", variables::SESSION, session.unwrap_or_default());
         let lifecycle_variable = format!(
             "{}={}",
-            variables::REPORT_LIFECYCLE,
+            variables::REPORT_STATE,
             match lifecycle {
                 AgentLifecycle::Reported => "1",
                 AgentLifecycle::Native => "0",
@@ -235,7 +251,7 @@ impl IsolatedHerdrServer {
             self.wait_for_agent_event(
                 from,
                 "the agent's state",
-                &StandInEvent::StateReported {
+                &fake_agent::Event::StateReported {
                     state: "idle".into(),
                 },
             );
@@ -244,7 +260,7 @@ impl IsolatedHerdrServer {
             self.wait_for_agent_event(
                 from,
                 "the agent's session",
-                &StandInEvent::SessionReported {
+                &fake_agent::Event::SessionReported {
                     session: session.into(),
                     start: "startup".into(),
                 },
@@ -253,22 +269,22 @@ impl IsolatedHerdrServer {
     }
 
     /// Waits until the agent reported `event`, after the first `from` events received.
-    fn wait_for_agent_event(&self, from: usize, what: &str, event: &StandInEvent) {
+    fn wait_for_agent_event(&self, from: usize, what: &str, event: &fake_agent::Event) {
         self.events.wait_until(what, |received| {
             received[from..]
                 .iter()
-                .any(|reported| reported.from == StandInRole::Agent && reported.event == *event)
+                .any(|reported| reported.from == agent_role() && reported.event == *event)
         });
     }
 
     /// Ends the agent in the pane, and returns once Herdr no longer reports it.
     fn stop_agent(&self) {
         let gone = self.server.events();
-        let from = self.events.received().len();
+        let from = self.received().len();
         // Native detection must observe the exit; release-agent would reset it
         // and could leave a stale agent record after the process is gone.
         self.run_cli(&["pane", "send-keys", &self.pane_id.0, "ctrl+d"]);
-        self.wait_for_agent_event(from, "the agent's exit", &StandInEvent::Disconnected);
+        self.wait_for_agent_event(from, "the agent's exit", &fake_agent::Event::Disconnected);
         // Herdr releases an agent whose process ended.
         gone.wait_for("the agent's end", |event| {
             matches!(event, HerdrEvent::AgentDetected { pane_id, released: true, .. }
@@ -293,13 +309,18 @@ impl IsolatedHerdrServer {
     }
 
     /// The stand-in agent's directory: its switches, and what its forks record.
-    fn directory(&self) -> StandInDirectory {
-        StandInDirectory::new(self.server.root().to_owned())
+    fn directory(&self) -> fake_agent::Directory {
+        fake_agent::Directory::new(self.server.root().to_owned())
     }
 
     /// What the stand-ins report.
-    fn events(&self) -> &StandInEvents {
+    fn events(&self) -> &Events {
         &self.events
+    }
+
+    /// Every event the stand-ins reported so far.
+    fn received(&self) -> Vec<Reported> {
+        self.events.try_received().unwrap()
     }
 
     /// Every event the stand-in agent reported up to a marker typed in its pane after what
@@ -312,23 +333,23 @@ impl IsolatedHerdrServer {
 
     /// The prompts the agent read, as far as the test received its reports.
     fn prompts(&self) -> Vec<String> {
-        prompts_of(&StandInRole::Agent, &self.events.received())
+        prompts_of(&agent_role(), &self.received())
     }
 
     /// The prompts the agent read, once they are as `holds` says.
     fn wait_for_prompts(&self, what: &str, holds: impl Fn(&[String]) -> bool) -> Vec<String> {
         prompts_of(
-            &StandInRole::Agent,
-            &self.events.wait_until(what, |received| {
-                holds(&prompts_of(&StandInRole::Agent, received))
-            }),
+            &agent_role(),
+            &self
+                .events
+                .wait_until(what, |received| holds(&prompts_of(&agent_role(), received))),
         )
     }
 
     /// The sessions the agent resumed with Claude Code's `/resume`, in order, as far as the
     /// test received its reports.
     fn resumed(&self) -> Vec<String> {
-        resumed_sessions(&self.events.received())
+        resumed_sessions(&self.received())
     }
 
     fn run_cli(&self, arguments: &[&str]) -> std::process::Output {
@@ -340,8 +361,8 @@ impl IsolatedHerdrServer {
     fn show_title(&self, title: &str, status: AgentStatus) {
         let statuses = self.server.agent_statuses(&self.pane_id);
         self.events.send(
-            &StandInRole::Agent,
-            &StandInCommand::ShowTitle {
+            &agent_role(),
+            &fake_agent::Command::ShowTitle {
                 title: title.into(),
             },
         );
@@ -362,14 +383,8 @@ impl IsolatedHerdrServer {
     /// Make the agent end each turn only when the test ends it (`hold`), or as soon as Herdr
     /// saw it start; returns once the agent does.
     fn hold_turns(&self, hold: bool) {
-        let from = self.events.received().len();
         self.events
-            .send(&StandInRole::Agent, &StandInCommand::HoldTurns { hold });
-        self.wait_for_agent_event(
-            from,
-            "the agent's turns held",
-            &StandInEvent::TurnsHeld { hold },
-        );
+            .obey(&agent_role(), &fake_agent::Command::HoldTurns { hold });
     }
 
     /// Make the agent read each prompt typed from now on without starting on it, or start on
@@ -390,7 +405,7 @@ impl IsolatedHerdrServer {
             "release-agent",
             &self.pane_id.0,
             "--source",
-            stand_in_agent::AGENT_SOURCE,
+            fake_agent::STATE_SOURCE,
             "--agent",
             &self.agent,
         ]);
@@ -399,10 +414,8 @@ impl IsolatedHerdrServer {
             .swap(true, std::sync::atomic::Ordering::Relaxed)
         {
             // Herdr says that it released an agent only when it did not detect it by name yet.
-            let from = self.events.received().len();
             self.events
-                .send(&StandInRole::Agent, &StandInCommand::Release);
-            self.wait_for_agent_event(from, "the agent's release", &StandInEvent::Released);
+                .obey(&agent_role(), &fake_agent::Command::Release);
         }
     }
 
@@ -431,12 +444,12 @@ impl IsolatedHerdrServer {
 }
 
 /// The prompts that the stand-in agent `role` read, among the events `received`.
-fn prompts_of(role: &StandInRole, received: &[Reported]) -> Vec<String> {
+fn prompts_of(role: &Role, received: &[Reported]) -> Vec<String> {
     received
         .iter()
         .filter(|reported| reported.from == *role)
         .filter_map(|reported| match &reported.event {
-            StandInEvent::PromptReceived { text } => Some(text.clone()),
+            fake_agent::Event::PromptReceived { text } => Some(text.clone()),
             _ => None,
         })
         .collect()
@@ -462,9 +475,9 @@ fn prompts_text(prompts: &[String]) -> String {
 fn resumed_sessions(received: &[Reported]) -> Vec<String> {
     received
         .iter()
-        .filter(|reported| reported.from == StandInRole::Agent)
+        .filter(|reported| reported.from == agent_role())
         .filter_map(|reported| match &reported.event {
-            StandInEvent::ResumeReceived { session } => Some(session.clone()),
+            fake_agent::Event::ResumeReceived { session } => Some(session.clone()),
             _ => None,
         })
         .collect()
@@ -583,8 +596,8 @@ fn native_agent(repository: &Path) -> (IsolatedHerdrServer, review_test_support:
     let herdr = IsolatedHerdrServer::start_native(repository);
     let statuses = herdr.server.agent_statuses(&herdr.pane_id);
     herdr.events().send(
-        &StandInRole::Agent,
-        &StandInCommand::ShowTitle {
+        &agent_role(),
+        &fake_agent::Command::ShowTitle {
             title: "✳ Ready".into(),
         },
     );
@@ -593,7 +606,7 @@ fn native_agent(repository: &Path) -> (IsolatedHerdrServer, review_test_support:
 }
 
 /// The events of `reported`, without the stand-in that reported them.
-fn stand_in_events(reported: Vec<Reported>) -> Vec<StandInEvent> {
+fn stand_in_events(reported: Vec<Reported>) -> Vec<fake_agent::Event> {
     reported
         .into_iter()
         .map(|reported| reported.event)
@@ -613,14 +626,14 @@ fn a_reporting_stand_in_ends_its_turn_once_herdr_saw_it_start() {
     let turn = herdr
         .events()
         .events_until("the end of the turn", |reported| {
-            reported.event == StandInEvent::TurnFinished
+            reported.event == fake_agent::Event::TurnEnded { blocked: None }
         });
     assert!(stand_in_events(turn).ends_with(&[
-        StandInEvent::PromptReceived {
+        fake_agent::Event::PromptReceived {
             text: "first".into()
         },
-        StandInEvent::TurnStarted,
-        StandInEvent::TurnFinished,
+        fake_agent::Event::TurnStarted,
+        fake_agent::Event::TurnEnded { blocked: None },
     ]));
     statuses.wait_for(AgentStatus::Idle);
 }
@@ -638,16 +651,16 @@ fn a_held_turn_lasts_until_the_test_ends_it() {
     statuses.wait_for(AgentStatus::Working);
 
     let before_marker = stand_in_events(herdr.mark());
-    assert!(before_marker.contains(&StandInEvent::TurnStarted));
+    assert!(before_marker.contains(&fake_agent::Event::TurnStarted));
     assert!(
-        !before_marker.contains(&StandInEvent::TurnFinished),
+        !before_marker.contains(&fake_agent::Event::TurnEnded { blocked: None }),
         "a held turn lasts: {before_marker:?}"
     );
     herdr
         .events()
-        .send(&StandInRole::Agent, &StandInCommand::EndTurn);
+        .send(&agent_role(), &fake_agent::Command::EndTurn);
     herdr.events().wait_for("the end of the turn", |reported| {
-        reported.event == StandInEvent::TurnFinished
+        reported.event == fake_agent::Event::TurnEnded { blocked: None }
     });
     statuses.wait_for(AgentStatus::Idle);
 }

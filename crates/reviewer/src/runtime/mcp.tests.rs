@@ -1,5 +1,6 @@
 use super::{
-    GUARD, IsolatedHerdrServer, StandInCommand, StandInEvent, StandInRole, fs, mpsc, prompts_of,
+    GUARD, IsolatedHerdrServer, SECOND_AGENT_NAME, agent_role, fs, mpsc, prompts_of,
+    second_agent_role,
 };
 
 use herdr_client::protocol::{
@@ -177,9 +178,12 @@ impl ConversationFixture {
     }
 
     fn start_second_agent(&self, place: SecondAgentPlace) -> herdr_client::protocol::Agent {
-        let from = self.server.events().received().len();
-        let role = format!("{}=second", stand_in_agent::variables::ROLE);
-        let session = format!("{}=session", stand_in_agent::variables::SESSION);
+        let from = self.server.received().len();
+        // Its name overrides the workspace's, which names the first agent.
+        let name = format!("{}={SECOND_AGENT_NAME}", fake_agent::variables::NAME);
+        let session = format!("{}=session", fake_agent::variables::SESSION);
+        // It reports its state to Herdr until the test releases it.
+        let reports_state = format!("{}=1", fake_agent::variables::REPORT_STATE);
         let (mut arguments, pane_key) = match place {
             SecondAgentPlace::BesideFirst => (
                 vec![
@@ -196,7 +200,7 @@ impl ConversationFixture {
                 "root_pane",
             ),
         };
-        arguments.extend(["--no-focus", "--env", &role, "--env", &session]);
+        arguments.push("--no-focus");
         for variable in &self.server.environment {
             arguments.extend(["--env", variable]);
         }
@@ -208,14 +212,18 @@ impl ConversationFixture {
             "pane",
             "run",
             pane,
+            "env",
+            &name,
+            &session,
+            &reports_state,
             &self.server.agent_binary.to_string_lossy(),
         ]);
         self.server
             .events()
             .wait_until("the second agent's session", |received| {
                 received[from..].iter().any(|reported| {
-                    reported.from == StandInRole::SecondAgent
-                        && matches!(reported.event, StandInEvent::SessionReported { .. })
+                    reported.from == second_agent_role()
+                        && matches!(reported.event, fake_agent::Event::SessionReported { .. })
                 })
             });
         // Herdr's own detection shows the turns the agent starts once it saw the agent idle.
@@ -225,29 +233,20 @@ impl ConversationFixture {
             "release-agent",
             &pane.0,
             "--source",
-            stand_in_agent::AGENT_SOURCE,
+            fake_agent::STATE_SOURCE,
             "--agent",
             &self.server.agent,
         ]);
         // Herdr says that it released an agent only when it did not detect it by name yet.
-        let from = self.server.events().received().len();
         self.server
             .events()
-            .send(&StandInRole::SecondAgent, &StandInCommand::Release);
-        self.server
-            .events()
-            .wait_until("the second agent's release", |received| {
-                received[from..].iter().any(|reported| {
-                    reported.from == StandInRole::SecondAgent
-                        && reported.event == StandInEvent::Released
-                })
-            });
+            .obey(&second_agent_role(), &fake_agent::Command::Release);
         // A released agent that Herdr did not detect by name yet is gone until it detects it:
         // its first status says that it is back.
         let statuses = self.server.server.agent_statuses(&pane);
         self.server.events().send(
-            &StandInRole::SecondAgent,
-            &StandInCommand::ShowTitle {
+            &second_agent_role(),
+            &fake_agent::Command::ShowTitle {
                 title: "✳ Ready".into(),
             },
         );
@@ -269,7 +268,7 @@ impl ConversationFixture {
                 .submit_prompt(&second.pane_id, marker)
                 .unwrap();
         });
-        prompts_of(&StandInRole::SecondAgent, &self.server.events().received())
+        prompts_of(&second_agent_role(), &self.server.received())
     }
 
     /// Returns once every prompt the worker got by now is sent, withdrawn or failed.
@@ -419,8 +418,8 @@ fn mcp_posts_notify_a_working_focused_agent_without_recognizing_its_composer(age
     let client = fixture.server.client();
     client.focus_agent(&fixture.server.pane_id).unwrap();
     fixture.server.events().send(
-        &StandInRole::Agent,
-        &StandInCommand::ShowScreen {
+        &agent_role(),
+        &fake_agent::Command::ShowScreen {
             text: "An unfamiliar agent input layout".into(),
         },
     );

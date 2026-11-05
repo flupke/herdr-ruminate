@@ -19,18 +19,28 @@ too.
 
 ## The Herdr the tests run
 
-The tests do not use the Herdr installed on your machine. The Nix shell fetches
-a fixed Herdr release and points `TEST_HERDR_BIN_PATH` at it; the test servers
+The tests do not use the Herdr installed on your machine. The Nix shell takes the Herdr,
+herdr-app and herdr-core (`hc`) releases that herdr-common's flake pins, shared with the other
+apps on Herdr, and points `TEST_HERDR_BIN_PATH`, `TEST_HERDR_APP_BIN_PATH` and
+`TEST_HC_BIN_PATH` at them; the test servers
 run that binary. `herdr` on the `PATH` stays the installed Herdr, which
 `make install` uses. Outside the Nix shell, the tests fall back to `herdr` on
 the `PATH`. Set `TEST_HERDR_BIN_PATH` inside the shell to try another binary:
 `scripts/dev-shell env TEST_HERDR_BIN_PATH=/path/to/herdr make check`.
 
 Herdr's documentation leaves much of its behaviour out, such as what it does with a
-pane's OSC 52 clipboard write. Read its source at the pinned release instead (`herdrVersion`
-in `nix/flake.nix`): `git clone --depth 1 --branch v<version>
+pane's OSC 52 clipboard write. Read its source at the pinned release instead (`herdr --version` in the dev
+shell, or `herdrVersion` in herdr-common's `flake.nix`): `git clone --depth 1 --branch v<version>
 https://github.com/herdrdev/herdr`. `src/pane.rs` handles what a pane's program writes,
 and `src/selection.rs` the clipboard.
+
+Herdr shows a run of blank cells that ends a row in the style of the cell before it once that
+cell is redrawn, though the reviewer never writes them: a text selection that ends before
+trailing spaces looks highlighted to the end of the line's padding. The selected cells are
+right; ratatui sends no erase sequence (inferred: Herdr's grid). The user sees it too: a row
+that ends in a background, such as a chip of the revision selector, needs a cell without
+background after it, which ratatui writes only when it differs from the blank cell under it (a
+foreground of its own does).
 
 Each test server also detects agents with the rules in
 [`crates/review-test-support/agent-detection`](../../crates/review-test-support/agent-detection),
@@ -43,10 +53,9 @@ newer rule engine than the release supports.
 
 To change the pinned release:
 
-1. In `nix/flake.nix`, set `herdrVersion` and the `hash` of each `herdrAssets`
-   entry. GitHub lists each asset's SHA-256:
-   `gh release view v<version> --repo herdrdev/herdr --json assets --jq '.assets[] | "\(.name) \(.digest)"'`.
-   Convert each one with `nix hash convert --hash-algo sha256 --to sri <hex>`.
+1. herdr-common pins it (`.agents/wiki/herdr-tools.md` there): once its `main` has the new
+   release, `cd nix && nix flake update herdr-common`. To try a release before herdr-common
+   has it, pass `--override-input herdr-common path:<a checkout of it>` to `nix develop`.
 2. If the release changes the agent detection, copy the current Codex and Claude
    manifests from `distribution/agent-detection` in the Herdr repository into
    `crates/review-test-support/agent-detection`.
@@ -78,8 +87,8 @@ against frozen line-level labels. Offline checks and paid live runs are separate
 jointly compares prompts, metadata, exclusion rules and token windows on an
 audited corpus from repository commits.
 
-The hc backend's tests against a real herdr-core start a private core each, with `hc` on the
-`PATH` or `TEST_HC_BIN` naming one, since the dev shell pins no herdr-core:
+The hc backend's tests against a real herdr-core start a private core each, with the dev
+shell's pinned `hc` (`TEST_HC_BIN_PATH`), or else `hc` on the `PATH`:
 
 ```sh
 scripts/dev-shell cargo nextest run -p hc-client --run-ignored only

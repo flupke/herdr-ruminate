@@ -1,6 +1,7 @@
-//! The vision MCP server: an agent's eyes and hands on the reviewer, running in the user's
-//! Herdr. Every tool that acts returns the rows that changed on the screen the reviewer painted
-//! in reaction, and every mistake is an error.
+//! The vision MCP server: an agent's eyes and hands on the reviewer, running in herdr-common's
+//! app sandbox. herdr-common's vision core gives the tools that see and act on the app (screen,
+//! screenshot, key, type, click, drag, `wait_for`); this server adds the reviewer's own: its
+//! session, its stand-in agent and the agent's forks, Jev's stand-in, and the Explore page.
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
@@ -10,27 +11,25 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail, ensure};
-use base64::Engine;
-use herdr_client::client::HerdrClient;
 use review_repository::repository::RepoType;
 use rmcp::{
     ErrorData, ServerHandler, ServiceExt,
-    handler::server::wrapper::Parameters,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use vision_mcp::{Screen, Vision, VisionTools};
 
-use super::compact;
 use super::scratch::Seed;
-use super::screen::{Cell, Screen};
-use super::session::{Input, Session, StartOptions};
+use super::session::{Session, StartOptions, from_eyre};
 
-/// The longest a `wait_for` or `turn` may wait.
+/// The longest a `turn` or `forks` may wait.
 const MAX_WAIT_MS: u64 = 60_000;
 
-const INSTRUCTIONS: &str = "Eyes and hands on the reviewer's terminal pane. `start` builds the reviewer from this checkout and runs it in a new workspace of the user's Herdr, named \"reviewer vision\", on a scratch repository, beside a stand-in implementation agent that run-ahead can fork; the user can watch it there. Every action (key, type, click, jev, reply) returns once the reviewer has read the input and painted its reaction, not after a delay. For asynchronous work, call wait_for with the text the finished screen shows. Text screens give each row as `row: text`, drop the spaces and box borders that end a row, and fold a run of empty rows, or a QR code, into one line that names its rows. Coordinates are zero-based terminal cells, columns counted from the start of a row's text. screen, start and reopen return the whole screen. Actions and wait_for return only the lines of rows that changed since the last screen returned, with changed_rows, the number of rows whose text changed; when no screen of the same size was returned before (the first action, or after a resize), they return the whole screen, without changed_rows. With run-ahead on (key z in the Explore tab), forks lists the forks of the question that waits; fork_submit, fork_end (no turn, or a crash) or nothing (still working) scripts each fork, switch_unheard makes the next switch to a fork fail, and agent_working, agent_prompt and start's agent_hooks make the agent busy, move its conversation on, or run it without the reviewer's plugin hooks. Use screenshot to judge how the screen looks, screen with styled for colors as ANSI sequences, and note to record what you checked and found in the session's actions.jsonl. Call stop when done: it closes the workspace and removes the scratch repository.";
+/// What the server's own tools are; the vision core's instructions follow.
+const INSTRUCTIONS: &str = "Eyes and hands on the reviewer's terminal pane. `start` builds the reviewer from this checkout and runs it in herdr-common's app sandbox, a private herdr-app on a headless display that never shows on the user's screen nor takes their focus, on a scratch repository, beside a stand-in implementation agent that run-ahead can fork. The reviewer's pane has the focus: key and type act on it; click and drag take the window's pixels, which screenshot shows. The reviewer speaks vision-signal, so every action returns once it has read the input and painted its reaction; the reviewer's own tools (jev, reply, fork_submit, fork_end, agent_prompt) return its screen once it painted what they did. For asynchronous work, call wait_for with the text the finished screen shows. With run-ahead on (key z in the Explore tab), forks lists the forks of the question that waits; fork_submit, fork_end (no turn, or a crash) or nothing (still working) scripts each fork, switch_unheard makes the next switch to a fork fail, and agent_working, agent_prompt and start's agent_hooks make the agent busy, move its conversation on, or run it without the reviewer's plugin hooks. Use note to record what you checked and found in the session's actions.jsonl. Call stop when done: it stops the sandbox and removes the scratch repository.";
 
 /// The repository a session reviews.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, schemars::JsonSchema)]
@@ -55,13 +54,9 @@ struct StartInput {
     /// Files written on top of the base: the change under review.
     #[serde(default)]
     change: BTreeMap<String, String>,
-    /// Show the session's workspace in Herdr at once, taking the user's focus. False by default:
-    /// the user switches to the "reviewer vision" workspace to watch.
-    #[serde(default)]
-    focus: bool,
     /// Run the stand-in agent with the hooks of the reviewer's Claude Code plugin, which
-    /// run-ahead needs: true by default. Without them, run-ahead takes no fork and each answer
-    /// says to restart the agent.
+    /// run-ahead needs: true by default. Without them, run-ahead takes no fork, and each answer
+    /// says nothing was prepared: under herdr-core the hook is what names the agent's session.
     agent_hooks: Option<bool>,
 }
 
@@ -76,78 +71,6 @@ struct ReopenInput {
     /// with the name adds beside the repository; `repository` goes back to the first one. In
     /// the same one as before when left out.
     workspace: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct ScreenInput {
-    /// Also return the screen with its colors and styles as ANSI SGR sequences, to tell focus,
-    /// selection or dimmed text apart.
-    #[serde(default)]
-    styled: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct KeyInput {
-    /// Keys pressed in order, as Herdr names them: a character (`a`, `?`, `A` for shift+a),
-    /// `enter`, `esc`, `tab`, `backspace`, `space`, `up`, `down`, `left`, `right`, `f1`..`f12`,
-    /// `pageup`, `pagedown`, `home`, `end`, `insert`, `delete`, with modifiers joined by `+`
-    /// (`ctrl+enter`, `shift+tab`, `alt+x`). An unknown name is an error.
-    keys: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct TypeInput {
-    /// The text to paste into the focused editor or field, newlines included, as a terminal
-    /// pastes it (bracketed paste).
-    text: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct ClickInput {
-    /// The zero-based column of the cell to click, with `y`.
-    x: Option<u16>,
-    /// The zero-based row of the cell to click, with `x`.
-    y: Option<u16>,
-    /// Instead of `x` and `y`: click the first cell where the screen shows this text. Clicking by
-    /// text needs no counting of columns across wide characters.
-    text: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct DragInput {
-    /// The cell the drag starts on: zero-based `[x, y]`, or a text whose first cell it is.
-    from: CellInput,
-    /// The cell the drag ends on: zero-based `[x, y]`, or a text whose last cell it is.
-    to: CellInput,
-    /// Hold Alt through the drag, which the reviewer's diff needs to select text rather than
-    /// comment on lines.
-    #[serde(default)]
-    alt: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(untagged)]
-enum CellInput {
-    Cell([u16; 2]),
-    Text(String),
-}
-
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct WaitInput {
-    /// The text to wait for.
-    text: String,
-    /// Wait until the screen no longer shows the text, instead of until it does.
-    #[serde(default)]
-    absent: bool,
-    /// The longest wait, 5000 ms by default, at most 60000. The wait ends as soon as a painted
-    /// frame satisfies it; running out is an error that shows the latest screen.
-    timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
@@ -255,7 +178,7 @@ struct ForkEndInput {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct SwitchUnheardInput {
-    /// Herdr and the hooks hear of the resume this many milliseconds late, instead of never: a
+    /// The reviewer's hooks hear of the resume this many milliseconds late, instead of never: a
     /// switch heard within 20000 ms succeeds. At most 60000.
     heard_after_ms: Option<u64>,
 }
@@ -270,7 +193,7 @@ struct AgentWorkingInput {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct AgentPromptInput {
-    /// What the user types in the agent's pane before Enter; `/resume <session>` resumes that
+    /// What the user submits in the agent's terminal; `/resume <session>` resumes that
     /// session.
     text: String,
 }
@@ -311,8 +234,6 @@ struct NoInput {}
 /// Where a session's reviewer comes from, and where its files go.
 #[derive(Clone)]
 pub struct Setup {
-    /// The Herdr the sessions run in.
-    pub herdr_socket: PathBuf,
     /// The checkout whose reviewer `start` builds.
     pub checkout: PathBuf,
     /// The directory under which each session gets a new directory.
@@ -320,46 +241,30 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// The user's Herdr, this checkout, and `tests/tui/target/vision`.
-    pub fn from_env() -> Result<Self> {
+    /// This checkout, and `tests/tui/target/vision`.
+    pub fn from_env() -> Self {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        Ok(Self {
-            herdr_socket: std::env::var_os("HERDR_SOCKET_PATH")
-                .context(
-                    "HERDR_SOCKET_PATH is not set: run the vision server from an agent inside Herdr",
-                )?
-                .into(),
+        Self {
             checkout: manifest.join("../.."),
             sessions: manifest.join("target/vision"),
-        })
+        }
     }
 }
 
 #[derive(Clone)]
 pub(crate) struct Server {
     setup: Setup,
+    /// The reviewer's side of the running session.
     session: Arc<Mutex<Option<Session>>>,
-    /// The last screen a tool returned, whose rows an action's changes are counted from.
-    shown: Arc<Mutex<Option<Screen>>>,
+    /// The vision core's tools, on the session's app sandbox.
+    vision: VisionTools,
+    router: ToolRouter<Self>,
 }
 
-/// What a tool returns: a summary, and the screen's text when it has one.
+/// What a tool returns: a summary, and the reviewer's screen.
 struct Outcome {
     summary: Value,
     screen: Option<Screen>,
-    show: Show,
-    image: Option<String>,
-}
-
-/// How much of its screen's text a tool returns.
-#[derive(Clone, Copy)]
-enum Show {
-    Whole,
-    /// The rows that changed since the last screen returned, or the whole screen when none of
-    /// the same size was.
-    Changes,
-    /// None: the frame and size only.
-    Hidden,
 }
 
 impl Outcome {
@@ -367,25 +272,13 @@ impl Outcome {
         Self {
             summary,
             screen: None,
-            show: Show::Hidden,
-            image: None,
         }
     }
 
-    /// The whole screen.
     fn screen(status: &str, screen: Screen) -> Self {
         Self {
+            summary: json!({"status": status}),
             screen: Some(screen),
-            show: Show::Whole,
-            ..Self::summary(json!({"status": status}))
-        }
-    }
-
-    /// The rows of `screen` that changed since the last screen returned.
-    fn reaction(status: &str, screen: Screen) -> Self {
-        Self {
-            show: Show::Changes,
-            ..Self::screen(status, screen)
         }
     }
 
@@ -394,50 +287,34 @@ impl Outcome {
         self
     }
 
-    /// The tool's result, given `shown`, the last screen returned, which this one replaces.
-    fn into_result(mut self, shown: &mut Option<Screen>) -> CallToolResult {
-        let mut texts = Vec::new();
-        if let Some(mut screen) = self.screen {
-            self.summary["frame"] = json!(screen.frame);
-            self.summary["size"] = json!({"columns": screen.columns, "rows": screen.rows});
-            let previous = shown.as_ref().filter(|previous| {
-                (previous.columns, previous.rows) == (screen.columns, screen.rows)
-            });
-            match (self.show, previous) {
-                (Show::Hidden, _) => {}
-                (Show::Changes, Some(previous)) => {
-                    let changes = compact::changes(&previous.text, &screen.text);
-                    self.summary["changed_rows"] = json!(changes.count);
-                    texts.push(changes.text);
-                }
-                (Show::Whole | Show::Changes, _) => texts.push(screen.compact()),
-            }
-            if !matches!(self.show, Show::Hidden) {
-                texts.extend(screen.styled.take());
-                *shown = Some(screen);
+    fn into_result(mut self) -> CallToolResult {
+        if let Some(screen) = &self.screen {
+            self.summary["terminal"] = json!(screen.terminal);
+            if let Some(frame) = screen.frame {
+                self.summary["frame"] = json!(frame);
             }
         }
         let mut content = vec![ContentBlock::text(self.summary.to_string())];
-        content.extend(
-            texts
-                .into_iter()
-                .filter(|text| !text.is_empty())
-                .map(ContentBlock::text),
-        );
-        if let Some(image) = self.image {
-            content.push(ContentBlock::image(image, "image/png"));
+        if let Some(screen) = self.screen {
+            content.push(ContentBlock::text(screen.numbered()));
         }
         CallToolResult::success(content)
     }
 }
 
-#[tool_router]
+/// The running session: the reviewer's side, and the vision core on its sandbox.
+struct Running<'a> {
+    session: &'a mut Session,
+    vision: &'a mut Vision,
+}
+
 impl Server {
     pub(crate) fn new(setup: Setup) -> Self {
         Self {
             setup,
             session: Arc::default(),
-            shown: Arc::default(),
+            vision: VisionTools::new(),
+            router: Self::reviewer_router() + VisionTools::router(|server: &Self| &server.vision),
         }
     }
 
@@ -447,21 +324,23 @@ impl Server {
         &self,
         tool: &'static str,
         arguments: Value,
-        action: impl FnOnce(&Setup, &mut Option<Session>) -> Result<Outcome> + Send + 'static,
+        action: impl FnOnce(&Setup, &mut Option<Session>, &mut Option<Vision>) -> Result<Outcome>
+        + Send
+        + 'static,
     ) -> Result<CallToolResult, ErrorData> {
         let setup = self.setup.clone();
         let session = Arc::clone(&self.session);
-        let shown = Arc::clone(&self.shown);
+        let vision = Arc::clone(self.vision.session());
         tokio::task::spawn_blocking(move || {
+            // The reviewer's side first, then the core's, which the core's tools lock alone.
             let mut session = session.lock().unwrap_or_else(PoisonError::into_inner);
-            let outcome = action(&setup, &mut session);
+            let mut vision = vision.lock().unwrap_or_else(PoisonError::into_inner);
+            let outcome = action(&setup, &mut session, &mut vision);
             if let Some(session) = session.as_ref() {
                 record(session, tool, &arguments, &outcome);
             }
             match outcome {
-                Ok(outcome) => {
-                    outcome.into_result(&mut shown.lock().unwrap_or_else(PoisonError::into_inner))
-                }
+                Ok(outcome) => outcome.into_result(),
                 Err(error) => CallToolResult::error(vec![ContentBlock::text(format!("{error:#}"))]),
             }
         })
@@ -469,15 +348,37 @@ impl Server {
         .map_err(|error| ErrorData::internal_error(error.to_string(), None))
     }
 
+    /// Run `action` on the running session.
+    async fn on_session(
+        &self,
+        tool: &'static str,
+        arguments: Value,
+        action: impl FnOnce(Running<'_>) -> Result<Outcome> + Send + 'static,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run(tool, arguments, move |_, session, vision| {
+            let session = session
+                .as_mut()
+                .context("no session is running; call start first")?;
+            let vision = vision
+                .as_mut()
+                .context("the session's sandbox is gone; call stop, then start")?;
+            action(Running { session, vision })
+        })
+        .await
+    }
+}
+
+#[tool_router(router = reviewer_router)]
+impl Server {
     #[tool(
-        description = "Start a vision session: build the reviewer from this checkout, create a scratch repository with a base change and a change under review, and run the reviewer in a new \"reviewer vision\" workspace of the user's Herdr beside a stand-in implementation agent (a program named claude that Explore and review comments prompt, which reports its session and runs the reviewer's Claude Code plugin hooks unless agent_hooks is false, so run-ahead can fork it). Returns the reviewer's first screen, which may come before the repository has loaded (wait_for a file name), the workspace and pane IDs, the repository (edit its files to exercise filesystem-driven updates) and the session directory. One session at a time."
+        description = "Start a vision session: build the reviewer from this checkout, create a scratch repository with a base change and a change under review, and run the reviewer in herdr-common's app sandbox (a private herdr-app on a headless display) beside a stand-in implementation agent (a program named claude that Explore and review comments prompt, which reports its session and runs the reviewer's Claude Code plugin hooks unless agent_hooks is false, so run-ahead can fork it). Returns the reviewer's first screen, which may come before the repository has loaded (wait_for a file name), its terminal and the agent's, the repository (edit its files to exercise filesystem-driven updates) and the session directory. One session at a time."
     )]
     async fn start(
         &self,
         Parameters(input): Parameters<StartInput>,
     ) -> Result<CallToolResult, ErrorData> {
         let arguments = json!(input);
-        self.run("start", arguments, move |setup, session| {
+        self.run("start", arguments, move |setup, session, vision| {
             ensure!(session.is_none(), "a session is running; stop it first");
             let reviewer = build_reviewer(&setup.checkout)?;
             let seed = if input.base.is_empty() && input.change.is_empty() {
@@ -494,7 +395,6 @@ impl Server {
                     RepositoryKind::Git => RepoType::Git,
                 },
                 seed,
-                focus: input.focus,
                 agent_hooks: input.agent_hooks.unwrap_or(true),
             };
             let directory = setup.sessions.join(format!(
@@ -502,182 +402,29 @@ impl Server {
                 SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
                 std::process::id()
             ));
-            let (started, screen) = Session::start(
-                &HerdrClient::new(
-                    setup.herdr_socket.clone(),
-                    "herdr.progressive-reviewer".into(),
-                    setup.sessions.clone(),
-                ),
-                reviewer,
-                &options,
-                directory,
-            )?;
-            let outcome = Outcome::screen("started", screen).with("session", started.describe());
+            let (started, core, screen) = Session::start(reviewer, &options, directory)?;
+            let outcome =
+                Outcome::screen("started", screen).with("session", started.describe(&core));
             *session = Some(started);
+            *vision = Some(core);
             Ok(outcome)
         })
         .await
     }
 
     #[tool(
-        description = "Read the reviewer's whole screen as it is now, one line per row: what the user sees in the pane. With styled, also its colors and styles as ANSI SGR sequences, unfolded."
-    )]
-    async fn screen(
-        &self,
-        Parameters(input): Parameters<ScreenInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        self.run("screen", json!(input), move |_, session| {
-            Ok(Outcome::screen(
-                "screen",
-                running(session)?.screen(input.styled)?,
-            ))
-        })
-        .await
-    }
-
-    #[tool(
-        description = "Press keys in the reviewer, in order, and return the rows that changed once the reviewer has read them and painted its reaction."
-    )]
-    async fn key(
-        &self,
-        Parameters(input): Parameters<KeyInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        self.run("key", json!(input), move |_, session| {
-            Ok(Outcome::reaction(
-                "reacted",
-                running(session)?.act(&Input::Keys(&input.keys))?,
-            ))
-        })
-        .await
-    }
-
-    #[tool(
-        name = "type",
-        description = "Paste text into the reviewer as a terminal pastes it, newlines included: it goes to the focused editor or field. Returns the rows that changed once the reviewer has read it and painted its reaction."
-    )]
-    async fn type_text(
-        &self,
-        Parameters(input): Parameters<TypeInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        self.run("type", json!(input), move |_, session| {
-            Ok(Outcome::reaction(
-                "reacted",
-                running(session)?.act(&Input::Text(&input.text))?,
-            ))
-        })
-        .await
-    }
-
-    #[tool(
-        description = "Left-click a cell of the reviewer, given as x and y (zero-based column and row), or as text: the first cell where the screen shows it. Returns the clicked cell and the rows that changed once the reviewer has painted its reaction. Text the screen does not show, or a cell outside it, is an error."
-    )]
-    async fn click(
-        &self,
-        Parameters(input): Parameters<ClickInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        self.run("click", json!(input), move |_, session| {
-            let session = running(session)?;
-            let cell = match (input.x, input.y, input.text) {
-                (Some(x), Some(y), None) => Cell { x, y },
-                (None, None, Some(text)) => session.screen(false)?.locate(&text)?,
-                _ => bail!("click takes either x and y, or text"),
-            };
-            Ok(Outcome::reaction("reacted", session.act(&Input::Click(cell))?).with("cell", cell))
-        })
-        .await
-    }
-
-    #[tool(
-        description = "Drag with the left button from one cell of the reviewer to another, Alt held with alt. Each end is [x, y] (zero-based column and row), or a text: the drag starts on its first cell and ends on its last. Returns both cells and the rows that changed once the reviewer has painted its reaction."
-    )]
-    async fn drag(
-        &self,
-        Parameters(input): Parameters<DragInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        self.run("drag", json!(input), move |_, session| {
-            let session = running(session)?;
-            let screen = session.screen(false)?;
-            let from = match input.from {
-                CellInput::Cell([x, y]) => Cell { x, y },
-                CellInput::Text(text) => screen.locate(&text)?,
-            };
-            let to = match input.to {
-                CellInput::Cell([x, y]) => Cell { x, y },
-                CellInput::Text(text) => {
-                    let start = screen.locate(&text)?;
-                    let width = u16::try_from(unicode_width::UnicodeWidthStr::width(text.as_str()))
-                        .unwrap_or(1);
-                    Cell {
-                        x: start.x + width.saturating_sub(1),
-                        y: start.y,
-                    }
-                }
-            };
-            let input = Input::Drag {
-                from,
-                to,
-                alt: input.alt,
-            };
-            Ok(Outcome::reaction("reacted", session.act(&input)?)
-                .with("from", from)
-                .with("to", to))
-        })
-        .await
-    }
-
-    #[tool(
-        description = "Wait until the reviewer's screen shows a text, or no longer shows it with absent, and return the rows of that screen that changed. The screen is checked at once, then after each frame the reviewer paints: use it for asynchronous work (a refresh, Jev, an agent's turn), with text the screen before did not show."
-    )]
-    async fn wait_for(
-        &self,
-        Parameters(input): Parameters<WaitInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        self.run("wait_for", json!(input), move |_, session| {
-            let guard = wait_guard(input.timeout_ms, 5000)?;
-            let screen = running(session)?.wait_for(&input.text, input.absent, guard)?;
-            Ok(Outcome::reaction(
-                if input.absent { "gone" } else { "shown" },
-                screen,
-            ))
-        })
-        .await
-    }
-
-    #[tool(
-        description = "Save a PNG of the reviewer's screen, rendered with a bundled JetBrains Mono, and return it as an image with its path in the session directory: to judge how the screen looks (spacing, alignment, theme). Read the text screens for everything else. A character no outline font of this machine draws (a color emoji) is drawn as ? in its cells, and listed as drawn_as_question_marks."
-    )]
-    async fn screenshot(
-        &self,
-        Parameters(_): Parameters<NoInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        self.run("screenshot", json!({}), move |_, session| {
-            let (screen, saved) = running(session)?.screenshot()?;
-            let png = std::fs::read(&saved.path)?;
-            let mut outcome = Outcome {
-                show: Show::Hidden,
-                ..Outcome::screen("screenshot", screen)
-            }
-            .with("path", &saved.path);
-            if !saved.replaced.is_empty() {
-                outcome = outcome.with("drawn_as_question_marks", &saved.replaced);
-            }
-            outcome.image = Some(base64::engine::general_purpose::STANDARD.encode(png));
-            Ok(outcome)
-        })
-        .await
-    }
-
-    #[tool(
-        description = "Stand in for the paid Jev classifier, which vision sessions never reach: classify as insignificant every diff hunk of path that adds one of lines (current numbering) or removes one (base numbering), press rf, and return the rows that changed once Jev has finished, with its result (\"Jev: marked\"), or once rf refused. Nearby edits share one diff hunk, as they do for Jev. The script is kept as jev-script.json in the session directory: write it yourself before an Explore round to have Jev mark at the round's start."
+        description = "Stand in for the paid Jev classifier, which vision sessions never reach: classify as insignificant every diff hunk of path that adds one of lines (current numbering) or removes one (base numbering), press rf, and return the reviewer's screen once Jev has finished, with its result (\"Jev: marked\"), or once rf refused. Nearby edits share one diff hunk, as they do for Jev. The script is kept as jev-script.json in the session directory: write it yourself before an Explore round to have Jev mark at the round's start."
     )]
     async fn jev(
         &self,
         Parameters(input): Parameters<JevInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("jev", json!(input), move |_, session| {
-            Ok(Outcome::reaction(
+        self.on_session("jev", json!(input), move |running| {
+            Ok(Outcome::screen(
                 "classified",
-                running(session)?.jev(&input.path, &input.lines)?,
+                running
+                    .session
+                    .jev(running.vision, &input.path, &input.lines)?,
             ))
         })
         .await
@@ -690,42 +437,43 @@ impl Server {
         &self,
         Parameters(input): Parameters<TurnInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("turn", json!(input), move |_, session| {
+        self.on_session("turn", json!(input), move |running| {
             let guard = wait_guard(input.timeout_ms, 15_000)?;
-            let turn = running(session)?.next_turn(input.after, guard)?;
+            let turn = running.session.next_turn(input.after, guard)?;
             Ok(Outcome::summary(json!({"status": "turn", "turn": turn})))
         })
         .await
     }
 
     #[tool(
-        description = "Answer the latest turn as the stand-in agent: call one of the reviewer's MCP tools on its real endpoint (submit_question or submit_conclusion for Explore; get_new_messages, then reply, for a comments turn). Returns the tool's result as `reply`, and the rows that changed once the reviewer has shown it. A turn that is not the latest is an error, so a script never answers a prompt the reviewer replaced; the reviewer's own validation errors come back in `reply`."
+        description = "Answer the latest turn as the stand-in agent: call one of the reviewer's MCP tools on its real endpoint (submit_question or submit_conclusion for Explore; get_new_messages, then reply, for a comments turn). Returns the tool's result as `reply`, and the reviewer's screen once it has shown it. A turn that is not the latest is an error, so a script never answers a prompt the reviewer replaced; the reviewer's own validation errors come back in `reply`."
     )]
     async fn reply(
         &self,
         Parameters(input): Parameters<ReplyInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("reply", json!(input), move |_, session| {
-            let (reply, screen) = running(session)?.reply(
+        self.on_session("reply", json!(input), move |running| {
+            let (reply, screen) = running.session.reply(
+                running.vision,
                 input.turn,
                 input.tool.name(),
                 Value::Object(input.arguments),
             )?;
-            Ok(Outcome::reaction("replied", screen).with("reply", reply))
+            Ok(Outcome::screen("replied", screen).with("reply", reply))
         })
         .await
     }
 
     #[tool(
-        description = "List the forks run-ahead started of the stand-in agent's session, oldest first: each fork's session, the session it copies, its choice, its prompt with the turn's files (its access and Answer ID among them), and whether it submitted, ended its turn, or exited (the reviewer stops the forks of a question it no longer needs). Also returns the agent's sessions (the one it reported last, and those it resumed: after a bare answer to a prepared choice, the fork's), and run-ahead's log. With count, waits until that many forks started."
+        description = "List the forks run-ahead started of the stand-in agent's session, oldest first: each fork's session, the session it copies, its choice, its prompt with the turn's files (its access and Answer ID among them), and whether it submitted, ended its turn, or exited (the reviewer stops the forks of a question it no longer needs). Also returns the agent's sessions (the one it started last, once its SessionStart hooks ran, and those it resumed: after a bare answer to a prepared choice, the fork's), and run-ahead's log. With count, waits until that many forks started."
     )]
     async fn forks(
         &self,
         Parameters(input): Parameters<ForksInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("forks", json!(input), move |_, session| {
+        self.on_session("forks", json!(input), move |running| {
             let guard = wait_guard(input.timeout_ms, 15_000)?;
-            let forks = running(session)?.forks(input.count, guard)?;
+            let forks = running.session.forks(input.count, guard)?;
             Ok(Outcome::summary(
                 json!({"status": "forks", "run_ahead": forks}),
             ))
@@ -734,14 +482,15 @@ impl Server {
     }
 
     #[tool(
-        description = "Submit a fork's turn as that fork: call submit_question or submit_conclusion on the reviewer's real endpoint with the fork's own access, then make the fork's output say that its submit has its answer, as Claude Code's would. The reviewer keeps that turn, shown to nobody, until a bare answer with the fork's choice uses it. Returns the tool's result as `reply`, and the rows that changed once the reviewer has shown it; the reviewer's own validation errors come back in `reply`, and the fork is then not told."
+        description = "Submit a fork's turn as that fork: call submit_question or submit_conclusion on the reviewer's real endpoint with the fork's own access, then make the fork's output show the call and its result, as Claude Code's would. The reviewer keeps that turn, shown to nobody, until a bare answer with the fork's choice uses it. Returns the tool's result as `reply`, and the reviewer's screen once it has shown it; the reviewer's own validation errors come back in `reply`, and the fork is then not told."
     )]
     async fn fork_submit(
         &self,
         Parameters(input): Parameters<ForkSubmitInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("fork_submit", json!(input), move |_, session| {
-            let (reply, screen) = running(session)?.fork_submit(
+        self.on_session("fork_submit", json!(input), move |running| {
+            let (reply, screen) = running.session.fork_submit(
+                running.vision,
                 &input.session,
                 input.tool.name(),
                 Value::Object(input.arguments),
@@ -751,33 +500,35 @@ impl Server {
             } else {
                 "submitted"
             };
-            Ok(Outcome::reaction(status, screen).with("reply", reply))
+            Ok(Outcome::screen(status, screen).with("reply", reply))
         })
         .await
     }
 
     #[tool(
-        description = "End a fork's turn without a submit (no turn), or make it crash with crash (it exits with a failure and no result). Either way the fork's process ends, and the reviewer counts a failure of run-ahead: three in a row stop it for the round. A bare answer that waits for this fork, or comes after, goes to the agent in the pane. Returns the rows that changed once the fork's process ended; wait_for what the reviewer shows of it."
+        description = "End a fork's turn without a submit (no turn), or make it crash with crash (it exits with a failure and no result). Either way the fork's process ends, and the reviewer counts a failure of run-ahead: three in a row stop it for the round. A bare answer that waits for this fork, or comes after, goes to the agent in the pane. Returns the reviewer's screen once the fork's process ended; wait_for what the reviewer shows of it."
     )]
     async fn fork_end(
         &self,
         Parameters(input): Parameters<ForkEndInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("fork_end", json!(input), move |_, session| {
-            let screen = running(session)?.fork_end(&input.session, input.crash)?;
-            Ok(Outcome::reaction("ended", screen))
+        self.on_session("fork_end", json!(input), move |running| {
+            let screen = running
+                .session
+                .fork_end(running.vision, &input.session, input.crash)?;
+            Ok(Outcome::screen("ended", screen))
         })
         .await
     }
 
     #[tool(
-        description = "Make the stand-in agent's next /resume one that Herdr and the reviewer's hooks never hear of, as when Claude Code's session hooks fail, or hear of only heard_after_ms later, as when they come late; the agent reads nothing typed meanwhile. The next switch to a fork (a bare answer to a submitted choice) waits for them: unheard, it fails after 20 s, the turn shows as interrupted with Retry, and the agent is told to resume its own session again, which is heard. Stop waiting and Cancel answer can be played while the switch waits."
+        description = "Make the stand-in agent's next /resume one that the reviewer's hooks never hear of, as when Claude Code's session hooks fail, or hear of only heard_after_ms later, as when they come late; the agent reads nothing typed meanwhile. The next switch to a fork (a bare answer to a submitted choice) waits for them: unheard, it fails after 20 s, the turn shows as interrupted with Retry, and the agent is told to resume its own session again, which is heard. Stop waiting and Cancel answer can be played while the switch waits."
     )]
     async fn switch_unheard(
         &self,
         Parameters(input): Parameters<SwitchUnheardInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("switch_unheard", json!(input), move |_, session| {
+        self.on_session("switch_unheard", json!(input), move |running| {
             if let Some(late) = input.heard_after_ms {
                 ensure!(
                     late <= MAX_WAIT_MS,
@@ -785,49 +536,51 @@ impl Server {
                 );
             }
             let heard_after = input.heard_after_ms.map(Duration::from_millis);
-            running(session)?.switch_unheard(heard_after)?;
+            running.session.switch_unheard(heard_after)?;
             Ok(Outcome::summary(json!({"status": "next switch unheard"})))
         })
         .await
     }
 
     #[tool(
-        description = "Show the stand-in agent working, with Claude Code's working title, or idle again, and return once Herdr reports it so, with the rows of the reviewer that changed. While it works, run-ahead takes no fork of a new question, and an answer finds it working; a prompt the reviewer sends it waits until it is idle."
+        description = "Show the stand-in agent working without a turn, as an agent at work on what no prompt started, or idle again, and return the reviewer's screen once the app shows it so. While it works, run-ahead takes no fork of a new question, and an answer finds it working; a prompt the reviewer sends it waits until it is idle."
     )]
     async fn agent_working(
         &self,
         Parameters(input): Parameters<AgentWorkingInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("agent_working", json!(input), move |_, session| {
-            let screen = running(session)?.agent_working(input.working)?;
-            Ok(Outcome::reaction("shown", screen))
+        self.on_session("agent_working", json!(input), move |running| {
+            let screen = running
+                .session
+                .agent_working(running.vision, input.working)?;
+            Ok(Outcome::screen("shown", screen))
         })
         .await
     }
 
     #[tool(
-        description = "Type a prompt in the stand-in agent's pane and press Enter, as its user would, and return once the agent read it, with the rows of the reviewer that changed. The agent takes a turn on it, which moves its conversation on past the forks of the question that waits."
+        description = "Submit a prompt in the stand-in agent's terminal, as its user would, without moving the focus, and return once the agent read it, with the reviewer's screen. The agent takes a turn on it, which moves its conversation on past the forks of the question that waits."
     )]
     async fn agent_prompt(
         &self,
         Parameters(input): Parameters<AgentPromptInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("agent_prompt", json!(input), move |_, session| {
-            let screen = running(session)?.agent_prompt(&input.text)?;
-            Ok(Outcome::reaction("read", screen))
+        self.on_session("agent_prompt", json!(input), move |running| {
+            let screen = running.session.agent_prompt(running.vision, &input.text)?;
+            Ok(Outcome::screen("read", screen))
         })
         .await
     }
 
     #[tool(
-        description = "Run the Herdr action that opens the Explore page, as Herdr runs it in the session's workspace, with a browser that records the address instead of opening it. Returns that address, with its token, as page: open it in a browser on this machine, since the page draws itself from its socket (curl gets no round)."
+        description = "Run the Herdr action that opens the Explore page, as Herdr would run it in the reviewer's space, with a browser that records the address instead of opening it. Returns that address, with its token, as page: open it in a browser on this machine, since the page draws itself from its socket (curl gets no round)."
     )]
     async fn explore_page(
         &self,
         Parameters(_): Parameters<NoInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("explore_page", json!({}), move |_, session| {
-            let page = running(session)?.explore_page()?;
+        self.on_session("explore_page", json!({}), move |running| {
+            let page = running.session.explore_page()?;
             Ok(Outcome::summary(json!({"status": "opened", "page": page})))
         })
         .await
@@ -840,8 +593,8 @@ impl Server {
         &self,
         Parameters(input): Parameters<NoteInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("note", json!(input), move |_, session| {
-            let directory = running(session)?.directory().to_owned();
+        self.on_session("note", json!(input), move |running| {
+            let directory = running.session.directory().to_owned();
             Ok(Outcome::summary(
                 json!({"status": "recorded", "transcript": directory.join("actions.jsonl")}),
             ))
@@ -850,32 +603,42 @@ impl Server {
     }
 
     #[tool(
-        description = "Start the reviewer and its stand-in agent again, in new panes of the session's tab, on the same repository and state, and return the reviewer's first screen and the new pane IDs. With agent_hooks, the new agent runs with or without the hooks of the reviewer's Claude Code plugin. With workspace, both run in that workspace of the scratch repository, which the first such reopen adds, at the change under review: the review state is the one the repository's workspaces share."
+        description = "Start the reviewer and its stand-in agent again, in a new tab of the sandbox's space, on the same repository and state, and return the reviewer's first screen and the new terminals. With agent_hooks, the new agent runs with or without the hooks of the reviewer's Claude Code plugin. With workspace, both run in that workspace of the scratch repository, which the first such reopen adds, at the change under review: the review state is the one the repository's workspaces share."
     )]
     async fn reopen(
         &self,
         Parameters(input): Parameters<ReopenInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run("reopen", json!(input), move |_, session| {
-            let session = running(session)?;
-            let screen = session.reopen(input.agent_hooks, input.workspace.as_deref())?;
-            Ok(Outcome::screen("reopened", screen).with("session", session.describe()))
+        self.on_session("reopen", json!(input), move |running| {
+            let screen = running.session.reopen(
+                running.vision,
+                input.agent_hooks,
+                input.workspace.as_deref(),
+            )?;
+            Ok(Outcome::screen("reopened", screen)
+                .with("session", running.session.describe(running.vision)))
         })
         .await
     }
 
     #[tool(
-        description = "Stop the session: close its Herdr workspace with the reviewer and the stand-in agent, and remove the scratch repository. A workspace that is no longer the session's alone (renamed, or holding a pane the session did not open) stays open, and the result says why. The session directory, with actions.jsonl and the screenshots, stays."
+        description = "Stop the session: stop its app sandbox, with the reviewer and the stand-in agent, and remove the scratch repository. The session directory, with actions.jsonl, stays."
     )]
     async fn stop(&self, Parameters(_): Parameters<NoInput>) -> Result<CallToolResult, ErrorData> {
-        self.run("stop", json!({}), move |_, session| {
+        self.run("stop", json!({}), move |_, session, vision| {
             let stopped = session.take().context("no session is running")?;
+            let left = match vision.take() {
+                Some(vision) => vision.stop().map_err(from_eyre)?.processes,
+                None => Vec::new(),
+            };
             let directory = stopped.directory().to_owned();
             let transcript = directory.join("actions.jsonl");
-            let workspace = stopped.stop().describe();
-            let outcome = Outcome::summary(
-                json!({"status": "stopped", "workspace": workspace, "directory": directory}),
-            );
+            drop(stopped);
+            let outcome = Outcome::summary(json!({
+                "status": "stopped",
+                "processes_left": left,
+                "directory": directory,
+            }));
             append(&transcript, "stop", &json!({}), &Ok(&outcome));
             Ok(outcome)
         })
@@ -883,18 +646,16 @@ impl Server {
     }
 }
 
-#[tool_handler]
+#[tool_handler(router = self.router)]
 impl ServerHandler for Server {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(INSTRUCTIONS)
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            format!(
+                "{INSTRUCTIONS}\n\nThe vision core: {}",
+                vision_mcp::INSTRUCTIONS
+            ),
+        )
     }
-}
-
-fn running(session: &mut Option<Session>) -> Result<&mut Session> {
-    session
-        .as_mut()
-        .context("no session is running; call start first")
 }
 
 fn wait_guard(timeout_ms: Option<u64>, default: u64) -> Result<Duration> {
@@ -925,7 +686,7 @@ fn append(
     let entry = match outcome {
         Ok(outcome) => json!({
             "tool": tool, "arguments": arguments, "result": outcome.summary,
-            "frame": outcome.screen.as_ref().map(|screen| screen.frame),
+            "frame": outcome.screen.as_ref().and_then(|screen| screen.frame),
             "screen": outcome.screen.as_ref().map(|screen| &screen.text),
         }),
         Err(error) => json!({"tool": tool, "arguments": arguments, "error": error}),
@@ -939,38 +700,41 @@ fn append(
     }
 }
 
-/// Build the reviewer of `checkout`, as the session runs it, and return its path. The build
-/// runs in the checkout's dev shell, as `make` does, since the server runs outside it.
+/// Build the reviewer of `checkout`, as the session runs it, and return its path; and the
+/// stand-in agent in this workspace, beside the server, which the session installs. The builds
+/// run in the checkout's dev shell, as `make` does, since the server runs outside it.
 fn build_reviewer(checkout: &std::path::Path) -> Result<PathBuf> {
-    let output = std::process::Command::new(checkout.join("scripts/dev-shell"))
-        .args([
-            "cargo",
-            "build",
-            "--locked",
-            "-p",
-            "reviewer",
-            "--bin",
-            "reviewer",
-            "--bin",
-            "reviewer-control",
-            "-p",
-            "stand-in-agent",
-            // `--bin` selects among every package's programs: without it, the stand-in's is
-            // not built.
-            "--bin",
-            "stand-in-agent",
-            "--message-format",
-            "short",
-        ])
-        .current_dir(checkout)
-        .output()
-        .context("cannot run cargo in the dev shell")?;
-    if !output.status.success() {
-        bail!(
-            "the reviewer does not build:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+    let build = |arguments: &[&str]| -> Result<()> {
+        let output = std::process::Command::new(checkout.join("scripts/dev-shell"))
+            .args(["cargo", "build", "--locked", "--message-format", "short"])
+            .args(arguments)
+            .current_dir(checkout)
+            .output()
+            .context("cannot run cargo in the dev shell")?;
+        if !output.status.success() {
+            bail!(
+                "the reviewer does not build:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Ok(())
+    };
+    build(&[
+        "-p",
+        "reviewer",
+        "--bin",
+        "reviewer",
+        "--bin",
+        "reviewer-control",
+    ])?;
+    build(&[
+        "--manifest-path",
+        "tests/tui/Cargo.toml",
+        "-p",
+        "stand-in-agent",
+        "--bin",
+        "stand-in-agent",
+    ])?;
     let target =
         std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| checkout.join("target"), PathBuf::from);
     Ok(target.join("debug/reviewer"))
@@ -984,6 +748,7 @@ pub fn serve(setup: Setup) -> Result<()> {
         .build()?;
     let server = Server::new(setup);
     let session = Arc::clone(&server.session);
+    let vision = Arc::clone(server.vision.session());
     let outcome = runtime.block_on(async move {
         use tokio::signal::unix::{SignalKind, signal};
         let running = server.serve(rmcp::transport::stdio()).await?;
@@ -1004,9 +769,8 @@ pub fn serve(setup: Setup) -> Result<()> {
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .take();
+    if let Some(vision) = vision.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        let _ = vision.stop();
+    }
     outcome
 }
-
-#[cfg(test)]
-#[path = "server.tests.rs"]
-mod tests;

@@ -1,7 +1,7 @@
 //! The hc backend against a real herdr-core, on a private core of its own
-//! ([`hc_test_support::PrivateCore`]), never the user's core. Opt-in, since the dev shell pins
-//! no herdr-core: `cargo nextest run -p hc-client --run-ignored only`, with `hc` on the `PATH`
-//! or `TEST_HC_BIN` naming one.
+//! ([`hc_test_support::PrivateCore`]), never the user's core. Opt-in, since each test starts a
+//! core of its own: `cargo nextest run -p hc-client --run-ignored only`, with the dev shell's
+//! pinned `hc` (`TEST_HC_BIN_PATH`), or else `hc` on the `PATH`.
 
 use std::collections::BTreeMap;
 use std::sync::mpsc;
@@ -34,7 +34,7 @@ fn wait_for(client: &HcClient, pane: &PaneId, status: AgentStatus) -> Vec<AgentS
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn the_agents_of_a_tab_are_its_terminals_that_report_a_status() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -68,7 +68,7 @@ fn the_agents_of_a_tab_are_its_terminals_that_report_a_status() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn a_prompt_reaches_the_agent_as_typed_and_the_agent_starts_on_it() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -95,7 +95,7 @@ fn a_prompt_reaches_the_agent_as_typed_and_the_agent_starts_on_it() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn an_agent_that_never_starts_on_a_prompt_is_told() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -111,7 +111,7 @@ fn an_agent_that_never_starts_on_a_prompt_is_told() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn a_prompt_to_an_agent_that_waits_on_its_user_types_nothing() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -142,7 +142,7 @@ fn a_prompt_to_an_agent_that_waits_on_its_user_types_nothing() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn a_prompt_to_an_agent_that_blocked_while_the_person_typed_types_nothing() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -191,7 +191,7 @@ fn a_prompt_to_an_agent_that_blocked_while_the_person_typed_types_nothing() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn a_prompt_waits_until_the_person_typing_in_the_agent_s_terminal_stops() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -225,7 +225,7 @@ fn a_prompt_waits_until_the_person_typing_in_the_agent_s_terminal_stops() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn an_agents_statuses_follow_its_turns_and_end_with_its_program() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -264,7 +264,7 @@ fn an_agents_statuses_follow_its_turns_and_end_with_its_program() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn an_agent_that_exits_leaves_and_labels_reach_its_terminal() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -322,7 +322,7 @@ fn an_agent_that_exits_leaves_and_labels_reach_its_terminal() {
 }
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_is_told() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
@@ -378,7 +378,7 @@ fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_i
 const SEND_TO: &str = "PRIVATE_CORE_SEND_TO";
 
 #[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN"]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();

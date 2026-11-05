@@ -1,6 +1,7 @@
 //! A herdr-core (`hc`) of a test's own, never the user's: its own `HC_SESSION` and scratch
-//! `XDG_*` folders, stopped with the test. The dev shell pins no herdr-core, so the tests that
-//! use it are opt-in: they take `hc` on the `PATH`, or the one `TEST_HC_BIN` names.
+//! `XDG_*` folders, stopped with the test. The tests that use it are opt-in, since each starts a
+//! core of its own: they take the dev shell's pinned `hc` (`TEST_HC_BIN_PATH`), or else `hc` on
+//! the `PATH`.
 
 #![allow(
     clippy::missing_panics_doc,
@@ -249,5 +250,5 @@ fn quoted(path: &OsStr) -> String {
 }
 
 fn hc_binary() -> OsString {
-    std::env::var_os("TEST_HC_BIN").unwrap_or_else(|| OsString::from("hc"))
+    std::env::var_os("TEST_HC_BIN_PATH").unwrap_or_else(|| OsString::from("hc"))
 }

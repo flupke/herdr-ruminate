@@ -2,8 +2,10 @@
 //! reads it: each fork run-ahead started, with its prompt and how far it got, and the sessions the
 //! agent ran.
 
-use review_test_support::stand_in::{Reported, StandInEvent, StandInRole};
+use fake_agent::{Command, Event, Reported, Role};
 use serde::Serialize;
+
+use super::session::AGENT;
 
 /// One fork, in the order the forks started.
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -16,9 +18,9 @@ pub(crate) struct Fork {
     choice: Option<String>,
     /// The prompt it read, the turn's files appended.
     pub(crate) prompt: String,
-    /// Its output says that its submit has its answer.
+    /// Its output shows a tool call and its result: its submit.
     submitted: bool,
-    /// It ended its turn by itself.
+    /// It ended its turn without a submit.
     finished: bool,
     /// Its process ended, however it ended: the reviewer stops a fork it discards.
     pub(crate) exited: bool,
@@ -27,7 +29,8 @@ pub(crate) struct Fork {
 /// The sessions of the agent in the pane.
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 pub(crate) struct AgentSessions {
-    /// The session it reported last, to Herdr and the reviewer's hooks.
+    /// The session it started last, once its `SessionStart` hooks, the reviewer's among them,
+    /// ran.
     pub(crate) session: Option<String>,
     /// The sessions it resumed with Claude Code's `/resume`, in order.
     resumed: Vec<String>,
@@ -37,10 +40,10 @@ pub(crate) struct AgentSessions {
 pub(crate) fn forks(received: &[Reported]) -> Vec<Fork> {
     let mut forks: Vec<Fork> = Vec::new();
     for reported in received {
-        let StandInRole::Fork { session } = &reported.from else {
+        let Role::Fork { session } = &reported.from else {
             continue;
         };
-        if let StandInEvent::ForkStarted { parent, prompt } = &reported.event {
+        if let Event::ForkStarted { parent, prompt } = &reported.event {
             forks.push(Fork {
                 session: session.clone(),
                 parent: parent.clone(),
@@ -55,10 +58,12 @@ pub(crate) fn forks(received: &[Reported]) -> Vec<Fork> {
         let Some(fork) = forks.iter_mut().find(|fork| fork.session == *session) else {
             continue;
         };
-        match reported.event {
-            StandInEvent::ForkSubmitted => fork.submitted = true,
-            StandInEvent::ForkFinished => fork.finished = true,
-            StandInEvent::Disconnected => fork.exited = true,
+        match &reported.event {
+            Event::Obeyed {
+                command: Command::CallTool { .. },
+            } => fork.submitted = true,
+            Event::TurnEnded { .. } => fork.finished = !fork.submitted,
+            Event::Disconnected => fork.exited = true,
             _ => {}
         }
     }
@@ -68,15 +73,13 @@ pub(crate) fn forks(received: &[Reported]) -> Vec<Fork> {
 /// The sessions of the agent among the events `received`.
 pub(crate) fn agent_sessions(received: &[Reported]) -> AgentSessions {
     let mut sessions = AgentSessions::default();
-    for reported in received
-        .iter()
-        .filter(|reported| reported.from == StandInRole::Agent)
-    {
+    let agent = Role::agent(AGENT);
+    for reported in received.iter().filter(|reported| reported.from == agent) {
         match &reported.event {
-            StandInEvent::SessionReported { session, .. } => {
+            Event::SessionStarted { session, .. } => {
                 sessions.session = Some(session.clone());
             }
-            StandInEvent::ResumeReceived { session } => sessions.resumed.push(session.clone()),
+            Event::ResumeReceived { session } => sessions.resumed.push(session.clone()),
             _ => {}
         }
     }

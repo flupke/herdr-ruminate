@@ -149,9 +149,12 @@ Checked once with herdr-app 0.1.13, herdr-core 0.1.18 and Claude Code 2.1.318: f
 `/resume` switch over `terminal.send`, and a prepared conclusion shown about 1 s after a bare
 answer. To check it again after a change to the forks or the switch:
 
-1. `make build`, `scripts/herdr-app-private start 2400x4000` (tall, so the pane shows a
-   question's choices), source its env file, `scripts/herdr-app-mod install`.
-2. Write `$XDG_STATE_HOME/herdr-progressive-reviewer/settings.json` with
+1. `make build`, then herdr-common's `app-sandbox start --plain --size 2400x4000 <name>` (plain:
+   Claude Code needs the network; tall, so the pane shows a question's choices), and
+   `HERDR_APP_HOME=<its app_home> scripts/herdr-app-mod install`
+   ([herdr-app](herdr-app.md#a-private-herdr-app)). Run the `herdr-app` and `hc` commands
+   below as `app-sandbox herdr-app <name>` and `app-sandbox hc <name>`.
+2. Write `<its directory>/state/herdr-progressive-reviewer/settings.json` with
    `"explore_round":{"run_ahead":"recommended"}` and `"explore_page":{"pane_starts":"in_pane"}`.
 3. A scratch jj repository with one change, then `herdr-app do space.new '{"folder": ...}'`.
 4. Type the agent into its terminal with `hc send`: `env` with the `CLAUDE*` variables unset and

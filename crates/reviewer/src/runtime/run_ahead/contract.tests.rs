@@ -176,7 +176,7 @@ impl ContractRun {
                 flow.fixture
                     .herdr
                     .events()
-                    .send(&StandInRole::Agent, &StandInCommand::EndTurn);
+                    .send(&agent_role(), &fake_agent::Command::EndTurn);
             }
             Agent::Real => loop {
                 let event = flow
@@ -210,7 +210,7 @@ impl ContractRun {
                 self.run.fork_submits(&session);
                 self.herdr()
                     .events()
-                    .send(&StandInRole::Fork { session }, &StandInCommand::End);
+                    .send(&Role::fork(session), &fake_agent::Command::EndTurn);
             }
         }
         let saved = self.wait_for_saved("the forks' end", |saved| {
@@ -616,7 +616,7 @@ fn real_run(session: &str, waits: review_run_ahead::ForkWaits) -> RunAheadFlow {
     herdr.run_cli(&command);
     herdr.events().wait_for("the agent's session", |reported| {
         reported.event
-            == StandInEvent::SessionReported {
+            == fake_agent::Event::SessionReported {
                 session: session.into(),
                 start: "startup".into(),
             }
@@ -727,7 +727,7 @@ impl RealConfiguration {
             ],
         );
         configuration.edit("settings.json", |settings| {
-            let observing = stand_in_agent::observing_hooks(&stand_in_program());
+            let observing = fake_agent::observing_hooks(&stand_in_program());
             for (event, hooks) in observing.as_object().unwrap() {
                 let entries = settings["hooks"][event].as_array().cloned();
                 let mut entries = entries.unwrap_or_default();

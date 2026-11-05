@@ -56,9 +56,9 @@ fn text_left_in_the_input_box_that_joins_a_prompt_is_blocked_and_retry_sends_the
         .herdr
         .events()
         .wait_for("the blocked prompt", |reported| {
-            matches!(reported.event, StandInEvent::PromptBlocked { .. })
+            matches!(reported.event, fake_agent::Event::PromptBlocked { .. })
         });
-    let StandInEvent::PromptBlocked { text } = blocked.event else {
+    let fake_agent::Event::PromptBlocked { text } = blocked.event else {
         unreachable!()
     };
     assert!(text.starts_with("half a thought Explore round "), "{text}");

@@ -1,217 +1,154 @@
-//! One vision session: the reviewer running in a workspace of the user's Herdr, on a scratch
-//! repository, beside a stand-in agent that run-ahead can fork. Each action waits for the frame
-//! that shows the reviewer's reaction, which Herdr reports as an event; the stand-in agent and its
-//! forks report on the session's event socket.
+//! One vision session: the reviewer in herdr-common's app sandbox, a private herdr-app on a
+//! headless display, on a scratch repository, beside a stand-in agent that run-ahead can fork.
+//! The vision core (`vision_mcp::Vision`) sees and drives the app; this session holds what is the
+//! reviewer's own: its scratch repository, its terminals, and the stand-in agent and its forks,
+//! which report on the session's event socket.
 
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::process::Stdio;
+use std::sync::mpsc;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
+use app_sandbox::{AppSandbox, Isolation, Options, Programs};
+use fake_agent::{Command, Event, Events, Reported, Role};
 use review_repository::repository::RepoType;
 use serde_json::{Value, json};
-use vision_signal::{FrameMarker, acknowledgement_request};
-
-use herdr_client::client::{EventCanceller, HerdrClient};
-use herdr_client::protocol::{AgentPort, PaneId};
-use review_test_support::stand_in::{StandInCommand, StandInEvent, StandInEvents, StandInRole};
+use vision_mcp::{Input, Screen, Vision};
 
 use super::agent::ScriptedAgent;
 use super::forks;
-use super::frames::{FrameWatch, Stalled};
-use super::keys::KeyInput;
 use super::scratch::{Scratch, Seed};
-use super::screen::{Cell, Screen};
-use super::screenshot;
-use super::workspace::{Closing, Panes, Workspace, string};
 
 /// How long the reviewer may take to read an input and paint its reaction, or to paint its first
-/// frame. It fires only when something went wrong.
+/// frame, and the stand-in agent to answer. It fires only when something went wrong.
 const REACTION_GUARD: Duration = Duration::from_secs(30);
 
-/// The share of the tab's width the reviewer takes beside its stand-in agent.
-const REVIEWER_SHARE: f64 = 0.75;
+/// The app's window: wide enough for the reviewer beside its agent.
+const DISPLAY_SIZE: (u16, u16) = (1600, 1000);
 
-/// The title the stand-in agent shows outside its turns: Claude Code's, which Herdr reads as
-/// idle.
-const IDLE_TITLE: &str = "✳ Ready";
+/// The stand-in agent's name on the event socket.
+pub(crate) const AGENT: &str = "agent";
 
-/// Claude Code's title while it works, which Herdr reads as working.
-const WORKING_TITLE: &str = "⠋ Working";
+/// The prefix of the reviewer's MCP tools, as Claude Code names them in a fork's output.
+const MCP_TOOL_PREFIX: &str = "mcp__herdr_reviewer__";
 
 /// What a session starts on.
 pub(crate) struct StartOptions {
     pub(crate) repository: RepoType,
     pub(crate) seed: Seed,
-    /// Whether Herdr shows the session's workspace at once.
-    pub(crate) focus: bool,
     /// Whether the stand-in agent runs the hooks of the reviewer's Claude Code plugin, which
     /// run-ahead needs.
     pub(crate) agent_hooks: bool,
 }
 
-/// One input to the reviewer.
-pub(crate) enum Input<'a> {
-    /// Keys pressed in order, by Herdr's names.
-    Keys(&'a [String]),
-    /// Text pasted as the user's terminal pastes it.
-    Text(&'a str),
-    /// A left click on a cell.
-    Click(Cell),
-    /// A drag with the left button between two cells, Alt held when `alt`.
-    Drag { from: Cell, to: Cell, alt: bool },
+/// The session's terminals in the app, by their hc addresses (`t2`), and their panes.
+struct Terminals {
+    agent: String,
+    agent_pane: String,
+    reviewer: String,
+    reviewer_pane: String,
 }
 
 pub(crate) struct Session {
-    // Stop listening, then close the workspace, then stop listening to the stand-ins, then remove
-    // the scratch repository.
-    watch: FrameWatch,
-    workspace: Workspace,
-    panes: Panes,
+    /// The "reviewer vision" space, which the reviewer's Explore page is the page of.
+    space: String,
+    terminals: Terminals,
     /// What the stand-in agent and its forks report.
-    events: StandInEvents,
+    events: Events,
     scratch: Scratch,
     reviewer_program: PathBuf,
     /// Whether the stand-in agent runs the hooks of the reviewer's Claude Code plugin.
     agent_hooks: bool,
     agent: ScriptedAgent,
-    /// The latest acknowledgement request sent.
-    requests: u64,
 }
 
 impl Session {
-    /// Open a workspace in `herdr` on a new scratch repository, with the reviewer `reviewer` and
-    /// its stand-in agent in its tab, and wait for the reviewer's first frame.
+    /// Start an app sandbox on a new scratch repository, with the reviewer `reviewer` beside its
+    /// stand-in agent in a "reviewer vision" space, and wait for the reviewer's first frame.
+    /// Returns the session, the vision core on the sandbox, and the reviewer's first screen.
     pub(crate) fn start(
-        herdr: &HerdrClient,
         reviewer: PathBuf,
         options: &StartOptions,
         directory: PathBuf,
-    ) -> Result<(Self, Screen)> {
+    ) -> Result<(Self, Vision, Screen)> {
         let scratch = Scratch::create(options.repository, &options.seed, directory)?;
-        scratch.install_agent(&reviewer)?;
-        let events = StandInEvents::listen(&scratch.events_socket());
-        let (mut workspace, tab) = Workspace::create(herdr, scratch.root(), options.focus)?;
-        let watch = FrameWatch::start(herdr, workspace.id().to_owned())?;
-        let panes = Self::open_panes(
-            &mut workspace,
-            &tab,
-            &scratch,
-            &reviewer,
-            options.agent_hooks,
-            &events,
-        )?;
+        scratch.install_agent()?;
+        let events = Events::listen(&scratch.events_socket())?;
+        // Plain, not bubblewrap: the server reaches the reviewer's MCP endpoint and Explore page
+        // on the loopback interface, and the session's sockets and repository in /tmp, which
+        // bubblewrap gives the sandbox a private copy of. Its environment still names its own
+        // display, herdr-app and core alone. A gap of herdr-common's app sandbox (#14): back to
+        // bubblewrap once it reaches a port of the sandbox's loopback from outside.
+        let sandbox = AppSandbox::start(
+            &Programs::pinned().map_err(from_eyre)?,
+            &Options {
+                isolation: Isolation::Plain,
+                display_size: DISPLAY_SIZE,
+                environment: scratch.sandbox_environment(),
+            },
+        )
+        .map_err(from_eyre)?;
+        let vision = Vision::start(sandbox).map_err(from_eyre)?;
+        let space = vision
+            .sandbox()
+            .herdr_app(&[
+                "do",
+                "space.new",
+                &json!({"name": "reviewer vision", "folder": scratch.root()}).to_string(),
+            ])
+            .map_err(from_eyre)?;
+        let terminals = open_terminals(&vision, &scratch, &reviewer, options.agent_hooks, &events)?;
+        // The space's own first tab, a shell, once the session's tab took the focus.
+        do_command(&vision, "tab.close", &json!({"id": string(&space["tab"])?}))?;
         let agent = ScriptedAgent::new(scratch.turns(), scratch.mcp_port());
         let session = Self {
-            watch,
-            workspace,
-            panes,
+            space: string(&space["space"])?,
+            terminals,
             events,
             scratch,
             reviewer_program: reviewer,
             agent_hooks: options.agent_hooks,
             agent,
-            requests: 0,
         };
-        let screen = session.first_screen()?;
-        Ok((session, screen))
+        let screen = session.first_screen(&vision)?;
+        Ok((session, vision, screen))
     }
 
-    /// Replace the tab's layout with a new reviewer and stand-in agent, on a new session, and
-    /// return once the agent shows its idle title. The agent runs the plugin's hooks with
-    /// `agent_hooks`.
-    fn open_panes(
-        workspace: &mut Workspace,
-        tab: &str,
-        scratch: &Scratch,
-        reviewer: &Path,
-        agent_hooks: bool,
-        events: &StandInEvents,
-    ) -> Result<Panes> {
-        let herdr = workspace.herdr();
-        let session = format!(
-            "vision-{}",
-            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
-        );
-        let from = events.try_received().map_err(|error| anyhow!(error))?.len();
-        let applied = herdr.request(
-            "layout.apply",
-            &json!({
-                "tab_id": tab,
-                "tab_label": "reviewer",
-                "root": {
-                    "type": "split",
-                    "direction": "right",
-                    "ratio": REVIEWER_SHARE,
-                    "first": {
-                        "type": "pane",
-                        "label": "reviewer",
-                        "cwd": scratch.root(),
-                        "command": Scratch::reviewer_command(reviewer),
-                        "env": scratch.reviewer_environment(workspace.id(), herdr.socket_path())?,
-                    },
-                    "second": {
-                        "type": "pane",
-                        "label": "stand-in agent",
-                        "cwd": scratch.root(),
-                        "command": scratch.agent_command(),
-                        "env": scratch.agent_environment(reviewer, &session, agent_hooks),
-                    },
-                },
-            }),
+    /// The reviewer's first screen, once the app also knows the stand-in agent: Explore prompts
+    /// it from the start.
+    fn first_screen(&self, vision: &Vision) -> Result<Screen> {
+        wait_app(
+            vision,
+            "the app to see the stand-in agent's status",
+            |listed| {
+                terminal_entry(listed, &self.terminals.agent)
+                    .is_some_and(|t| !t["status"].is_null())
+            },
         )?;
-        let layout = &applied["layout"];
-        let panes = Panes {
-            tab: string(&layout["tab_id"])?,
-            reviewer: string(&layout["root"]["first"]["pane_id"])?,
-            agent: string(&layout["root"]["second"]["pane_id"])?,
-        };
-        workspace.opened(&panes);
-        // The agent that connects from now on is the new one: an agent the layout replaced
-        // keeps its connection until its process ends.
-        events
-            .try_wait_until("the stand-in agent", REACTION_GUARD, |received| {
-                received[from..].iter().any(|reported| {
-                    reported.from == StandInRole::Agent
-                        && matches!(reported.event, StandInEvent::Hello { .. })
-                })
-            })
-            .map_err(|error| anyhow!(error))?;
-        events
-            .try_send(
-                &StandInRole::Agent,
-                &StandInCommand::ShowTitle {
-                    title: IDLE_TITLE.into(),
-                },
+        // Each frame shows the reviewer's tabs.
+        vision
+            .wait_for(
+                "Explore",
+                false,
                 REACTION_GUARD,
+                Some(&self.terminals.reviewer),
             )
-            .map_err(|error| anyhow!(error))?;
-        Ok(panes)
-    }
-
-    /// The reviewer's first screen, once Herdr also knows the stand-in agent: Explore prompts it
-    /// from the start.
-    fn first_screen(&self) -> Result<Screen> {
-        self.watch
-            .frames()
-            .wait_agent(&self.panes.agent, REACTION_GUARD)
-            .map_err(|error| anyhow!("Herdr did not detect the stand-in agent: {error}"))?;
-        let marker = self
-            .wait_frame(|_| true)
-            .map_err(|error| anyhow!("the reviewer did not start: {error}"))?;
-        self.read(&marker, false)
+            .map_err(|error| anyhow!("the reviewer did not start: {error:#}"))
     }
 
     /// What `start` and `reopen` report besides the screen.
-    pub(crate) fn describe(&self) -> Value {
+    pub(crate) fn describe(&self, vision: &Vision) -> Value {
         json!({
-            "workspace": self.workspace.id(),
-            "tab": self.panes.tab,
-            "reviewer_pane": self.panes.reviewer,
-            "agent_pane": self.panes.agent,
+            "space": self.space,
+            "reviewer_terminal": self.terminals.reviewer,
+            "agent_terminal": self.terminals.agent,
             "repository": self.scratch.root(),
             "directory": self.scratch.directory(),
-            "agent_swallows_prompts": self.scratch.stand_in().swallow(),
+            "sandbox": vision.sandbox().directory(),
+            "agent_swallows_prompts": self.scratch.agent_directory().swallow(),
             "agent_hooks": self.agent_hooks,
             "run_ahead_log": self.scratch.run_ahead_log(),
             "claude_config": self.scratch.claude_config(),
@@ -223,114 +160,52 @@ impl Session {
         self.scratch.directory()
     }
 
-    /// The screen of the latest frame, with its styles when `styled`.
-    pub(crate) fn screen(&self, styled: bool) -> Result<Screen> {
-        let marker = self
-            .watch
-            .frames()
-            .pane(&self.panes.reviewer)
-            .latest
-            .context("the reviewer has painted no frame")?;
-        self.read(&marker, styled)
+    /// Ask the reviewer for an acknowledgement, with no input of its own, and return the screen
+    /// of the frame that names it: the reviewer's reaction to what reached it meanwhile, such as
+    /// an agent's tool call. The reviewer takes the focus first: the request goes to the
+    /// focused terminal.
+    pub(crate) fn settle(&self, vision: &mut Vision) -> Result<Screen> {
+        self.focus_reviewer(vision)?;
+        // No key, then the core's acknowledgement request. A gap of herdr-common's vision core
+        // (#15), which has no such call of its own.
+        let (_, screen) = vision.act(&Input::Keys(&[])).map_err(from_eyre)?;
+        screen.context("the reviewer's pane shows no terminal")
     }
 
-    /// Send `input`, and return the screen once the reviewer has read it and painted its
-    /// reaction.
-    pub(crate) fn act(&mut self, input: &Input<'_>) -> Result<Screen> {
-        let pane = self.panes.reviewer.clone();
-        match input {
-            Input::Keys(keys) => {
-                ensure!(!keys.is_empty(), "no key to press");
-                // Herdr checks every key of one call before it writes any, so a run of keys it
-                // names goes in one call.
-                let mut named = Vec::new();
-                for key in *keys {
-                    match KeyInput::parse(key) {
-                        KeyInput::Herdr(name) => named.push(name),
-                        KeyInput::Bytes(bytes) => {
-                            self.send_keys(&pane, &std::mem::take(&mut named))?;
-                            self.send_text(&pane, &bytes)?;
-                        }
-                    }
-                }
-                self.send_keys(&pane, &named)?;
-            }
-            Input::Text(text) => self.send_text(&pane, &format!("\x1b[200~{text}\x1b[201~"))?,
-            Input::Click(cell) => {
-                self.screen(false)?.contains(*cell)?;
-                self.send_text(&pane, &cell.left_click())?;
-            }
-            Input::Drag { from, to, alt } => {
-                let screen = self.screen(false)?;
-                screen.contains(*from)?;
-                screen.contains(*to)?;
-                self.send_text(&pane, &from.left_drag(*to, *alt))?;
-            }
+    fn focus_reviewer(&self, vision: &Vision) -> Result<()> {
+        if vision.focused_terminal().map_err(from_eyre)?.as_deref()
+            != Some(self.terminals.reviewer.as_str())
+        {
+            do_command(
+                vision,
+                "pane.focus",
+                &json!({"pane": self.terminals.reviewer_pane}),
+            )?;
         }
-        self.settle()
-    }
-
-    /// Ask the reviewer for an acknowledgement after everything sent so far, and return the
-    /// screen of the frame that names it.
-    pub(crate) fn settle(&mut self) -> Result<Screen> {
-        self.requests += 1;
-        let request = self.requests;
-        let pane = self.panes.reviewer.clone();
-        self.send_text(
-            &pane,
-            &format!("\x1b[200~{}\x1b[201~", acknowledgement_request(request)),
-        )?;
-        let marker = self
-            .wait_frame(|marker| marker.acknowledged >= request)
-            .map_err(|error| anyhow!("the reviewer did not react to the input: {error}"))?;
-        self.read(&marker, false)
-    }
-
-    /// Wait until the screen shows `text`, or no longer shows it when `absent`, for at most
-    /// `guard`, reading the screen after each frame.
-    pub(crate) fn wait_for(&self, text: &str, absent: bool, guard: Duration) -> Result<Screen> {
-        ensure!(!text.is_empty(), "the text to wait for is empty");
-        let deadline = std::time::Instant::now() + guard;
-        let mut screen = self.screen(false)?;
-        loop {
-            if screen.shows(text) != absent {
-                return Ok(screen);
-            }
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            let frame = screen.frame;
-            let marker = match self
-                .watch
-                .frames()
-                .wait(&self.panes.reviewer, remaining, |marker| {
-                    marker.frame > frame
-                }) {
-                Ok(marker) => marker,
-                Err(Stalled::Guard(_)) => bail!(
-                    "the screen {} {text:?} after {} ms; it shows:\n{}",
-                    if absent {
-                        "still shows"
-                    } else {
-                        "does not show"
-                    },
-                    guard.as_millis(),
-                    screen.compact()
-                ),
-                Err(stalled) => bail!("{stalled}; the screen shows:\n{}", screen.compact()),
-            };
-            screen = self.read(&marker, false)?;
-        }
+        Ok(())
     }
 
     /// Classify as insignificant the hunks of `path` that hold `lines`, as Jev would, press
     /// `rf`, and return the screen once Jev's classification has finished, or `rf` refused.
-    pub(crate) fn jev(&mut self, path: &str, lines: &[u32]) -> Result<Screen> {
+    pub(crate) fn jev(&self, vision: &mut Vision, path: &str, lines: &[u32]) -> Result<Screen> {
         fs::write(
             self.scratch.jev_script(),
             serde_json::to_vec(&json!({"insignificant": [{"path": path, "lines": lines}]}))?,
         )?;
-        let pressed = self.act(&Input::Keys(&["r".into(), "f".into()]))?;
-        if pressed.shows("Jev: classifying") {
-            return self.wait_for("Jev: classifying", true, REACTION_GUARD);
+        self.focus_reviewer(vision)?;
+        let (_, pressed) = vision
+            .act(&Input::Keys(&["r".into(), "f".into()]))
+            .map_err(from_eyre)?;
+        let pressed = pressed.context("the reviewer's pane shows no terminal")?;
+        if pressed.text.contains("Jev: classifying") {
+            return vision
+                .wait_for(
+                    "Jev: classifying",
+                    true,
+                    REACTION_GUARD,
+                    Some(&self.terminals.reviewer),
+                )
+                .map_err(from_eyre);
         }
         Ok(pressed)
     }
@@ -343,12 +218,13 @@ impl Session {
     /// reviewer has shown it.
     pub(crate) fn reply(
         &mut self,
+        vision: &mut Vision,
         turn: u64,
         tool: &str,
         arguments: Value,
     ) -> Result<(Value, Screen)> {
         let result = self.agent.reply(turn, tool, arguments)?;
-        Ok((result, self.settle()?))
+        Ok((result, self.settle(vision)?))
     }
 
     /// The forks run-ahead started, once `count` did when it is given, waiting up to `guard`;
@@ -362,7 +238,7 @@ impl Session {
                 .map_err(|error| anyhow!(error))?;
         }
         // A wait whose condition held at once took in none of the events that came since.
-        let received = self.events.try_received().map_err(|error| anyhow!(error))?;
+        let received = self.received()?;
         Ok(json!({
             "forks": forks::forks(&received),
             "agent": forks::agent_sessions(&received),
@@ -372,284 +248,393 @@ impl Session {
 
     /// Submit the turn of the fork `session` with `tool`, as that fork: the reviewer's tool on
     /// its real endpoint, with the identity of the fork's prompt where `arguments` leave it out;
-    /// then the fork's output says that its submit has its answer. Returns the tool's result once
-    /// the fork said so, with the screen once the reviewer has shown it.
+    /// then the fork's output shows the call and its result. Returns the tool's result once the
+    /// fork showed them, with the screen once the reviewer has shown it.
     pub(crate) fn fork_submit(
         &mut self,
+        vision: &mut Vision,
         session: &str,
         tool: &str,
         arguments: Value,
     ) -> Result<(Value, Screen)> {
-        let received = self.events.try_received().map_err(|error| anyhow!(error))?;
-        let prompt = forks::forks(&received)
-            .into_iter()
-            .find(|fork| fork.session == session)
-            .with_context(|| format!("no fork has the session {session}"))?
-            .prompt;
+        let prompt = self.fork(session)?.prompt;
         let result = self.agent.reply_as_fork(&prompt, tool, arguments)?;
         if result["isError"] == true {
-            return Ok((result, self.settle()?));
+            return Ok((result, self.settle(vision)?));
         }
-        let fork = StandInRole::Fork {
-            session: session.to_owned(),
-        };
-        self.events
-            .try_send(&fork, &StandInCommand::Submit, REACTION_GUARD)
-            .map_err(|error| anyhow!(error))?;
-        self.events
-            .try_wait_until("the fork's submit", REACTION_GUARD, |received| {
-                received.iter().any(|reported| {
-                    reported.from == fork && reported.event == StandInEvent::ForkSubmitted
-                })
-            })
-            .map_err(|error| anyhow!(error))?;
-        Ok((result, self.settle()?))
+        self.obey(
+            &Role::fork(session),
+            &Command::CallTool {
+                name: format!("{MCP_TOOL_PREFIX}{tool}"),
+            },
+        )?;
+        Ok((result, self.settle(vision)?))
     }
 
     /// End the turn of the fork `session` without a submit, or make it crash when `crash`: it
     /// exits with a failure and no result. Returns the screen once the fork's process ended.
-    pub(crate) fn fork_end(&mut self, session: &str, crash: bool) -> Result<Screen> {
-        let received = self.events.try_received().map_err(|error| anyhow!(error))?;
-        let fork = forks::forks(&received)
-            .into_iter()
-            .find(|fork| fork.session == session)
-            .with_context(|| format!("no fork has the session {session}"))?;
-        ensure!(!fork.exited, "the fork {session} has exited already");
-        let fork = StandInRole::Fork {
-            session: session.to_owned(),
-        };
+    pub(crate) fn fork_end(
+        &mut self,
+        vision: &mut Vision,
+        session: &str,
+        crash: bool,
+    ) -> Result<Screen> {
+        ensure!(
+            !self.fork(session)?.exited,
+            "the fork {session} has exited already"
+        );
+        let fork = Role::fork(session);
         let command = if crash {
-            StandInCommand::Crash
+            Command::Crash
         } else {
-            StandInCommand::End
+            Command::EndTurn
         };
         self.events
             .try_send(&fork, &command, REACTION_GUARD)
             .map_err(|error| anyhow!(error))?;
         self.events
             .try_wait_until("the fork's exit", REACTION_GUARD, |received| {
-                received.iter().any(|reported| {
-                    reported.from == fork && reported.event == StandInEvent::Disconnected
-                })
+                received
+                    .iter()
+                    .any(|reported| reported.from == fork && reported.event == Event::Disconnected)
             })
             .map_err(|error| anyhow!(error))?;
-        self.settle()
+        self.settle(vision)
     }
 
-    /// Make the agent's next `/resume` one that Herdr and the reviewer's hooks never hear of, as
-    /// when Claude Code's session hooks fail, or hear of only `heard_after` later: the next switch
-    /// to a fork waits for them, in vain or that long.
+    fn fork(&self, session: &str) -> Result<forks::Fork> {
+        forks::forks(&self.received()?)
+            .into_iter()
+            .find(|fork| fork.session == session)
+            .with_context(|| format!("no fork has the session {session}"))
+    }
+
+    /// Make the agent's next `/resume` one that the reviewer's hooks never hear of, as when
+    /// Claude Code's session hooks fail, or hear of only `heard_after` later: the next switch to
+    /// a fork waits for them, in vain or that long.
     pub(crate) fn switch_unheard(&self, heard_after: Option<Duration>) -> Result<()> {
-        let stand_in = self.scratch.stand_in();
-        fs::create_dir_all(stand_in.path())?;
+        let agent = self.scratch.agent_directory();
+        fs::create_dir_all(agent.path())?;
         let late = heard_after.map_or_else(String::new, |late| late.as_millis().to_string());
-        fs::write(stand_in.unreported_resume(), late)?;
+        fs::write(agent.unreported_resume(), late)?;
         Ok(())
     }
 
-    /// Show the stand-in agent working, with Claude Code's working title, or idle again, and
-    /// return once Herdr reports it so.
-    pub(crate) fn agent_working(&mut self, working: bool) -> Result<Screen> {
-        let pane = PaneId(self.panes.agent.clone());
-        let herdr = self.workspace.herdr();
-        let canceller = EventCanceller::default();
-        let statuses = herdr.subscribe_agent_status(&pane, &canceller)?;
-        let title = if working { WORKING_TITLE } else { IDLE_TITLE };
-        self.events
-            .try_send(
-                &StandInRole::Agent,
-                &StandInCommand::ShowTitle {
-                    title: title.into(),
-                },
-                REACTION_GUARD,
-            )
-            .map_err(|error| anyhow!(error))?;
-        let (reported, reports) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            statuses.forward(|status| {
-                let shown = status.started_on_prompt() == working;
-                if shown {
-                    let _ = reported.send(());
-                }
-                !shown
-            })
-        });
-        let shown = reports.recv_timeout(REACTION_GUARD);
-        canceller.cancel();
-        shown.map_err(|_| {
-            anyhow!(
-                "Herdr did not report the agent {} in {} ms",
-                if working { "working" } else { "idle" },
-                REACTION_GUARD.as_millis()
-            )
-        })?;
-        self.settle()
-    }
-
-    /// Type `text` in the stand-in agent's pane and submit it, as its user would, and return
-    /// once the agent read it: a prompt moves its conversation on.
-    pub(crate) fn agent_prompt(&mut self, text: &str) -> Result<Screen> {
+    /// Submit `text` in the stand-in agent's terminal, as its user would, and return once the
+    /// agent read it: a prompt moves its conversation on.
+    pub(crate) fn agent_prompt(&self, vision: &mut Vision, text: &str) -> Result<Screen> {
         ensure!(
             !text.trim().is_empty(),
             "the agent's prompt is empty: the agent would not read it"
         );
-        let from = self
-            .events
-            .try_received()
-            .map_err(|error| anyhow!(error))?
-            .len();
-        let pane = self.panes.agent.clone();
-        self.send_text(&pane, &format!("\x1b[200~{text}\x1b[201~"))?;
-        self.send_keys(&pane, &["enter".to_owned()])?;
+        let from = self.received()?.len();
+        let agent = Role::agent(AGENT);
+        // herdr-core pastes it and presses Enter, without moving the focus.
+        vision
+            .sandbox()
+            .hc(&["send", "--force", &self.terminals.agent, text])
+            .map_err(from_eyre)?;
         self.events
             .try_wait_until("the agent's prompt", REACTION_GUARD, |received| {
                 received[from..].iter().any(|reported| {
-                    reported.from == StandInRole::Agent
+                    reported.from == agent
                         && matches!(
                             reported.event,
-                            StandInEvent::PromptReceived { .. }
-                                | StandInEvent::PromptBlocked { .. }
-                                | StandInEvent::ResumeReceived { .. }
+                            Event::PromptReceived { .. }
+                                | Event::PromptBlocked { .. }
+                                | Event::ResumeReceived { .. }
                         )
                 })
             })
             .map_err(|error| anyhow!(error))?;
-        self.settle()
+        self.settle(vision)
     }
 
     pub(crate) fn explore_page(&self) -> Result<String> {
-        let environment = self
-            .scratch
-            .reviewer_environment(self.workspace.id(), self.workspace.herdr().socket_path())?;
         self.scratch
-            .open_explore_page(&self.reviewer_program, &environment)
+            .open_explore_page(&self.reviewer_program, &self.space)
     }
 
-    /// Save a PNG of the latest screen in the session directory.
-    pub(crate) fn screenshot(&self) -> Result<(Screen, screenshot::Screenshot)> {
-        let screen = self.screen(true)?;
-        let directory = self.scratch.directory().join("screenshots");
-        fs::create_dir_all(&directory)?;
-        let saved = screenshot::save(
-            &screen,
-            &directory.join(format!("frame-{}.png", screen.frame)),
-        )?;
-        Ok((screen, saved))
-    }
-
-    /// Start the reviewer and its stand-in agent again, in new panes, on the same repository and
-    /// state; the agent runs the plugin's hooks as `agent_hooks` says, or as before. With
+    /// Start the reviewer and its stand-in agent again, in a new tab, on the same repository
+    /// and state; the agent runs the plugin's hooks as `agent_hooks` says, or as before. With
     /// `workspace`, both run in that workspace of the repository from now on (see
     /// [`Scratch::enter_workspace`]).
     pub(crate) fn reopen(
         &mut self,
+        vision: &mut Vision,
         agent_hooks: Option<bool>,
         workspace: Option<&str>,
     ) -> Result<Screen> {
-        self.stop_reviewer()?;
+        // The reviewer first: the next one binds the same MCP port.
+        close_terminal(
+            vision,
+            &self.terminals.reviewer,
+            &self.terminals.reviewer_pane,
+        )?;
         if let Some(workspace) = workspace {
             self.scratch.enter_workspace(workspace)?;
         }
         self.agent_hooks = agent_hooks.unwrap_or(self.agent_hooks);
-        self.panes = Self::open_panes(
-            &mut self.workspace,
-            &self.panes.tab,
+        let (agent, agent_pane) = open_agent(
+            vision,
             &self.scratch,
             &self.reviewer_program,
             self.agent_hooks,
             &self.events,
         )?;
-        self.first_screen()
-    }
-
-    /// Stop the reviewer, and wait until Herdr reports its process ended: the next one binds
-    /// the same MCP port.
-    fn stop_reviewer(&self) -> Result<()> {
-        let frames = self.watch.frames();
-        if frames.pane(&self.panes.reviewer).exited {
-            return Ok(());
-        }
-        let processes = self
-            .workspace
-            .herdr()
-            .pane_process_info(&PaneId(self.panes.reviewer.clone()))?
-            .foreground_processes;
-        ensure!(!processes.is_empty(), "the reviewer's pane runs no process");
-        for process in &processes {
-            terminate(process.pid)?;
-        }
-        frames
-            .wait_exit(&self.panes.reviewer, REACTION_GUARD)
-            .map_err(|error| anyhow!("the reviewer did not stop: {error}"))
-    }
-
-    /// Close the session's workspace, if it is still the session's, and remove the scratch
-    /// repository.
-    pub(crate) fn stop(mut self) -> Closing {
-        self.workspace.close()
-    }
-
-    fn wait_frame(&self, until: impl FnMut(&FrameMarker) -> bool) -> Result<FrameMarker, Stalled> {
-        self.watch
-            .frames()
-            .wait(&self.panes.reviewer, REACTION_GUARD, until)
-    }
-
-    fn read(&self, marker: &FrameMarker, styled: bool) -> Result<Screen> {
-        let text = self.read_pane(false)?;
-        let styled = styled.then(|| self.read_pane(true)).transpose()?;
-        Ok(Screen::new(marker, text, styled))
-    }
-
-    fn read_pane(&self, styled: bool) -> Result<String> {
-        let read = self.workspace.herdr().request(
-            "pane.read",
-            &json!({
-                "pane_id": self.panes.reviewer,
-                "source": "visible",
-                "format": if styled { "ansi" } else { "text" },
-                "strip_ansi": !styled,
-            }),
+        // The old agent once the new one holds the space: the app refuses to close a space's
+        // last pane without a confirmation.
+        close_terminal(vision, &self.terminals.agent, &self.terminals.agent_pane)?;
+        self.terminals = open_reviewer(
+            vision,
+            &self.scratch,
+            &self.reviewer_program,
+            agent,
+            agent_pane,
         )?;
-        string(&read["read"]["text"])
+        self.first_screen(vision)
     }
 
-    fn send_keys(&self, pane: &str, keys: &[String]) -> Result<()> {
-        if keys.is_empty() {
-            return Ok(());
-        }
-        self.workspace
-            .herdr()
-            .request("pane.send_keys", &json!({"pane_id": pane, "keys": keys}))?;
+    /// Show the stand-in agent working without a turn, as an agent at work on what no prompt
+    /// started, or idle again, and return the reviewer's screen once the app shows it so.
+    pub(crate) fn agent_working(&self, vision: &mut Vision, working: bool) -> Result<Screen> {
+        self.obey(&Role::agent(AGENT), &Command::ShowWorking { working })?;
+        // Once its work ends, the app shows the agent `done` until its pane is seen, which the
+        // reviewer takes as idle.
+        let shown = |status: &str| {
+            if working {
+                status == "working"
+            } else {
+                matches!(status, "idle" | "done")
+            }
+        };
+        let wanted = if working { "working" } else { "idle" };
+        wait_app(
+            vision,
+            &format!("the app to show the agent {wanted}"),
+            |listed| {
+                terminal_entry(listed, &self.terminals.agent)
+                    .and_then(|terminal| terminal["status"].as_str())
+                    .is_some_and(shown)
+            },
+        )?;
+        self.settle(vision)
+    }
+
+    fn obey(&self, role: &Role, command: &Command) -> Result<()> {
+        let from = self.received()?.len();
+        self.events
+            .try_send(role, command, REACTION_GUARD)
+            .map_err(|error| anyhow!(error))?;
+        self.events
+            .try_wait_until("the stand-in's answer", REACTION_GUARD, |received| {
+                received[from..].iter().any(|reported| {
+                    reported.from == *role
+                        && matches!(&reported.event, Event::Obeyed { command: obeyed } if obeyed == command)
+                })
+            })
+            .map_err(|error| anyhow!(error))?;
         Ok(())
     }
 
-    fn send_text(&self, pane: &str, text: &str) -> Result<()> {
-        self.workspace
-            .herdr()
-            .request("pane.send_text", &json!({"pane_id": pane, "text": text}))?;
-        Ok(())
+    fn received(&self) -> Result<Vec<Reported>> {
+        self.events.try_received().map_err(|error| anyhow!(error))
     }
 }
 
-/// Ask process `pid` to stop. A short-lived child of the reviewer, such as a jj command, can end
-/// between the listing of the pane's processes and its signal: a process that is gone counts as
-/// stopped. `ps` tells whether it is gone, which `kill -0` cannot when it is not allowed to signal.
-fn terminate(pid: u32) -> Result<()> {
-    let pid = pid.to_string();
-    let succeeds = |program: &str, arguments: &[&str]| {
-        std::process::Command::new(program)
-            .args(arguments)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|status| status.success())
-    };
-    ensure!(
-        succeeds("kill", &["-TERM", &pid])? || !succeeds("ps", &["-p", &pid])?,
-        "cannot stop the reviewer's process {pid}"
+/// Open the stand-in agent in a new tab of the focused space, then the reviewer right of it.
+fn open_terminals(
+    vision: &Vision,
+    scratch: &Scratch,
+    reviewer: &Path,
+    agent_hooks: bool,
+    events: &Events,
+) -> Result<Terminals> {
+    let (agent, agent_pane) = open_agent(vision, scratch, reviewer, agent_hooks, events)?;
+    open_reviewer(vision, scratch, reviewer, agent, agent_pane)
+}
+
+/// Open the stand-in agent in a new tab of the focused space, and return its terminal and its
+/// pane once it connected to `events`.
+fn open_agent(
+    vision: &Vision,
+    scratch: &Scratch,
+    reviewer: &Path,
+    agent_hooks: bool,
+    events: &Events,
+) -> Result<(String, String)> {
+    let session = format!(
+        "vision-{}",
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
-    Ok(())
+    let from = events.try_received().map_err(|error| anyhow!(error))?.len();
+    let agent = do_command(
+        vision,
+        "terminal.open",
+        &json!({
+            "argv": scratch.agent_command(reviewer, &session, agent_hooks),
+            "folder": scratch.root(),
+            "place": "tab",
+            "name": "stand-in agent",
+        }),
+    )?;
+    // The agent that connects from now on is the new one: one a reopen replaced keeps its
+    // connection until its process ends.
+    let role = Role::agent(AGENT);
+    events
+        .try_wait_until("the stand-in agent", REACTION_GUARD, |received| {
+            received[from..].iter().any(|reported| {
+                reported.from == role && matches!(reported.event, Event::Hello { .. })
+            })
+        })
+        .map_err(|error| anyhow!(error))?;
+    let terminal = string(&agent["terminal"])?;
+    // A terminal opened in a new tab comes without its pane: the app lists it.
+    let listed = vision.sandbox().herdr_app(&["ls"]).map_err(from_eyre)?;
+    let pane = terminal_entry(&listed, &terminal)
+        .map(|entry| string(&entry["pane"]))
+        .transpose()?
+        .with_context(|| format!("the app lists no terminal {terminal}: {listed:#}"))?;
+    Ok((terminal, pane))
+}
+
+/// Open the reviewer right of the focused pane, following the agent's terminal `agent`
+/// (`--focused-terminal`) and the app's focus, as the launcher mod opens it.
+fn open_reviewer(
+    vision: &Vision,
+    scratch: &Scratch,
+    reviewer: &Path,
+    agent: String,
+    agent_pane: String,
+) -> Result<Terminals> {
+    let app_home = vision
+        .sandbox()
+        .variable("HERDR_APP_HOME")
+        .context("the sandbox names no HERDR_APP_HOME")?
+        .to_string_lossy()
+        .into_owned();
+    let opened = do_command(
+        vision,
+        "terminal.open",
+        &json!({
+            "argv": scratch.reviewer_command(reviewer, &agent, &app_home),
+            "folder": scratch.root(),
+            "place": "right",
+            "name": "reviewer",
+        }),
+    )?;
+    Ok(Terminals {
+        agent,
+        agent_pane,
+        reviewer: string(&opened["terminal"])?,
+        reviewer_pane: string(&opened["pane"])?,
+    })
+}
+
+/// Close `pane`, and wait until the core reports its terminal `terminal` ended.
+fn close_terminal(vision: &Vision, terminal: &str, pane: &str) -> Result<()> {
+    do_command(vision, "pane.close", &json!({"pane": pane}))?;
+    // `hc ls` lists live terminals only.
+    wait_core(vision, &format!("{terminal} to end"), |listed| {
+        !listed["terminals"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|entry| entry["address"] == terminal)
+    })
+}
+
+/// `herdr-app do <command> <arguments>` in the session's app.
+fn do_command(vision: &Vision, command: &str, arguments: &Value) -> Result<Value> {
+    vision
+        .sandbox()
+        .herdr_app(&["do", command, &arguments.to_string()])
+        .map_err(from_eyre)
+}
+
+/// The entry of the terminal `address` in `herdr-app ls`.
+fn terminal_entry<'a>(listed: &'a Value, address: &str) -> Option<&'a Value> {
+    listed["spaces"]
+        .as_array()?
+        .iter()
+        .filter_map(|space| space["tabs"].as_array())
+        .flatten()
+        .filter_map(|tab| tab["terminals"].as_array())
+        .flatten()
+        .find(|terminal| terminal["terminal"] == address)
+}
+
+/// Wait until `herdr-app ls` satisfies `holds`.
+fn wait_app(vision: &Vision, what: &str, holds: impl FnMut(&Value) -> bool) -> Result<()> {
+    wait_listed(vision, || vision.sandbox().herdr_app(&["ls"]), what, holds)
+}
+
+/// Wait until `hc ls` satisfies `holds`.
+fn wait_core(vision: &Vision, what: &str, holds: impl FnMut(&Value) -> bool) -> Result<()> {
+    wait_listed(
+        vision,
+        || vision.sandbox().hc(&["ls", "--json"]),
+        what,
+        holds,
+    )
+}
+
+/// Wait until what `list` lists satisfies `holds`: checked at once, then after each event of
+/// the sandbox's core, which reports the terminals' statuses and ends.
+fn wait_listed(
+    vision: &Vision,
+    mut list: impl FnMut() -> eyre::Result<Value>,
+    what: &str,
+    mut holds: impl FnMut(&Value) -> bool,
+) -> Result<()> {
+    let sandbox = vision.sandbox();
+    // Subscribed before the first look: an event that comes between them still wakes the wait.
+    let mut events = sandbox
+        .command(&sandbox.programs().hc)
+        .args(["events", "--json"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("cannot run hc events")?;
+    let stdout = events.stdout.take().context("standard output is piped")?;
+    let (sender, received) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            if line.is_err() || sender.send(()).is_err() {
+                return;
+            }
+        }
+    });
+    let deadline = Instant::now() + REACTION_GUARD;
+    let waited = (|| loop {
+        let listed = list().map_err(from_eyre)?;
+        if holds(&listed) {
+            return Ok(());
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if received.recv_timeout(remaining).is_err() {
+            return Err(anyhow!(
+                "waited {} ms for {what}; the app lists:\n{listed:#}",
+                REACTION_GUARD.as_millis()
+            ));
+        }
+    })();
+    let _ = events.kill();
+    let _ = events.wait();
+    waited
+}
+
+fn string(value: &Value) -> Result<String> {
+    value
+        .as_str()
+        .map(str::to_owned)
+        .with_context(|| format!("expected a string, got {value}"))
+}
+
+/// herdr-common's crates report with eyre: its report, chain included, as an anyhow error.
+pub(crate) fn from_eyre(error: eyre::Report) -> anyhow::Error {
+    anyhow::Error::from_boxed(error.into())
 }
 
 #[cfg(test)]

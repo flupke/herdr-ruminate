@@ -86,7 +86,6 @@ members = [
     "crates/reviewer",
     "crates/toasts",
     "crates/text-search",
-    "crates/vision-signal",
 ]
 resolver = "3"
 
@@ -103,6 +102,12 @@ base64 = "0.22"
 crossterm = "0.29"
 crossbeam-channel = "0.5"
 eyre = "0.6"
+# herdr-common's fake agent, which `crates/stand-in-agent` runs. From git, never by path: cargo
+# reads every path dependency of the workspace, dev-dependencies too, so a missing
+# `../herdr-common` would fail `cargo build` of a clone of this repository alone. herdr-common's
+# ADR 0001 said path; its ADR 0004 (herdr-common#10) supersedes it with git. Cargo.lock pins the
+# revision: `cargo update -p fake-agent` moves it.
+fake-agent = { git = "https://github.com/flupke/herdr-common" }
 flate2 = "1.1"
 edtui = { version = "=0.11.7", default-features = false }
 fs2 = "0.4"

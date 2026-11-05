@@ -78,7 +78,7 @@ impl ExploreFlow {
     pub(super) fn turn(&mut self, answer: Option<AnswerInput>, version: u32) {
         let question = self.exploration.questions.last().cloned();
         let request = self.exploration.request(answer, question.as_ref()).unwrap();
-        let from = self.fixture.herdr.events().received().len();
+        let from = self.fixture.herdr.received().len();
         let request = self.post_turn(&request);
         self.wait_for_prompt(&request);
         let statuses = self.holds_turns.then(|| {
@@ -86,7 +86,7 @@ impl ExploreFlow {
             self.fixture.herdr.wait_for_agent_event(
                 from,
                 "the agent's turn",
-                &StandInEvent::TurnStarted,
+                &fake_agent::Event::TurnStarted,
             );
             let statuses = self
                 .fixture
@@ -131,7 +131,7 @@ impl ExploreFlow {
             self.fixture
                 .herdr
                 .events()
-                .send(&StandInRole::Agent, &StandInCommand::EndTurn);
+                .send(&agent_role(), &fake_agent::Command::EndTurn);
             statuses.wait_for(herdr_client::protocol::AgentStatus::Idle);
         }
     }

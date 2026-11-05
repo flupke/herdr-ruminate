@@ -156,8 +156,7 @@ scripts nix Makefile` list the reviewer's uses.
 | `plugin.pane.open`, `plugin.pane.focus`, `plugin.pane.close`, `agent.focus` | `pane.split` or `terminal.open`, `pane.focus`, `pane.close`, `agent.focus`, through `herdr-app do` or a mod's `run()` |
 | `pane.get`, `pane.layout`, `pane.resize` | `herdr-app ls` and a mod's `panes()`, with each pane's tab; no pane size |
 | `HERDR_PANE_ID`, `HERDR_SOCKET_PATH` in an agent's hooks | `HC_TERMINAL_ID`, `HC_TERMINAL_SOCKET` |
-| An isolated `herdr server` in tests, the pinned Herdr in `nix/flake.nix`, agent-detection rules | A private core: its own `HC_SESSION` and scratch XDG paths (`hc --skill`); status comes from OSC 7501, not detection rules |
-| The vision MCP's workspace in the user's Herdr | `herdr-app do space.new`, `pane.split`, `space.close`; `hc read`, `hc keys`, `hc send`; `herdr-app shot` for pixels |
+| An isolated `herdr server` in tests, the pinned Herdr (herdr-common's flake, through `nix/flake.nix`), agent-detection rules | A private core: its own `HC_SESSION` and scratch XDG paths (`hc --skill`); status comes from OSC 7501, not detection rules |
 
 The MCP bridge and the Explore page's browser use no Herdr API.
 
@@ -238,33 +237,32 @@ while it runs (0.1.17 to 0.1.18 during one session): its terminals keep running.
 
 ## A private herdr-app
 
-`scripts/herdr-app-private start [WIDTHxHEIGHT]` starts a herdr-app off the user's screen, with
-its own home and its own herdr-core, and prints an env file; `. <env file>` points `herdr-app`
-and `hc` at them, and `scripts/herdr-app-private stop <env file>` ends both and removes the
-folder. Use it to see the review pane as herdr-app draws it: `hc read` gives the core's screen,
-`herdr-app shot` the pixels.
+herdr-common's `app-sandbox` command (`~/src/herdr-common/skills/herdr-mod-vision/app-sandbox`,
+built on first use; `--help`) starts a herdr-app off the user's screen, on a headless Weston,
+with its own home and its own herdr-core, and keeps it across shell commands: `start <name>`
+prints its `directory` (as this shell reaches it), `inside` (as its processes see it) and
+`app_home`; `herdr-app <name> ...` and `hc <name> ...` act on it, `shot <name> <png>` takes the
+pixels, `stop <name>` ends it. Use it to see the review pane as herdr-app draws it.
 
-- Its display is a headless sway (`WLR_RENDERER=gles2`: Vulkan finds no DRM device there);
-  `swaymsg output HEADLESS-1 resolution 2400x1100` resizes the window. The launcher splits
-  right of a terminal with at least two and a half times as many columns as rows, as the
-  default 1600x1000 window gives. Xvfb works too: `herdr-app` with `DISPLAY` on it and
-  `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json` (software Vulkan).
-- `HERDR_APP_HOME` must be a short folder under `/tmp`: the window's control socket lives there,
-  and a longer path leaves `herdr-app do`, `ls` and `shot` with no window to reach.
-- `scripts/herdr-app-mod install` with the env sourced installs the launcher there, running
-  this checkout's `bin/reviewer` (`make build`). `herdr-app do mod.open --name
-  herdr-progressive-reviewer` is what the launcher's key runs; `herdr-app do tab.new --folder
-  <checkout>` first gives it a terminal to open beside. `hc keys` and `hc read` drive and read
-  the review pane. The pane needs 40 columns: `app.zoom_out` in a narrow window.
+- In bubblewrap, the default, its `/tmp` and network are its own: put a scratch repository
+  elsewhere, outside any folder with an `.envrc` (direnv has no allowed one there, and the
+  pane's language servers fail), and use `--plain` for what needs the network or the host's
+  `/tmp`, such as real Claude Code. `--size 2400x1100` sets the window, at start only.
+- The launcher's way to open the pane, without installing it: in the agent's tab,
+  `herdr-app <name> do terminal.open '{"argv": ["<checkout>/target/debug/reviewer",
+  "--focused-terminal", "<agent's terminal>", "--herdr-app-home", "<inside>/config/herdr-app"],
+  "folder": "<repository>", "place": "right"}'`. `terminal.open` in a new tab answers its
+  terminal without its pane: `herdr-app ls` lists both. `HERDR_APP_HOME=<app_home>
+  scripts/herdr-app-mod install` installs the launcher itself, running this checkout's
+  `bin/reviewer` (`make build`).
+- `hc keys` and `hc read` drive and read the review pane. The pane needs 40 columns:
+  `app.zoom_out` in a narrow window.
 - `pane.split --direction down` and `pane.close` shrink and grow the pane; closing its
   neighbour widens it.
-- The window opens on its welcome overlay, over the middle of the window. `overlay.close {id:
-  "frame-welcome"}` may answer ok and leave it: read what it covers with `hc read`.
 - Whether the pane's first frame survives depends on when herdr-app's shrink and regrow reach
   it (above): check it on several opens, in fresh tabs, by the first line of `hc read`.
 - The reviewers it starts share the checkout's MCP port, so all but the first show a toast
-  that the port is in use. Its `XDG_*` folders are its own: direnv has no allowed `.envrc`,
-  and the language servers fail.
+  that the port is in use.
 
 Never give Claude Code a scratch `XDG_DATA_HOME`, as a private core's terminals have: 2.1.318
 copies itself into `$XDG_DATA_HOME/claude/versions` and points the owner's `~/.local/bin/claude`

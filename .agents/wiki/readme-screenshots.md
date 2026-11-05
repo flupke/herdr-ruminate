@@ -21,18 +21,14 @@ progressive reviews and review threads, and Explore after them.
   `queue.rs` and mark it reviewed; comment on a line of `reply.rs`, left unanswered; then, as the
   agent, add a line to `queue.rs` and answer the first comment. `queue.rs` then shows its
   reviewed hunks folded and the new line "changed since review".
-- The pane takes the width of the user's terminal, often too wide to read at the README's
-  width: before the shot, narrow it to about 120 columns with
-  `herdr pane resize --pane <reviewer pane> --direction left --amount <ratio>`; `herdr pane
-  layout` gives the split's width. Its height stays the terminal's: cut the empty rows out of
-  the image, between the last used row and the pane's bottom border.
+- The screenshot is herdr-app's own rendering of the sandbox's whole window, 1600x1000
+  (`DISPLAY_SIZE` in `tests/tui/src/vision/session.rs`), the reviewer right of its agent: crop
+  the reviewer's pane out of it, and cut its empty rows, between the last used row and the
+  pane's bottom border.
 - Write the agent's reply from a script, not a shell command line: the shell runs the backticks
   of its inline code.
-- The screenshot draws the thread mark 💬 as `??`. Paint the emoji from Noto Color Emoji over its
-  two cells. tui-test draws a cell in 10×21 pixels with its bundled font, from a margin of 39
-  pixels at the left and 62 at the top.
-- The window's title bar names the harness, "tui-test capture - <columns>x<rows>": paint the
-  title over with the bar's color.
+- Not checked since the move to the app sandbox: how herdr-app draws the thread mark 💬. Look
+  at it before the shot.
 
 ## The Explore page
 

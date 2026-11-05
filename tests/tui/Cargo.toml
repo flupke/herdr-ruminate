@@ -5,13 +5,17 @@ edition = "2024"
 rust-version = "1.90"
 publish = false
 
-# Ratatui 0.29 pins unicode-width 0.2.0; tui-test requires 0.2.2.
+# A workspace of its own: herdr-common's test tooling comes by path from the checkout beside this
+# one (herdr-common's ADR 0004), which a clone of this repository alone lacks, so it stays out of
+# the workspace that builds and installs the reviewer.
 [workspace]
 resolver = "3"
 
 [dependencies]
 anyhow = "1.0"
-base64 = "0.22"
+app-sandbox = { path = "../../../herdr-common/crates/app-sandbox" }
+eyre = "0.6"
+fake-agent = { path = "../../../herdr-common/crates/fake-agent" }
 herdr-client = { path = "../../crates/herdr-client" }
 notify = "8.2"
 review-explore-page-settings = { path = "../../crates/review-explore-page-settings" }
@@ -23,9 +27,14 @@ serde_json = "1.0"
 stand-in-agent = { path = "../../crates/stand-in-agent" }
 tempfile = "3.20"
 tokio = { version = "1.52", features = ["macros", "rt", "signal"] }
-tui-test-rs = { version = "=0.1.0-beta.5", features = ["recording-font-jetbrains-mono-styles"] }
-unicode-width = "0.2"
-vision-signal = { path = "../../crates/vision-signal" }
+vision-mcp = { path = "../../../herdr-common/crates/vision-mcp" }
+
+# The workspace's crates take herdr-common's fake agent and frame signal from git, so that a clone
+# of this repository alone builds them: here, where herdr-common is beside the checkout, they are
+# the same crates as this workspace's, taken by path.
+[patch."https://github.com/flupke/herdr-common"]
+fake-agent = { path = "../../../herdr-common/crates/fake-agent" }
+vision-signal = { path = "../../../herdr-common/crates/vision-signal" }
 
 [lints.rust]
 unsafe_code = "forbid"

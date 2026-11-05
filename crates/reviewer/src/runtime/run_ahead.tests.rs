@@ -24,7 +24,7 @@ const CLAUDE_CONFIG: &str = "claude-config";
 /// The agent a test runs in the agent's pane.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum StandIn {
-    /// The test agent alone.
+    /// The test agent alone, which keeps its transcripts under `claude-config` too.
     Plain,
     /// A Claude Code stand-in that run-ahead can fork; it and its forks keep their transcripts
     /// under `claude-config` in the server's directory.
@@ -51,14 +51,15 @@ impl StandIn {
         // Claude Code runs the hooks of the reviewer's plugin.
         let plugin = format!(
             "{}={}",
-            variables::HOOKS,
+            variables::HOOK,
             effects::fixture::test_fork_tools().control.display()
         );
+        // Every stand-in keeps transcripts there. Without it, the fake agent keeps them under
+        // `claude` in its directory, the server's, where the test links the stand-in as `claude`.
         let configuration = format!("CLAUDE_CONFIG_DIR={}", root.join(CLAUDE_CONFIG).display());
         match self {
-            Self::Plain => Vec::new(),
             Self::Forkable | Self::Configured | Self::Misconfigured => vec![plugin, configuration],
-            Self::Unhooked => vec![configuration],
+            Self::Plain | Self::Unhooked => vec![configuration],
         }
     }
 
@@ -134,7 +135,9 @@ impl RunAheadFlow {
             .wait_until(&format!("{count} forks"), |received| {
                 received
                     .iter()
-                    .filter(|reported| matches!(reported.event, StandInEvent::ForkStarted { .. }))
+                    .filter(|reported| {
+                        matches!(reported.event, fake_agent::Event::ForkStarted { .. })
+                    })
                     .count()
                     >= count
             });
@@ -187,7 +190,7 @@ impl RunAheadFlow {
     }
 
     fn transcript(&self, session: &str) -> PathBuf {
-        stand_in_agent::transcript(&self.root().join(CLAUDE_CONFIG), session)
+        fake_agent::transcript(&self.root().join(CLAUDE_CONFIG), session)
     }
 
     /// Waits until run-ahead stopped the forks `forks` and deleted their transcripts.
@@ -336,7 +339,7 @@ fn forks_of_the_agent_take_each_answer_s_turn_which_is_kept_and_an_answer_stops_
         assert!(has(&["--resume", "session"]), "{arguments:?}");
         assert!(has(&["--fork-session"]));
         assert!(has(&["--session-id", session]));
-        assert!(has(&["--model", "stand-in-model"]));
+        assert!(has(&["--model", "fake-model"]));
         let settings = run.fork_file(session, "settings");
         assert!(settings.contains("fork-guard"), "{settings}");
         assert!(
@@ -367,12 +370,9 @@ fn forks_of_the_agent_take_each_answer_s_turn_which_is_kept_and_an_answer_stops_
     run.flow.access = pane_access;
 
     // Its turn done, it ends; the reviewer keeps how and its tokens.
-    run.herdr().events().send(
-        &StandInRole::Fork {
-            session: sessions[0].clone(),
-        },
-        &StandInCommand::End,
-    );
+    run.herdr()
+        .events()
+        .send(&Role::fork(&sessions[0]), &fake_agent::Command::EndTurn);
     let usage = run.wait_for_saved("the fork's end", |saved| saved.forks[0].usage);
     assert_eq!(usage.cache_read, 1000);
 
@@ -411,17 +411,13 @@ impl RunAheadFlow {
         let kept = self.flow.submit(&fork_question(&self.flow, &prompt));
         assert_ne!(kept.is_error, Some(true), "{kept:?}");
         self.flow.access = pane_access;
-        let fork = StandInRole::Fork {
-            session: session.to_owned(),
-        };
-        self.herdr().events().send(&fork, &StandInCommand::Submit);
-        self.herdr()
-            .events()
-            .wait_until("the fork's submit", |received| {
-                received.iter().any(|reported| {
-                    reported.from == fork && reported.event == StandInEvent::ForkSubmitted
-                })
-            });
+        // The fork calls the reviewer's tool as Claude Code names it, and the tool's result
+        // reaches it.
+        let submit = format!("mcp__{}__submit_question", review_types::MCP_SERVER);
+        self.herdr().events().obey(
+            &Role::fork(session),
+            &fake_agent::Command::CallTool { name: submit },
+        );
     }
 
     /// The reviewer answers the latest question with `choice` and no comment, in the pane.
@@ -670,7 +666,7 @@ fn a_fork_that_ends_without_its_turn_gives_the_answer_to_the_agent() {
 
     run.herdr()
         .events()
-        .send(&StandInRole::Fork { session: fork }, &StandInCommand::End);
+        .send(&Role::fork(fork), &fake_agent::Command::EndTurn);
 
     run.answer_reached_the_agent(prompts, &request, review_run_ahead::PlainReason::NoTurn);
 }
@@ -762,11 +758,11 @@ fn text_left_in_the_input_box_is_blocked_with_the_resume_and_the_answer_waits_fo
         .herdr()
         .events()
         .wait_for("the blocked prompt", |reported| {
-            matches!(reported.event, StandInEvent::PromptBlocked { .. })
+            matches!(reported.event, fake_agent::Event::PromptBlocked { .. })
         });
     assert_eq!(
         blocked.event,
-        StandInEvent::PromptBlocked {
+        fake_agent::Event::PromptBlocked {
             text: format!("half a thought /resume {fork}")
         }
     );
@@ -923,7 +919,7 @@ fn a_closing_reviewer_stops_every_fork_and_deletes_its_transcript() {
 
 /// What the project folder of the stand-in's transcripts under `configuration` holds.
 fn project_folder(configuration: &Path) -> BTreeSet<String> {
-    fs::read_dir(stand_in_agent::transcripts(configuration))
+    fs::read_dir(fake_agent::transcripts(configuration))
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect()
