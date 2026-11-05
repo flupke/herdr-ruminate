@@ -57,11 +57,14 @@ impl Comments {
             .focused_id()
             .filter(|_| self.replies_to(thread))
             .and_then(|id| drafts.get(id).map(|open| (id, open)));
+        let failure = self.wakeup_failure(thread);
         if let Some(editing) = replying {
             layout.separator(&mut rows, None);
+            layout.wakeup_failure(&mut rows, failure.as_deref(), None);
             self.editor_rows(&mut rows, editing, true, layout);
         } else if let Some(parked) = self.parked_reply(&drafts, &thread.id) {
             layout.separator(&mut rows, None);
+            layout.wakeup_failure(&mut rows, failure.as_deref(), None);
             self.editor_rows(&mut rows, parked, false, layout);
         } else if let Some(comment) = thread.messages.last() {
             layout.separator(&mut rows, Some(&comment.id));
@@ -70,6 +73,7 @@ impl Comments {
             } else {
                 layout.reply_field(&mut rows, &comment.id);
             }
+            layout.wakeup_failure(&mut rows, failure.as_deref(), Some(&comment.id));
             layout.controls(&mut rows, Some(thread), None);
         }
         rows
@@ -387,6 +391,22 @@ impl ThreadLayout {
             Some(id),
         );
         self.blank(rows, Some(id));
+    }
+
+    /// Why the thread's comment did not reach the agent, if it did not, above the Retry agent
+    /// that sends it again, or above the reply being written.
+    fn wakeup_failure(
+        self,
+        rows: &mut Vec<CommentRow>,
+        error: Option<&str>,
+        id: Option<&MessageId>,
+    ) {
+        let Some(error) = error else {
+            return;
+        };
+        let text = format!("Not delivered: {error}");
+        self.plain(rows, &text, self.palette.deletion, id);
+        self.blank(rows, id);
     }
 
     fn reply_field(self, rows: &mut Vec<CommentRow>, id: &MessageId) {

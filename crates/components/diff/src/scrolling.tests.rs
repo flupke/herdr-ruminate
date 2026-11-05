@@ -29,6 +29,7 @@ impl Scrolling {
             repository_root: PathBuf::new(),
             palette: Theme::default().palette,
             drafts: std::rc::Rc::default(),
+            wakeup_failures: crate::comments::WakeupFailures::default(),
             thread_projection: review_thread_projection::SharedThreadProjection::default(),
         };
         let reviewable_files = ReviewableFiles::default();

@@ -21,7 +21,7 @@ use ui_events::{
     ExplorePositionsChanged, ExplorePositionsRestored, PointerInput, PointerInputKind,
     RepositoryFilesChanged, ReviewNavigation, ReviewNavigationChanged, ReviewThreadsLoaded,
     ReviewableFiles, SourceContentLoadFailed, SourceContentLoaded, TextPasted, ThreadPostFinished,
-    ToastRequested,
+    ThreadWakeupReported, ToastRequested,
 };
 use ui_shortcuts::{
     ApplicationShortcut, ConversationCommand, ConversationShortcut, DiffGlobalShortcut,
@@ -63,6 +63,7 @@ impl DiffComponent {
             repository_root,
             palette,
             drafts: std::rc::Rc::default(),
+            wakeup_failures: crate::comments::WakeupFailures::default(),
             thread_projection,
         };
         let files = SourceViewer::new(&services, Role::Files, reviewable_files);
@@ -355,6 +356,15 @@ impl DiffComponent {
         actions
     }
 
+    fn wakeup_reported(&mut self, event: &ThreadWakeupReported) {
+        if !self.services.wakeup_failures.report(event) {
+            return;
+        }
+        for (_, viewer) in self.viewers_mut() {
+            viewer.wakeup_reported(&event.review_unit);
+        }
+    }
+
     fn post_finished(&mut self, event: &ThreadPostFinished) {
         let mut released = false;
         for (_, viewer) in self.viewers_mut() {
@@ -565,6 +575,7 @@ impl Component<Action> for DiffComponent {
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::replies_displayed));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::threads_loaded));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::post_finished));
+        subscriptions.subscribe(|pane, event| pane.handle(event, Self::wakeup_reported));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::highlighting_finished));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::search_completed));
         // Events about the shown documents reach the document viewer.

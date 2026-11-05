@@ -16,7 +16,7 @@ pub use explore::{
 pub use threads::{
     EventSettled, NewRepliesRequested, ReviewNavigation, ReviewNavigationChanged, ReviewPane,
     ReviewPaneFocusRequested, ReviewThreadsLoaded, TextPasted, ThreadFilesChanged,
-    ThreadPostFinished, ThreadSelectionChanged,
+    ThreadPostFinished, ThreadSelectionChanged, ThreadWakeupReported,
 };
 
 use std::collections::HashSet;

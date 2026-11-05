@@ -1,4 +1,4 @@
-use review_threads::{MessageId, ReviewThreads, SavedDrafts, ThreadId};
+use review_threads::{MessageId, ReviewThreads, SavedDrafts, ThreadId, WakeupFailure};
 use review_types::ReviewUnit;
 
 /// Paste input delivered to the focused component.
@@ -20,6 +20,14 @@ pub struct ThreadPostFinished {
     pub review_unit: ReviewUnit,
     pub message_id: MessageId,
     pub result: Result<(), String>,
+}
+
+/// What became of the latest wakeup for a review's pending comments: `None` while one is on its
+/// way, or why it did not reach the agent.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ThreadWakeupReported {
+    pub review_unit: ReviewUnit,
+    pub failure: Option<WakeupFailure>,
 }
 
 /// The two review-wide navigation modes, independent of keyboard focus.

@@ -65,6 +65,11 @@ records it for the tab it is in.
   back to the input box, and the reviewer's, typed after it, would join it. A blocked prompt runs no turn; Claude
   Code 2.1.309 shows the reason and puts the prompt back in the input box, so the user clears
   the box before Retry.
+- A wakeup that did not reach the agent shows in the pane in each thread it covered, above
+  Retry agent or the reply being written, until another wakeup goes or a reply comes
+  (`ThreadWakeupReported`). It raises no toast, which would cover the diff: the thread holds
+  the Retry that answers it. A failure in a thread off the screen shows only when it is
+  scrolled to.
 - Claude Code trims the end of the prompt it reports, and wraps a long paste in
   `<pasted_content id="N">` tags, which `claude-hooks` removes before the reviewer compares.
 - When the hook does not report within 5 seconds, an agent Herdr reports working or blocked
