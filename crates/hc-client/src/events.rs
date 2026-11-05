@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::terminal::{SESSION_LABEL, Status, Terminal, place_of};
+use crate::terminal::{Foreground, SESSION_LABEL, Status, Terminal, place_of, running};
 
 /// One fact change, as an `event` notification of `events.subscribe` carries it: of a terminal,
 /// or of a document, such as herdr-app's layout, which names no terminal.
@@ -66,7 +66,8 @@ impl Event {
 /// What the reviewer knows of each terminal of a subscription, to tell an agent that appears in
 /// a terminal, or leaves it, as Herdr's `pane.agent_detected` tells, and a change of the session
 /// an agent runs, which Herdr does not tell. A terminal holds an agent while its program reports
-/// a status and it is in a tab of herdr-app.
+/// a status, or runs Claude Code in its foreground on a session its label names, and it is in a
+/// tab of herdr-app.
 #[derive(Debug, Default)]
 pub(crate) struct Roster {
     terminals: HashMap<String, Known>,
@@ -77,12 +78,14 @@ struct Known {
     /// The space and the tab of herdr-app the terminal shows in.
     place: Option<(WorkspaceId, TabId)>,
     status: Option<Status>,
+    /// The leader of its foreground process group.
+    foreground: Option<Foreground>,
     /// Its session label, as set.
     session: Option<String>,
 }
 
 /// The agent a terminal holds: where it shows, and its status.
-type Held<'a> = (&'a (WorkspaceId, TabId), &'a Status);
+type Held<'a> = (&'a (WorkspaceId, TabId), Status);
 
 impl Known {
     fn of(terminal: Terminal) -> Self {
@@ -90,11 +93,16 @@ impl Known {
             place: terminal.place(),
             session: terminal.labels.get(SESSION_LABEL).cloned(),
             status: terminal.status,
+            foreground: terminal.foreground,
         }
     }
 
     fn agent(&self) -> Option<Held<'_>> {
-        self.place.as_ref().zip(self.status.as_ref())
+        self.place.as_ref().zip(running(
+            self.status.as_ref(),
+            self.foreground.as_ref(),
+            self.session.as_deref(),
+        ))
     }
 }
 
@@ -130,6 +138,11 @@ impl Roster {
             "created" | "restarted" => Known::of(event.data()?),
             "status" => Known {
                 status: event.data::<StatusChange>()?.status,
+                ..self.known(terminal)
+            },
+            // Not in `hc schema`'s list of events, but sent by herdr-core 0.1.18.
+            "foreground" => Known {
+                foreground: event.data()?,
                 ..self.known(terminal)
             },
             "labels" => {

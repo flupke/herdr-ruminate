@@ -1100,6 +1100,86 @@ fn unresolved_threads_can_retry_from_either_view_even_after_an_older_answer() {
 }
 
 #[test]
+fn a_failed_wakeup_shows_once_in_the_threads_it_covered_until_another_goes_or_a_reply_comes() {
+    let mut fixture = CommentFixture::new();
+    fixture.add("Please answer this");
+    let through = fixture.book().threads()[0].messages[0].sequence();
+    let report = |unit: &str, through: u64| ui_events::ThreadWakeupReported {
+        review_unit: unit.into(),
+        failure: Some(review_threads::WakeupFailure {
+            through,
+            error: "Focus an agent".into(),
+        }),
+    };
+    let shown = |fixture: &CommentFixture| {
+        fixture
+            .text()
+            .matches("Not delivered: Focus an agent")
+            .count()
+    };
+
+    fixture.registry.publish(report("other", through)).unwrap();
+    let other_review = shown(&fixture);
+    fixture
+        .registry
+        .publish(report("change", through - 1))
+        .unwrap();
+    let earlier_comments = shown(&fixture);
+    for _ in 0..3 {
+        fixture.registry.publish(report("change", through)).unwrap();
+    }
+    let failed = shown(&fixture);
+    let failure = CommentFixture::text_position(&fixture.render_thread(), "Not delivered");
+    let retry = CommentFixture::text_position(&fixture.render_thread(), "Retry agent");
+    fixture.registry.publish(report("other", through)).unwrap();
+    let after_another_review_failed = shown(&fixture);
+    fixture.click_text("Reply…");
+    fixture.assert_editor(true);
+    let replying = shown(&fixture);
+    fixture.paste("Still there?");
+    // A reviewer started again on the saved reply shows it parked.
+    let mut restarted = fixture.restart();
+    restarted
+        .registry
+        .publish(report("change", through))
+        .unwrap();
+    assert!(
+        restarted.text().contains("Draft · click to edit"),
+        "{}",
+        restarted.text()
+    );
+    let parked = shown(&restarted);
+    fixture
+        .registry
+        .publish(ui_events::ThreadWakeupReported {
+            review_unit: "change".into(),
+            failure: None,
+        })
+        .unwrap();
+    let sent_again = shown(&fixture);
+    fixture.registry.publish(report("change", through)).unwrap();
+    fixture.answer("Answer received");
+    let answered = shown(&fixture);
+
+    assert_eq!(
+        (
+            other_review,
+            earlier_comments,
+            failed,
+            after_another_review_failed,
+            replying,
+            parked,
+            sent_again,
+            answered
+        ),
+        (0, 0, 1, 1, 1, 1, 0, 0),
+        "{}",
+        fixture.text()
+    );
+    assert!(failure.0 < retry.0, "{}", fixture.text());
+}
+
+#[test]
 fn resolving_collapses_inline_history_and_preserves_a_reply_for_the_threads_tab() {
     let mut fixture = CommentFixture::new();
     fixture.add("Keep my history");

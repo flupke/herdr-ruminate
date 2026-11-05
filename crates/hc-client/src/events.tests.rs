@@ -338,3 +338,65 @@ fn the_session_label_of_a_terminal_without_an_agent_tells_nothing() {
         None
     );
 }
+
+/// The data of a `foreground` event: the new leader of the terminal's foreground process group,
+/// as herdr-core 0.1.18 sends it.
+fn leader(name: &str) -> Value {
+    json!({"argv": [name], "cwd": "/src", "name": name, "pid": 9})
+}
+
+/// A `labels` event of `t3` in the tab `tb1`, its session label naming Claude Code's `session`.
+fn claude_session(session: &str) -> Event {
+    session_labels(Some(&format!("claude:{session}")))
+}
+
+#[test]
+fn claude_code_that_stops_reporting_stays_while_it_holds_the_foreground_on_its_session() {
+    let mut reporting = terminal("t3", json!({"app": "claude-code", "state": "done"}));
+    reporting["foreground"] = leader("claude");
+    reporting["labels"]["herdr-reviewer.session"] = json!("claude:s1");
+    let mut roster = roster(&[reporting]);
+
+    let cleared = roster
+        .observe(&event(
+            "status",
+            "t3",
+            json!({"records": {}, "reported": true, "status": null}),
+        ))
+        .unwrap();
+    let suspended = roster
+        .observe(&event("foreground", "t3", leader("zsh")))
+        .unwrap();
+    let resumed = roster
+        .observe(&event("foreground", "t3", leader("claude")))
+        .unwrap();
+
+    assert_eq!(
+        (cleared, suspended, resumed),
+        (
+            None,
+            Some(departure("t3", AgentStatus::Unknown)),
+            Some(arrival("t3"))
+        )
+    );
+}
+
+#[test]
+fn claude_code_arrives_as_its_session_starts_not_as_it_takes_the_foreground() {
+    let mut shell = terminal("t3", Value::Null);
+    shell["foreground"] = leader("zsh");
+    let mut roster = roster(&[shell]);
+
+    let started = roster
+        .observe(&event("foreground", "t3", leader("claude")))
+        .unwrap();
+    let session = roster.observe(&claude_session("s1")).unwrap();
+    let reported = roster
+        .observe(&event("status", "t3", status("idle")))
+        .unwrap();
+
+    assert_eq!(
+        (started, session, reported),
+        (None, Some(arrival("t3")), None)
+    );
+}

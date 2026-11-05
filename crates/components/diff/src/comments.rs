@@ -10,10 +10,11 @@ use review_source::{AnchorKind, DiffRangeAnchor, FrozenHunk};
 use review_thread_projection::{SharedThreadProjection, ThreadPlacement};
 use review_threads::{
     Draft, MessageId, ReviewThread, ReviewThreads, ThreadCommand, ThreadId, ThreadPaths,
-    ThreadSource,
+    ThreadSource, WakeupFailure,
 };
+use review_types::ReviewUnit;
 use ui_actions::Action;
-use ui_events::{ReviewThreadsLoaded, TextPasted, ThreadPostFinished};
+use ui_events::{ReviewThreadsLoaded, TextPasted, ThreadPostFinished, ThreadWakeupReported};
 use ui_shortcuts::{CommentShortcut, Key};
 
 use crate::conversation::ConversationAction;
@@ -34,6 +35,27 @@ pub(super) struct Comments {
     unavailable: HashSet<ThreadId>,
     files: ThreadFiles,
     editor_height: u16,
+    /// Shared with every viewer of the pane.
+    wakeup_failures: WakeupFailures,
+}
+
+/// For each review, the latest wakeup for its pending comments that did not reach the agent,
+/// until another is on its way.
+#[derive(Clone, Default)]
+pub(super) struct WakeupFailures(Rc<RefCell<HashMap<ReviewUnit, WakeupFailure>>>);
+
+impl WakeupFailures {
+    /// Record what became of the latest wakeup for a review's pending comments; returns whether
+    /// that changed what the review's threads show.
+    pub(super) fn report(&self, event: &ThreadWakeupReported) -> bool {
+        let mut failures = self.0.borrow_mut();
+        match &event.failure {
+            Some(failure) => {
+                failures.insert(event.review_unit.clone(), failure.clone()) != Some(failure.clone())
+            }
+            None => failures.remove(&event.review_unit).is_some(),
+        }
+    }
 }
 
 /// The files a viewer matches threads to.
@@ -94,8 +116,12 @@ impl CommentTarget {
 }
 
 impl Comments {
-    /// Comments editing the pane's shared `drafts`.
-    pub(super) fn new(drafts: Rc<RefCell<Drafts>>, review: SharedThreadProjection) -> Self {
+    /// Comments editing the pane's shared `drafts`, showing its shared `wakeup_failures`.
+    pub(super) fn new(
+        drafts: Rc<RefCell<Drafts>>,
+        wakeup_failures: WakeupFailures,
+        review: SharedThreadProjection,
+    ) -> Self {
         Self {
             book: None,
             drafts,
@@ -107,7 +133,16 @@ impl Comments {
             unavailable: HashSet::new(),
             files: ThreadFiles::Review(review),
             editor_height: 5,
+            wakeup_failures,
         }
+    }
+
+    /// Why the latest wakeup for the comment of `thread` that waits for a reply did not reach
+    /// the agent, if it did not.
+    pub(super) fn wakeup_failure(&self, thread: &ReviewThread) -> Option<String> {
+        let failures = self.wakeup_failures.0.borrow();
+        let failure = failures.get(&self.book.as_ref()?.review_unit)?;
+        failure.covers(thread).then(|| failure.error.clone())
     }
 
     /// Whether the focus edits a reply in the pane's conversation view.
@@ -629,6 +664,18 @@ impl SourceViewer {
             position.pin(row, screen_row, &rows, height);
         }
         actions
+    }
+
+    /// Show in the threads of this viewer's review what became of the latest wakeup for
+    /// `unit`'s pending comments, when it is this viewer's review.
+    pub(super) fn wakeup_reported(&mut self, unit: &ReviewUnit) {
+        let shown = self
+            .comments
+            .book()
+            .is_some_and(|book| &book.review_unit == unit);
+        if self.role.shows_comments() && shown {
+            self.refresh_comment_documents();
+        }
     }
 
     /// Settle the draft whose post finished. Returns whether this viewer's

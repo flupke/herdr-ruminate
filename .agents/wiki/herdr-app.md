@@ -91,6 +91,20 @@ itself Herdr too, and labels its terminals `herdr.*`.
   `hc` command) types the text as it is, even when it comes from a terminal of the core.
 - Claude Code reports `blocked` while a question of its `AskUserQuestion` tool waits on the
   user (2.1.318).
+- Claude Code 2.1.318 can move a conversation into a background session while the `claude`
+  in the terminal stays in its foreground and takes the user's keys (seen on a herdr-bowtie
+  worker; what triggers it is not known). That `claude` clears its status and starts
+  `claude daemon run --origin transient`, which runs the session (`--fork-session --resume`,
+  a new session ID; the old transcript ends with a `continued-in` record) on a pty of its own.
+  The session's OSC 7501 goes to that pty, so the terminal has no status for as long as it
+  runs. The session inherits `HC_TERMINAL_ID` and leads its pty's foreground, so the
+  reviewer's hook names it in the terminal's session label. Its hook record's process is not
+  the terminal's foreground leader, so `AgentHooks::hooked` does not match: the reviewer's
+  prompts go through herdr-core's send unconfirmed, without the guard against text left in
+  the input box. Another session the daemon starts at the same moment can win the label.
+  `ESC ] 7501 ; state=clear BEL` clears a status (write it to the agent's `/proc/<pid>/fd/0`),
+  which reproduces the missing status in a private core, not the daemon. A status stays when
+  the child that reported it exits back to the shell.
 - A terminal takes the environment of its core's server, not that of the `hc run` that starts
   it: start the program through `env` to give it other variables.
 - `/proc/<pid>/environ` holds the variables a process started with: a shell's lists none it
@@ -113,7 +127,10 @@ itself Herdr too, and labels its terminals `herdr.*`.
   `blocked`, `finished`...
 - A terminal's `foreground` names only the leader of its foreground process group (pid,
   name, argv, cwd); Herdr's `pane.process_info` listed the processes. herdr-core names it a
-  moment after the program starts: a terminal just started may have none yet.
+  moment after the program starts: a terminal just started may have none yet. Each change
+  comes as a `foreground` event, with the new leader as its data, though `hc schema`'s list of
+  events leaves it out (0.1.18). A Claude Code started in a shell takes the foreground, sets
+  its session label and reports `idle` within about a second.
 - `hc --skill` says Codex must run with `--no-daemon` under hc, or its commands run outside
   hc. The reviewer hears Codex through that shared daemon (ADR 0009), so a Codex agent
   started the way hc says has no daemon to join.
@@ -174,6 +191,14 @@ both stay.
   prefix that its layout lacks. A home it cannot watch, or a layout it cannot read, leaves the
   focus unknown, not the agents' events. The watch ignores the reads of `view.json`: notify's
   inotify backend reports each open, the pane's own included.
+- An agent is a terminal that reports a status, or that runs Claude Code in its foreground
+  on a session its session label names (above: a background session), with status unknown
+  (`crates/hc-client/src/terminal.rs`, `running`). Snapshots and events use that one rule, so
+  target resolution and arrivals agree. A Claude Code that has not started its session yet is
+  no agent; one without the reviewer's plugin, which sets no label, is none while its session
+  runs in the background. A label left by a Claude Code killed before its `SessionEnd`, or by a
+  background session that outlives the `claude` that started it, makes the next `claude` in
+  that shell an agent from its start, on that stale session until its own starts.
 - The agent's session is a label of its terminal, which the reviewer's Claude Code hook sets,
   and the agents' hooks reach the reviewers of a core as those of a Herdr server
   ([ADR 0016](../adr/0016-report-the-agent-s-session-as-a-label-of-its-herdr-core-terminal.md)).

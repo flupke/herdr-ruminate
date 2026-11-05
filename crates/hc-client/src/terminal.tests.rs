@@ -86,11 +86,46 @@ fn a_label_that_names_no_session_of_the_agent_gives_it_none(value: &str) {
 }
 
 #[test]
-fn a_program_that_never_reported_a_status_is_no_agent() {
+fn a_shell_left_with_claude_codes_session_label_is_no_agent() {
     let mut shell = claude_code();
     shell["status"] = Value::Null;
+    shell["foreground"] = json!({"argv": ["/bin/zsh"], "cwd": "/src", "name": "zsh", "pid": 7});
+    shell["labels"]["herdr-reviewer.session"] = json!("claude:5f1c");
 
     assert_eq!(terminal(shell).agent(), None);
+}
+
+#[test]
+fn claude_code_that_has_not_started_a_session_yet_is_no_agent() {
+    let mut starting = claude_code();
+    starting["status"] = Value::Null;
+
+    assert_eq!(terminal(starting).agent(), None);
+}
+
+#[test_case(json!({"argv": ["/home/user/.local/share/claude/versions/2.1.318"], "name": "claude"}); "by its name")]
+// A Nix wrapper runs `.claude-wrapped` with the wrapper's path as its first argument.
+#[test_case(json!({"argv": ["/nix/store/x-claude/bin/claude"], "name": ".claude-wrapped"}); "by its program")]
+fn claude_code_that_stopped_reporting_stays_an_agent_of_unknown_status(leader: Value) {
+    let mut silent = claude_code();
+    silent["status"] = Value::Null;
+    let Value::Object(leader) = leader else {
+        panic!("a leader: {leader}");
+    };
+    for (key, value) in leader {
+        silent["foreground"][key] = value;
+    }
+    silent["labels"]["herdr-reviewer.session"] = json!("claude:5f1c");
+
+    let agent = terminal(silent).agent().unwrap();
+
+    assert_eq!(agent.agent.as_deref(), Some("claude"));
+    assert_eq!(agent.display_agent.as_deref(), Some("claude-code"));
+    assert_eq!(agent.agent_status, AgentStatus::Unknown);
+    assert_eq!(
+        agent.agent_session.map(|session| session.value).as_deref(),
+        Some("5f1c")
+    );
 }
 
 #[test]

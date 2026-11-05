@@ -37,6 +37,40 @@ fn pushed_toast_expires_after_its_kind_duration() {
 }
 
 #[test]
+fn a_repeated_toast_shows_once_as_the_newest_until_its_new_deadline() {
+    let now = Instant::now();
+    let later = now + Duration::from_secs(2);
+    let mut toasts = ToastState::default();
+    toasts.push_at("no agent", ToastKind::Error, now);
+    toasts.push_at("saved", ToastKind::Info, now);
+    toasts.push_at("no agent", ToastKind::Info, now);
+
+    toasts.push_at("no agent", ToastKind::Error, later);
+
+    let shown: Vec<_> = toasts
+        .toasts
+        .iter()
+        .map(|toast| (toast.text.as_str(), toast.kind, toast.expires))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("saved", ToastKind::Info, now + ToastKind::Info.duration()),
+            (
+                "no agent",
+                ToastKind::Info,
+                now + ToastKind::Info.duration()
+            ),
+            (
+                "no agent",
+                ToastKind::Error,
+                later + ToastKind::Error.duration()
+            ),
+        ]
+    );
+}
+
+#[test]
 fn expiration_removes_a_toast_at_its_exact_deadline() {
     let now = Instant::now();
     let mut toasts = ToastState::default();

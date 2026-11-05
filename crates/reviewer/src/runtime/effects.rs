@@ -515,16 +515,17 @@ fn publish_thread_event(messages: &ApplicationEventSender, event: comments::Even
         comments::Event::Posted(event) => {
             let _ = messages.send(event);
         }
+        // The threads it covered show the failure, beside their Retry agent.
         comments::Event::Wakeup {
-            failure: Some(failure),
-            ..
+            review_unit,
+            failure,
         } => {
-            let _ = messages.send(ui_events::ToastRequested {
-                text: failure.error,
-                kind: toasts::ToastKind::Error,
+            let _ = messages.send(ui_events::ThreadWakeupReported {
+                review_unit,
+                failure,
             });
         }
-        comments::Event::Wakeup { failure: None, .. } | comments::Event::RoundMessage(_) => {}
+        comments::Event::RoundMessage(_) => {}
         comments::Event::Error(text) => {
             let _ = messages.send(ui_events::ToastRequested {
                 text,

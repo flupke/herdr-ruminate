@@ -96,10 +96,14 @@ impl ToastState {
         self.push_at(text, kind, Instant::now());
     }
 
-    /// Add a short toast shown from `now`.
+    /// Add a short toast shown from `now`. One that says what a shown toast says replaces it,
+    /// as the newest, so a failure repeated by each retry shows once.
     fn push_at(&mut self, text: impl Into<String>, kind: ToastKind, now: Instant) {
+        let text = text.into();
+        self.toasts
+            .retain(|toast| toast.text != text || toast.kind != kind);
         self.toasts.push(Toast {
-            text: text.into(),
+            text,
             expires: now + kind.duration(),
             kind,
         });
