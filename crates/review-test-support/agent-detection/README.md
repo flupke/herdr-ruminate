@@ -1,6 +1,6 @@
 # Herdr agent detection rules for the tests
 
-Every Herdr test server installs these manifests as local overrides, so the
+Every private Herdr server installs these manifests as local overrides, so the
 tests detect agents with the same rules whatever Herdr release runs them. See
 [Checks](../../../.agents/wiki/checks.md#the-herdr-the-tests-run).
 

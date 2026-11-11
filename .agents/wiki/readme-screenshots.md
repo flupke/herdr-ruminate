@@ -13,7 +13,7 @@ progressive reviews and review threads, and Explore after them.
 `pane-review` shows a file that changed since review, with the agent's reply in its thread;
 `pane-threads` shows the Threads tab.
 
-- Take them with the vision server ([Terminal UI exploration](tui-vision.md)). Replace its
+- Take them with the vision server ([visual testing](visual-testing.md)). Replace its
   scratch repository's changes with two jj changes: the rich data set's `.old` files
   (`jj new 'root()'`), then its `.new` files on top (`jj new`); the reviewer follows the new
   working copy.

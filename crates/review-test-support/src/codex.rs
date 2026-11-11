@@ -1,4 +1,4 @@
-//! A real Codex TUI in a Herdr test server, on an unmanaged app server of its own with a
+//! A real Codex TUI in a private Herdr server, on an unmanaged app server of its own with a
 //! scratch Codex home and a local model fixture (`codex_provider.py`): it calls no model API,
 //! and never touches the user's `~/.codex`. `.agents/wiki/codex-daemon.md` says what it works
 //! around.
@@ -16,10 +16,10 @@ use serde_json::{Value, json};
 
 use herdr_client::protocol::{AgentStatus, HerdrEvent, PaneId};
 
-use crate::{GUARD, HerdrTestServer};
+use crate::{GUARD, PrivateHerdrServer};
 
 /// Submits `text` to the agent of `pane`, as the reviewer and the user do.
-pub fn prompt(herdr: &HerdrTestServer, pane: &PaneId, text: &str) {
+pub fn prompt(herdr: &PrivateHerdrServer, pane: &PaneId, text: &str) {
     herdr.run_cli(&["agent", "prompt", &pane.0, text]);
 }
 
@@ -32,7 +32,7 @@ const EMPTY_INPUT_BOX: &str = "Ask Codex to do anything";
 /// Starts a new agent session in the agent of `pane`, in its current Git worktree, and returns
 /// once its input box takes the next prompt: Codex asks where the session runs, and would take
 /// that prompt's Enter for the answer.
-pub fn new_session(herdr: &HerdrTestServer, pane: &PaneId) {
+pub fn new_session(herdr: &PrivateHerdrServer, pane: &PaneId) {
     prompt(herdr, pane, "/new");
     wait_output(herdr, pane, WHERE_TO_RUN);
     // The first choice, selected already: "Use current Git worktree".
@@ -41,7 +41,7 @@ pub fn new_session(herdr: &HerdrTestServer, pane: &PaneId) {
 }
 
 /// Waits until the pane `pane` of `herdr` shows `text`, as Herdr reads it.
-pub fn wait_output(herdr: &HerdrTestServer, pane: &PaneId, text: &str) {
+pub fn wait_output(herdr: &PrivateHerdrServer, pane: &PaneId, text: &str) {
     let guard = GUARD.as_millis().to_string();
     herdr.run_cli(&[
         "pane",
@@ -164,7 +164,7 @@ approval_mode = "approve"
 
     /// Starts the Codex TUI with `arguments` in a pane of `herdr`, and returns once Herdr
     /// reports it idle: it takes what is typed from then on.
-    pub fn start_tui(&self, herdr: &HerdrTestServer, arguments: &[&str]) -> PaneId {
+    pub fn start_tui(&self, herdr: &PrivateHerdrServer, arguments: &[&str]) -> PaneId {
         let workspace = herdr.run_cli_json(&[
             "workspace",
             "create",
@@ -186,7 +186,7 @@ approval_mode = "approve"
 
     /// Runs the Codex TUI with `arguments` in the pane `pane` of `herdr`, and returns once Herdr
     /// reports it idle.
-    pub fn run_tui(&self, herdr: &HerdrTestServer, pane: &PaneId, arguments: &[&str]) {
+    pub fn run_tui(&self, herdr: &PrivateHerdrServer, pane: &PaneId, arguments: &[&str]) {
         let events = herdr.events();
         let command = self
             .environment()
@@ -207,7 +207,7 @@ approval_mode = "approve"
     /// Installs Herdr's Codex integration in the home, whose hook reports the agent's session
     /// to the Herdr server of the pane that started the daemon. [`Self::trust_hooks`] has Codex
     /// run it.
-    pub fn install_herdr_integration(&self, herdr: &HerdrTestServer) {
+    pub fn install_herdr_integration(&self, herdr: &PrivateHerdrServer) {
         let output = Command::new(herdr.binary())
             .args(["integration", "install", "codex"])
             .envs(self.environment())

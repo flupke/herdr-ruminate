@@ -1,5 +1,6 @@
-//! Run-ahead on an isolated Herdr: a Claude Code stand-in in the agent's pane, forked by the
-//! reviewer as a real process through `reviewer-control fork-exec`, with the guard as its hook.
+//! Run-ahead on a private Herdr: a fake agent playing Claude Code in the agent's pane, forked by
+//! the reviewer as a real process through `reviewer-control fork-exec`, with the guard as its
+//! hook.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -23,30 +24,30 @@ const CLAUDE_CONFIG: &str = "claude-config";
 
 /// The agent a test runs in the agent's pane.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum StandIn {
-    /// The test agent alone, which keeps its transcripts under `claude-config` too.
+pub(super) enum FakeAgent {
+    /// The fake agent alone, which keeps its transcripts under `claude-config` too.
     Plain,
-    /// A Claude Code stand-in that run-ahead can fork; it and its forks keep their transcripts
-    /// under `claude-config` in the server's directory.
+    /// A fake agent playing Claude Code, which run-ahead can fork; it and its forks keep their
+    /// transcripts under `claude-config` in the server's directory.
     Forkable,
     /// The same, started without the reviewer's Claude Code plugin.
     Unhooked,
-    /// A forkable stand-in started with settings of its own, as herdr-bowtie starts its agents:
+    /// A forkable fake agent started with settings of its own, as herdr-bowtie starts its agents:
     /// [`AGENT_SETTINGS`] in `agent-settings.json` of the server's directory.
     Configured,
     /// The same, with [`MISCONFIGURED_SETTINGS`], which Claude Code skips as a whole.
     Misconfigured,
 }
 
-/// The settings of the [`StandIn::Configured`] agent, with a hook a fork must not run.
+/// The settings of the [`FakeAgent::Configured`] agent, with a hook a fork must not run.
 const AGENT_SETTINGS: &str = r#"{"env": {"FORCE_HYPERLINK": "1"}, "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "agent-stop"}]}]}}"#;
 
-/// The settings of the [`StandIn::Misconfigured`] agent: an error makes Claude Code skip them,
+/// The settings of the [`FakeAgent::Misconfigured`] agent: an error makes Claude Code skip them,
 /// and a fork's guard with them.
 const MISCONFIGURED_SETTINGS: &str = r#"{"permissions": {"allow": "not a list"}}"#;
 
-impl StandIn {
-    /// The workspace variables the stand-in reads, under the server's directory `root`.
+impl FakeAgent {
+    /// The workspace variables the fake agent reads, under the server's directory `root`.
     pub(super) fn environment(self, root: &Path) -> Vec<String> {
         // Claude Code runs the hooks of the reviewer's plugin.
         let plugin = format!(
@@ -54,8 +55,8 @@ impl StandIn {
             variables::HOOK,
             effects::fixture::test_fork_tools().control.display()
         );
-        // Every stand-in keeps transcripts there. Without it, the fake agent keeps them under
-        // `claude` in its directory, the server's, where the test links the stand-in as `claude`.
+        // Every fake agent keeps transcripts there. Without it, the fake agent keeps them under
+        // `claude` in its directory, the server's, where the test links the fake agent as `claude`.
         let configuration = format!("CLAUDE_CONFIG_DIR={}", root.join(CLAUDE_CONFIG).display());
         match self {
             Self::Forkable | Self::Configured | Self::Misconfigured => vec![plugin, configuration],
@@ -63,7 +64,7 @@ impl StandIn {
         }
     }
 
-    /// The arguments the stand-in starts with, its files written under the server's directory
+    /// The arguments the fake agent starts with, its files written under the server's directory
     /// `root`.
     pub(super) fn arguments(self, root: &Path) -> Vec<String> {
         let content = match self {
@@ -77,7 +78,7 @@ impl StandIn {
     }
 }
 
-/// A round whose agent is the forkable stand-in, with run-ahead on for every choice. The agent
+/// A round whose agent is the forkable fake agent, with run-ahead on for every choice. The agent
 /// holds each turn until the test submitted it.
 struct RunAheadFlow {
     flow: ExploreFlow,
@@ -88,7 +89,7 @@ struct RunAheadFlow {
 fn test_waits() -> review_run_ahead::ForkWaits {
     review_run_ahead::ForkWaits {
         resume_poll: Duration::from_millis(10),
-        // The stand-in writes the end of its turn before it reports it: no test waits for it.
+        // The fake agent writes the end of its turn before it reports it: no test waits for it.
         transcript: Duration::ZERO,
         ..review_run_ahead::ForkWaits::default()
     }
@@ -96,15 +97,14 @@ fn test_waits() -> review_run_ahead::ForkWaits {
 
 impl RunAheadFlow {
     fn start() -> Self {
-        Self::start_with(StandIn::Forkable, test_waits())
+        Self::start_with(FakeAgent::Forkable, test_waits())
     }
 
-    /// The flow with the agent `stand_in`, whose forks' host waits as `waits` say.
-    fn start_with(stand_in: StandIn, waits: review_run_ahead::ForkWaits) -> Self {
+    /// The flow with the fake agent set up as `kind`, whose forks' host waits as `waits` say.
+    fn start_with(kind: FakeAgent, waits: review_run_ahead::ForkWaits) -> Self {
         let repository_files = repository_fixture(RepoType::Git);
         repository_files.write("reviewed.rs", b"pub fn reviewed() {}\n");
-        let herdr =
-            IsolatedHerdrServer::start_forkable(repository_files.root(), "session", stand_in);
+        let herdr = IsolatedHerdrServer::start_forkable(repository_files.root(), "session", kind);
         herdr.hold_turns(true);
         let fixture = ReviewFlowFixture::start_on(repository_files, herdr, |setup, _| {
             setup.run_ahead.waits = waits;
@@ -279,7 +279,7 @@ fn fork_question(flow: &ExploreFlow, prompt: &str) -> serde_json::Value {
 
 #[test]
 fn a_fork_of_an_agent_with_settings_of_its_own_runs_them_with_its_guard_in_place_of_their_hooks() {
-    let mut run = RunAheadFlow::start_with(StandIn::Configured, test_waits());
+    let mut run = RunAheadFlow::start_with(FakeAgent::Configured, test_waits());
     run.flow.turn(None, 1);
 
     let sessions = run.wait_for_forks(2);
@@ -304,7 +304,7 @@ fn a_fork_of_an_agent_with_settings_of_its_own_runs_them_with_its_guard_in_place
 
 #[test]
 fn a_fork_whose_settings_claude_code_skips_runs_without_its_guard_and_is_stopped() {
-    let mut run = RunAheadFlow::start_with(StandIn::Misconfigured, test_waits());
+    let mut run = RunAheadFlow::start_with(FakeAgent::Misconfigured, test_waits());
     run.flow.turn(None, 1);
 
     let exit = run.wait_for_saved("a fork's end", |saved| {
@@ -677,7 +677,7 @@ fn a_switch_the_agent_never_confirms_puts_the_agent_back_and_retry_reaches_its_o
     // confirms it. The agent's move back to its own session, which they confirm, waits as long
     // as in production.
     let mut run = RunAheadFlow::start_with(
-        StandIn::Forkable,
+        FakeAgent::Forkable,
         review_run_ahead::ForkWaits {
             resume: Duration::ZERO,
             ..test_waits()
@@ -805,7 +805,7 @@ fn text_left_in_the_input_box_is_blocked_with_the_resume_and_the_answer_waits_fo
 
 #[test]
 fn an_agent_started_without_the_plugin_is_not_forked_and_its_answers_say_to_restart_it() {
-    let mut run = RunAheadFlow::start_with(StandIn::Unhooked, test_waits());
+    let mut run = RunAheadFlow::start_with(FakeAgent::Unhooked, test_waits());
     run.flow.turn(None, 1);
     let prompts = run.herdr().prompts().len();
 
@@ -917,7 +917,7 @@ fn a_closing_reviewer_stops_every_fork_and_deletes_its_transcript() {
     );
 }
 
-/// What the project folder of the stand-in's transcripts under `configuration` holds.
+/// What the project folder of the fake agent's transcripts under `configuration` holds.
 fn project_folder(configuration: &Path) -> BTreeSet<String> {
     fs::read_dir(fake_agent::transcripts(configuration))
         .unwrap()

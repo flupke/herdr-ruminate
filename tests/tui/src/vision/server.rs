@@ -1,7 +1,7 @@
 //! The vision MCP server: an agent's eyes and hands on the reviewer, running in herdr-common's
 //! app sandbox. herdr-common's vision core gives the tools that see and act on the app (screen,
 //! screenshot, key, type, click, drag, `wait_for`); this server adds the reviewer's own: its
-//! session, its stand-in agent and the agent's forks, Jev's stand-in, and the Explore page.
+//! session, its fake agent and the agent's forks, Jev's stand-in, and the Explore page.
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
@@ -29,7 +29,7 @@ use super::session::{Session, StartOptions, from_eyre};
 const MAX_WAIT_MS: u64 = 60_000;
 
 /// What the server's own tools are; the vision core's instructions follow.
-const INSTRUCTIONS: &str = "Eyes and hands on the reviewer's terminal pane. `start` builds the reviewer from this checkout and runs it in herdr-common's app sandbox, a private herdr-app on a headless display that never shows on the user's screen nor takes their focus, on a scratch repository, beside a stand-in implementation agent that run-ahead can fork. The reviewer's pane has the focus: key and type act on it; click and drag take the window's pixels, which screenshot shows. The reviewer speaks vision-signal, so every action returns once it has read the input and painted its reaction; the reviewer's own tools (jev, reply, fork_submit, fork_end, agent_prompt) return its screen once it painted what they did. For asynchronous work, call wait_for with the text the finished screen shows. With run-ahead on (key z in the Explore tab), forks lists the forks of the question that waits; fork_submit, fork_end (no turn, or a crash) or nothing (still working) scripts each fork, switch_unheard makes the next switch to a fork fail, and agent_working, agent_prompt and start's agent_hooks make the agent busy, move its conversation on, or run it without the reviewer's plugin hooks. Use note to record what you checked and found in the session's actions.jsonl. Call stop when done: it stops the sandbox and removes the scratch repository.";
+const INSTRUCTIONS: &str = "Eyes and hands on the reviewer's terminal pane. `start` builds the reviewer from this checkout and runs it in herdr-common's app sandbox, a private herdr-app on a headless display that never shows on the user's screen nor takes their focus, on a scratch repository, beside the fake agent, which plays the implementation agent and which run-ahead can fork. The reviewer's pane has the focus: key and type act on it; click and drag take the window's pixels, which screenshot shows. The reviewer speaks vision-signal, so every action returns once it has read the input and painted its reaction; the reviewer's own tools (jev, reply, fork_submit, fork_end, agent_prompt) return its screen once it painted what they did. For asynchronous work, call wait_for with the text the finished screen shows. With run-ahead on (key z in the Explore tab), forks lists the forks of the question that waits; fork_submit, fork_end (no turn, or a crash) or nothing (still working) scripts each fork, switch_unheard makes the next switch to a fork fail, and agent_working, agent_prompt and start's agent_hooks make the agent busy, move its conversation on, or run it without the reviewer's plugin hooks. Use note to record what you checked and found in the session's actions.jsonl. Call stop when done: it stops the sandbox and removes the scratch repository.";
 
 /// The repository a session reviews.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, schemars::JsonSchema)]
@@ -54,7 +54,7 @@ struct StartInput {
     /// Files written on top of the base: the change under review.
     #[serde(default)]
     change: BTreeMap<String, String>,
-    /// Run the stand-in agent with the hooks of the reviewer's Claude Code plugin, which
+    /// Run the fake agent with the hooks of the reviewer's Claude Code plugin, which
     /// run-ahead needs: true by default. Without them, run-ahead takes no fork, and each answer
     /// says nothing was prepared: under herdr-core the hook is what names the agent's session.
     agent_hooks: Option<bool>,
@@ -63,7 +63,7 @@ struct StartInput {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ReopenInput {
-    /// Run the new stand-in agent with the hooks of the reviewer's Claude Code plugin, or
+    /// Run the new fake agent with the hooks of the reviewer's Claude Code plugin, or
     /// without; as before when left out.
     agent_hooks: Option<bool>,
     /// Run the reviewer and its agent in this workspace of the scratch repository from now on:
@@ -92,7 +92,7 @@ struct TurnInput {
     timeout_ms: Option<u64>,
 }
 
-/// A tool of the reviewer's MCP endpoint that the stand-in agent calls.
+/// A tool of the reviewer's MCP endpoint that the fake agent calls.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 enum AgentTool {
@@ -124,7 +124,7 @@ impl AgentTool {
 struct ReplyInput {
     /// The turn to answer, which must be the latest one.
     turn: u64,
-    /// The reviewer's MCP tool to call as the stand-in agent.
+    /// The reviewer's MCP tool to call as the fake agent.
     tool: AgentTool,
     /// The tool's arguments, as the reviewer's MCP tool takes them (examples in
     /// tests/tui/examples). The turn's access value (`review`), and its `instance`, `request` and
@@ -142,7 +142,7 @@ struct ForksInput {
     /// Wait until at least this many forks started, counting those of earlier questions, instead
     /// of returning at once.
     count: Option<usize>,
-    /// The longest the wait goes on with no new event of the stand-in agent or its forks, 15000
+    /// The longest the wait goes on with no new event of the fake agent or its forks, 15000
     /// ms by default, at most 60000.
     timeout_ms: Option<u64>,
 }
@@ -374,7 +374,7 @@ impl Server {
 #[tool_router(router = reviewer_router)]
 impl Server {
     #[tool(
-        description = "Start a vision session: build the reviewer from this checkout, create a scratch repository with a base change and a change under review, and run the reviewer in herdr-common's app sandbox (a private herdr-app on a headless display) beside a stand-in implementation agent (a program named claude that Explore and review comments prompt, which reports its session and runs the reviewer's Claude Code plugin hooks unless agent_hooks is false, so run-ahead can fork it). Returns the reviewer's first screen, which may come before the repository has loaded (wait_for a file name), its terminal and the agent's, the repository (edit its files to exercise filesystem-driven updates) and the session directory. One session at a time."
+        description = "Start a vision session: build the reviewer from this checkout, create a scratch repository with a base change and a change under review, and run the reviewer in herdr-common's app sandbox (a private herdr-app on a headless display) beside the fake agent (a program named claude that Explore and review comments prompt, which reports its session and runs the reviewer's Claude Code plugin hooks unless agent_hooks is false, so run-ahead can fork it), which plays the implementation agent. Returns the reviewer's first screen, which may come before the repository has loaded (wait_for a file name), its terminal and the agent's, the repository (edit its files to exercise filesystem-driven updates) and the session directory. One session at a time."
     )]
     async fn start(
         &self,
@@ -449,7 +449,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Answer the latest turn as the stand-in agent: call one of the reviewer's MCP tools on its real endpoint (submit_question or submit_conclusion for Explore; get_new_messages, then reply, for a comments turn). Returns the tool's result as `reply`, and the reviewer's screen once it has shown it. A turn that is not the latest is an error, so a script never answers a prompt the reviewer replaced; the reviewer's own validation errors come back in `reply`."
+        description = "Answer the latest turn as the fake agent: call one of the reviewer's MCP tools on its real endpoint (submit_question or submit_conclusion for Explore; get_new_messages, then reply, for a comments turn). Returns the tool's result as `reply`, and the reviewer's screen once it has shown it. A turn that is not the latest is an error, so a script never answers a prompt the reviewer replaced; the reviewer's own validation errors come back in `reply`."
     )]
     async fn reply(
         &self,
@@ -468,7 +468,7 @@ impl Server {
     }
 
     #[tool(
-        description = "List the forks run-ahead started of the stand-in agent's session, oldest first: each fork's session, the session it copies, its choice, its prompt with the turn's files (its access and Answer ID among them), and whether it submitted, ended its turn, or exited (the reviewer stops the forks of a question it no longer needs). Also returns the agent's sessions (the one it started last, once its SessionStart hooks ran, and those it resumed: after a bare answer to a prepared choice, the fork's), and run-ahead's log. With count, waits until that many forks started."
+        description = "List the forks run-ahead started of the fake agent's session, oldest first: each fork's session, the session it copies, its choice, its prompt with the turn's files (its access and Answer ID among them), and whether it submitted, ended its turn, or exited (the reviewer stops the forks of a question it no longer needs). Also returns the agent's sessions (the one it started last, once its SessionStart hooks ran, and those it resumed: after a bare answer to a prepared choice, the fork's), and run-ahead's log. With count, waits until that many forks started."
     )]
     async fn forks(
         &self,
@@ -525,7 +525,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Make the stand-in agent's next /resume one that the reviewer's hooks never hear of, as when Claude Code's session hooks fail, or hear of only heard_after_ms later, as when they come late; the agent reads nothing typed meanwhile. The next switch to a fork (a bare answer to a submitted choice) waits for them: unheard, it fails after 20 s, the turn shows as interrupted with Retry, and the agent is told to resume its own session again, which is heard. Stop waiting and Cancel answer can be played while the switch waits."
+        description = "Make the fake agent's next /resume one that the reviewer's hooks never hear of, as when Claude Code's session hooks fail, or hear of only heard_after_ms later, as when they come late; the agent reads nothing typed meanwhile. The next switch to a fork (a bare answer to a submitted choice) waits for them: unheard, it fails after 20 s, the turn shows as interrupted with Retry, and the agent is told to resume its own session again, which is heard. Stop waiting and Cancel answer can be played while the switch waits."
     )]
     async fn switch_unheard(
         &self,
@@ -546,7 +546,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Show the stand-in agent working without a turn, as an agent at work on what no prompt started, or idle again, and return the reviewer's screen once the app shows it so. While it works, run-ahead takes no fork of a new question, and an answer finds it working; a prompt the reviewer sends it waits until it is idle."
+        description = "Show the fake agent working without a turn, as an agent at work on what no prompt started, or idle again, and return the reviewer's screen once the app shows it so. While it works, run-ahead takes no fork of a new question, and an answer finds it working; a prompt the reviewer sends it waits until it is idle."
     )]
     async fn agent_working(
         &self,
@@ -562,7 +562,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Submit a prompt in the stand-in agent's terminal, as its user would, without moving the focus, and return once the agent read it, with the reviewer's screen. The agent takes a turn on it, which moves its conversation on past the forks of the question that waits."
+        description = "Submit a prompt in the fake agent's terminal, as its user would, without moving the focus, and return once the agent read it, with the reviewer's screen. The agent takes a turn on it, which moves its conversation on past the forks of the question that waits."
     )]
     async fn agent_prompt(
         &self,
@@ -606,7 +606,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Start the reviewer and its stand-in agent again, in a new tab of the sandbox's space, on the same repository and state, and return the reviewer's first screen and the new terminals. With agent_hooks, the new agent runs with or without the hooks of the reviewer's Claude Code plugin. With workspace, both run in that workspace of the scratch repository, which the first such reopen adds, at the change under review: the review state is the one the repository's workspaces share."
+        description = "Start the reviewer and its fake agent again, in a new tab of the sandbox's space, on the same repository and state, and return the reviewer's first screen and the new terminals. With agent_hooks, the new agent runs with or without the hooks of the reviewer's Claude Code plugin. With workspace, both run in that workspace of the scratch repository, which the first such reopen adds, at the change under review: the review state is the one the repository's workspaces share."
     )]
     async fn reopen(
         &self,
@@ -625,7 +625,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Stop the session: stop its app sandbox, with the reviewer and the stand-in agent, and remove the scratch repository. The session directory, with actions.jsonl, stays."
+        description = "Stop the session: stop its app sandbox, with the reviewer and the fake agent, and remove the scratch repository. The session directory, with actions.jsonl, stays."
     )]
     async fn stop(&self, Parameters(_): Parameters<NoInput>) -> Result<CallToolResult, ErrorData> {
         self.run("stop", json!({}), move |_, session, vision| {
@@ -704,7 +704,7 @@ fn append(
 }
 
 /// Build the reviewer of `checkout`, as the session runs it, and return its path; and the
-/// stand-in agent in this workspace, beside the server, which the session installs. The builds
+/// fake agent in this workspace, beside the server, which the session installs. The builds
 /// run in the checkout's dev shell, as `make` does, since the server runs outside it.
 fn build_reviewer(checkout: &std::path::Path) -> Result<PathBuf> {
     let build = |arguments: &[&str]| -> Result<()> {
@@ -734,9 +734,9 @@ fn build_reviewer(checkout: &std::path::Path) -> Result<PathBuf> {
         "--manifest-path",
         "tests/tui/Cargo.toml",
         "-p",
-        "stand-in-agent",
+        "reviewer-fake-agent",
         "--bin",
-        "stand-in-agent",
+        "reviewer-fake-agent",
     ])?;
     let target =
         std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| checkout.join("target"), PathBuf::from);

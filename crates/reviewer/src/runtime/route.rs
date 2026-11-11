@@ -18,7 +18,7 @@ pub(super) struct ApplicationTick(pub(super) Instant);
 pub(super) struct TerminalFailed(pub(super) String);
 /// The terminal regained focus.
 pub(super) struct TerminalFocused;
-/// The driver of a vision session asked for this acknowledgement after its input.
+/// The vision core asked for this acknowledgement after its input.
 pub(super) struct InputAcknowledged(pub(super) u64);
 
 /// Where one event goes.

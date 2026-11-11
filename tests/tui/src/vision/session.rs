@@ -1,7 +1,7 @@
 //! One vision session: the reviewer in herdr-common's app sandbox, a private herdr-app on a
-//! headless display, on a scratch repository, beside a stand-in agent that run-ahead can fork.
+//! headless display, on a scratch repository, beside a fake agent that run-ahead can fork.
 //! The vision core (`vision_mcp::Vision`) sees and drives the app; this session holds what is the
-//! reviewer's own: its scratch repository, its terminals, and the stand-in agent and its forks,
+//! reviewer's own: its scratch repository, its terminals, and the fake agent and its forks,
 //! which report on the session's event socket.
 
 use std::fs;
@@ -23,18 +23,18 @@ use super::forks;
 use super::scratch::{Scratch, Seed};
 
 /// How long the reviewer may take to read an input and paint its reaction, or to paint its first
-/// frame, and the stand-in agent to answer. It fires only when something went wrong.
+/// frame, and the fake agent to answer. It fires only when something went wrong.
 const REACTION_GUARD: Duration = Duration::from_secs(30);
 
 /// The app's window: wide enough for the reviewer beside its agent.
 const DISPLAY_SIZE: (u16, u16) = (1600, 1000);
 
-/// The stand-in agent's name on the event socket.
+/// The fake agent's name on the event socket.
 pub(crate) const AGENT: &str = "agent";
 
-/// The event socket the stand-in agent and its forks report on, in the sandbox's directory: its
+/// The event socket the fake agent and its forks report on, in the sandbox's directory: its
 /// path there is short, as a socket's must be, and both sides reach it.
-const EVENTS_SOCKET: &str = "stand-in.sock";
+const EVENTS_SOCKET: &str = "fake-agent.sock";
 
 /// The prefix of the reviewer's MCP tools, as Claude Code names them in a fork's output.
 const MCP_TOOL_PREFIX: &str = "mcp__herdr_reviewer__";
@@ -43,7 +43,7 @@ const MCP_TOOL_PREFIX: &str = "mcp__herdr_reviewer__";
 pub(crate) struct StartOptions {
     pub(crate) repository: RepoType,
     pub(crate) seed: Seed,
-    /// Whether the stand-in agent runs the hooks of the reviewer's Claude Code plugin, which
+    /// Whether the fake agent runs the hooks of the reviewer's Claude Code plugin, which
     /// run-ahead needs.
     pub(crate) agent_hooks: bool,
 }
@@ -60,18 +60,18 @@ pub(crate) struct Session {
     /// The "reviewer vision" space, which the reviewer's Explore page is the page of.
     space: String,
     terminals: Terminals,
-    /// What the stand-in agent and its forks report.
+    /// What the fake agent and its forks report.
     events: Events,
     scratch: Scratch,
     reviewer_program: PathBuf,
-    /// Whether the stand-in agent runs the hooks of the reviewer's Claude Code plugin.
+    /// Whether the fake agent runs the hooks of the reviewer's Claude Code plugin.
     agent_hooks: bool,
     agent: ScriptedAgent,
 }
 
 impl Session {
     /// Start an app sandbox on a new scratch repository, with the reviewer `reviewer` beside its
-    /// stand-in agent in a "reviewer vision" space, and wait for the reviewer's first frame.
+    /// fake agent in a "reviewer vision" space, and wait for the reviewer's first frame.
     /// Returns the session, the vision core on the sandbox, and the reviewer's first screen.
     pub(crate) fn start(
         reviewer: PathBuf,
@@ -121,17 +121,12 @@ impl Session {
         Ok((session, vision, screen))
     }
 
-    /// The reviewer's first screen, once the app also knows the stand-in agent: Explore prompts
+    /// The reviewer's first screen, once the app also knows the fake agent: Explore prompts
     /// it from the start.
     fn first_screen(&self, vision: &Vision) -> Result<Screen> {
-        wait_app(
-            vision,
-            "the app to see the stand-in agent's status",
-            |listed| {
-                terminal_entry(listed, &self.terminals.agent)
-                    .is_some_and(|t| !t["status"].is_null())
-            },
-        )?;
+        wait_app(vision, "the app to see the fake agent's status", |listed| {
+            terminal_entry(listed, &self.terminals.agent).is_some_and(|t| !t["status"].is_null())
+        })?;
         // Each frame shows the reviewer's tabs.
         vision
             .wait_for(
@@ -322,7 +317,7 @@ impl Session {
         Ok(())
     }
 
-    /// Submit `text` in the stand-in agent's terminal, as its user would, and return once the
+    /// Submit `text` in the fake agent's terminal, as its user would, and return once the
     /// agent read it: a prompt moves its conversation on.
     pub(crate) fn agent_prompt(&self, vision: &mut Vision, text: &str) -> Result<Screen> {
         ensure!(
@@ -362,7 +357,7 @@ impl Session {
         Ok(page)
     }
 
-    /// Start the reviewer and its stand-in agent again, in a new tab, on the same repository
+    /// Start the reviewer and its fake agent again, in a new tab, on the same repository
     /// and state; the agent runs the plugin's hooks as `agent_hooks` says, or as before. With
     /// `workspace`, both run in that workspace of the repository from now on (see
     /// [`Scratch::enter_workspace`]).
@@ -402,7 +397,7 @@ impl Session {
         self.first_screen(vision)
     }
 
-    /// Show the stand-in agent working without a turn, as an agent at work on what no prompt
+    /// Show the fake agent working without a turn, as an agent at work on what no prompt
     /// started, or idle again, and return the reviewer's screen once the app shows it so.
     pub(crate) fn agent_working(&self, vision: &mut Vision, working: bool) -> Result<Screen> {
         self.obey(&Role::agent(AGENT), &Command::ShowWorking { working })?;
@@ -434,7 +429,7 @@ impl Session {
             .try_send(role, command, REACTION_GUARD)
             .map_err(|error| anyhow!(error))?;
         self.events
-            .try_wait_until("the stand-in's answer", REACTION_GUARD, |received| {
+            .try_wait_until("the fake agent's answer", REACTION_GUARD, |received| {
                 received[from..].iter().any(|reported| {
                     reported.from == *role
                         && matches!(&reported.event, Event::Obeyed { command: obeyed } if obeyed == command)
@@ -449,7 +444,7 @@ impl Session {
     }
 }
 
-/// Open the stand-in agent in a new tab of the focused space, then the reviewer right of it.
+/// Open the fake agent in a new tab of the focused space, then the reviewer right of it.
 fn open_terminals(
     vision: &Vision,
     scratch: &Scratch,
@@ -461,7 +456,7 @@ fn open_terminals(
     open_reviewer(vision, scratch, reviewer, agent, agent_pane)
 }
 
-/// Open the stand-in agent in a new tab of the focused space, and return its terminal and its
+/// Open the fake agent in a new tab of the focused space, and return its terminal and its
 /// pane once it connected to `events`.
 fn open_agent(
     vision: &Vision,
@@ -483,14 +478,14 @@ fn open_agent(
             "argv": scratch.agent_command(reviewer, &session, agent_hooks, &events_socket),
             "folder": scratch.root(),
             "place": "tab",
-            "name": "stand-in agent",
+            "name": "fake agent",
         }),
     )?;
     // The agent that connects from now on is the new one: one a reopen replaced keeps its
     // connection until its process ends.
     let role = Role::agent(AGENT);
     events
-        .try_wait_until("the stand-in agent", REACTION_GUARD, |received| {
+        .try_wait_until("the fake agent", REACTION_GUARD, |received| {
             received[from..].iter().any(|reported| {
                 reported.from == role && matches!(reported.event, Event::Hello { .. })
             })

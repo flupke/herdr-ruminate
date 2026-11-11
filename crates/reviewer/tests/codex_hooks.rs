@@ -1,4 +1,4 @@
-//! A Codex TUI in a Herdr test server, on an app server started outside that Herdr, with a
+//! A Codex TUI in a private Herdr server, on an app server started outside that Herdr, with a
 //! scratch Codex home where `reviewer-control codex-plugin install` installed and trusted the
 //! reviewer's Codex plugin, and a local model fixture: the plugin's hook confirms a prompt typed
 //! alone, and blocks text left in the input box that joined a typed prompt or `/resume`, so the
@@ -15,7 +15,7 @@ use review_mcp::{Endpoint, Response, Server};
 use review_test_support::codex::{
     AppServer, CodexHome, Provider, new_session, prompt, wait_output,
 };
-use review_test_support::{GUARD, HerdrTestServer, TestPort};
+use review_test_support::{GUARD, PrivateHerdrServer, TestPort};
 
 /// Why the reviewer blocks a prompt, as Codex shows it.
 const BLOCKED: &str = "The test reviewer stopped this prompt";
@@ -52,7 +52,7 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
             ("SHELL", OsStr::new("/bin/sh")),
         ],
     );
-    let herdr = HerdrTestServer::start(&codex.workspace());
+    let herdr = PrivateHerdrServer::start(&codex.workspace());
     let pane = codex.start_tui(&herdr, &["--remote", "unix://"]);
     let hooks = AgentHooks::listen(&HookDirectory::for_server(
         runtime.path(),
@@ -129,7 +129,7 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
 }
 
 /// Types `text` in the agent's input box, without submitting it, and waits until it shows.
-fn leave_in_input_box(herdr: &HerdrTestServer, pane: &PaneId, text: &str) {
+fn leave_in_input_box(herdr: &PrivateHerdrServer, pane: &PaneId, text: &str) {
     herdr.run_cli(&["pane", "send-text", &pane.0, text]);
     wait_output(herdr, pane, text);
 }

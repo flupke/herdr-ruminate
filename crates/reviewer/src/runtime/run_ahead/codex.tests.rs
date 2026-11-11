@@ -1,4 +1,4 @@
-//! Run-ahead with a real Codex TUI in the isolated Herdr's pane, on an app server of its own,
+//! Run-ahead with a real Codex TUI in the private Herdr's pane, on an app server of its own,
 //! with a scratch Codex home where the reviewer's Codex plugin and Herdr's Codex integration
 //! are installed and trusted, and the local model fixture, which submits the turns the test
 //! writes: it calls no model API.

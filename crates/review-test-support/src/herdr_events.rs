@@ -1,4 +1,4 @@
-//! Herdr's event stream, for tests that wait until a test server gets somewhere.
+//! Herdr's event stream, for tests that wait until a private Herdr server gets somewhere.
 
 use std::sync::mpsc;
 use std::thread;

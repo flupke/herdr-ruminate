@@ -21,10 +21,10 @@ lint: complexity explore-client-check
 
 # Level 2, with CRATES: the unit tests of those crates (`make test CRATES="quick-tunnel"`).
 # Level 3, without: every unit test of the workspace, doc tests included.
-# The reviewer's tests run the stand-in agent's program, which no test of theirs builds.
+# The reviewer's tests run the fake agent's program, which no test of theirs builds.
 CRATES ?=
 test:
-	cargo build --locked -p stand-in-agent
+	cargo build --locked -p reviewer-fake-agent
 ifeq ($(strip $(CRATES)),)
 	cargo test --workspace --doc
 	cargo nextest run --workspace
@@ -54,11 +54,11 @@ check-changed:
 check-with-e2e: check
 	$(MAKE) e2e-explore
 
-# The sessions install the stand-in agent built in tests/tui's workspace, whose fake agent is
+# The sessions install the reviewer's fake agent built in tests/tui's workspace, whose `fake-agent` is
 # herdr-common's checkout beside this one, as the tests' own: the root workspace's comes from git.
 e2e-tui:
 	cargo build --locked -p reviewer --bin reviewer --bin reviewer-control
-	cargo build --locked --manifest-path tests/tui/Cargo.toml -p stand-in-agent --bin stand-in-agent
+	cargo build --locked --manifest-path tests/tui/Cargo.toml -p reviewer-fake-agent --bin reviewer-fake-agent
 	cargo clippy --locked --manifest-path tests/tui/Cargo.toml --all-targets
 	REVIEWER_BIN_PATH="$(CURDIR)/target/debug/reviewer" cargo nextest run --locked --manifest-path tests/tui/Cargo.toml
 
@@ -118,10 +118,10 @@ explore-types:
 	EXPLORE_TYPES=write cargo test --locked -p review-explore-page typescript
 
 # Builds the vision MCP server and the reviewer it runs, and says how an agent uses it
-# (.agents/wiki/tui-vision.md). `.mcp.json` registers the server through scripts/vision-mcp.
+# (.agents/wiki/visual-testing.md). `.mcp.json` registers the server through scripts/vision-mcp.
 vision:
 	cargo build --locked -p reviewer --bin reviewer --bin reviewer-control
-	cargo build --locked --manifest-path tests/tui/Cargo.toml -p reviewer-tui-tests --bin reviewer-vision -p stand-in-agent --bin stand-in-agent
+	cargo build --locked --manifest-path tests/tui/Cargo.toml -p reviewer-tui-tests --bin reviewer-vision -p reviewer-fake-agent --bin reviewer-fake-agent
 	touch tests/tui/target/debug/reviewer-vision
 	@tests/tui/target/debug/reviewer-vision --help
 

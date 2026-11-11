@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// Herdr agent detection rules that the repository keeps for one agent.
 ///
-/// Every test server installs them as a local override, which Herdr prefers
+/// Every private Herdr server installs them as a local override, which Herdr prefers
 /// to the rules built into its binary, so the fake agents of the tests reach
 /// the same states whatever Herdr release runs them.
 pub(crate) struct DetectionRules {

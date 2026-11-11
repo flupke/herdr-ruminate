@@ -1,4 +1,4 @@
-//! A Codex TUI in a Herdr test server, on an app server of its own with a scratch Codex home and
+//! A Codex TUI in a private Herdr server, on an app server of its own with a scratch Codex home and
 //! a local model fixture: the reviewer learns the agent's session from its call to a reviewer
 //! tool, then follows the session through the daemon, across a `/resume` and a restart of the
 //! daemon. It calls no model API.
@@ -14,7 +14,7 @@ use review_mcp_config::{Client, UserConfig};
 use review_test_support::codex::{
     AppServer, CodexHome, Provider, new_session, prompt, wait_output,
 };
-use review_test_support::{GUARD, HerdrTestServer, TestPort};
+use review_test_support::{GUARD, PrivateHerdrServer, TestPort};
 
 #[test]
 fn the_reviewer_follows_a_codex_agent_s_session_through_its_daemon() {
@@ -36,7 +36,7 @@ fn the_reviewer_follows_a_codex_agent_s_session_through_its_daemon() {
         std::ffi::OsStr::new(&bridge_port),
     )];
     let mut daemon = Some(AppServer::start(&codex, &provider, &environment));
-    let herdr = HerdrTestServer::start(&codex.workspace());
+    let herdr = PrivateHerdrServer::start(&codex.workspace());
     let pane = codex.start_tui(&herdr, &["--remote", "unix://"]);
 
     prompt(&herdr, &pane, "call the reviewer");
@@ -108,7 +108,7 @@ fn a_codex_agent_without_the_daemon_has_none_to_join() {
     // The agent takes no turn: its provider listens nowhere.
     let registration = bridge_registration(&codex);
     codex.configure(9, &registration);
-    let herdr = HerdrTestServer::start(&codex.workspace());
+    let herdr = PrivateHerdrServer::start(&codex.workspace());
     let pane = codex.start_tui(&herdr, &["--no-daemon"]);
 
     let processes = herdr.client().pane_process_info(&pane).unwrap();

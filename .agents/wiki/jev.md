@@ -19,7 +19,7 @@ attention ([CONTEXT.md](../../CONTEXT.md)). It is a model of TypeSafe AI.
 - The reviewer sends bounded before/after code snippets and repository-relative paths to
   TypeSafe AI.
 - A `make vision` session never reaches the paid classifier: its `jev` tool stands in
-  for it ([Terminal UI exploration](tui-vision.md)).
+  for it ([visual testing](visual-testing.md)).
 
 ## Production settings
 

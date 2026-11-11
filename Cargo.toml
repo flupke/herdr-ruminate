@@ -73,7 +73,7 @@ members = [
     "crates/review-store",
     "crates/review-state-migration",
     "crates/review-test-support",
-    "crates/stand-in-agent",
+    "crates/reviewer-fake-agent",
     "crates/review-types",
     "crates/review-drafts",
     "crates/review-threads",
@@ -102,7 +102,7 @@ base64 = "0.22"
 crossterm = "0.29"
 crossbeam-channel = "0.5"
 eyre = "0.6"
-# herdr-common's fake agent, which `crates/stand-in-agent` runs. From git, never by path: cargo
+# herdr-common's fake agent, which `crates/reviewer-fake-agent` runs. From git, never by path: cargo
 # reads every path dependency of the workspace, dev-dependencies too, so a missing
 # `../herdr-common` would fail `cargo build` of a clone of this repository alone. herdr-common's
 # ADR 0001 said path; its ADR 0004 (herdr-common#10) supersedes it with git. Cargo.lock pins the

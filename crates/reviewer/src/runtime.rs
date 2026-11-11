@@ -98,7 +98,7 @@ struct TerminalGuard {
 
 struct TerminalEventProducer {
     events: EventSender<EventEnvelope>,
-    /// Whether a pasted acknowledgement request is the driver's, in a vision session, rather
+    /// Whether a pasted acknowledgement request is the vision core's, in a vision session, rather
     /// than the user's text.
     acknowledges: bool,
     stop_requested: Arc<AtomicBool>,

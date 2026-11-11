@@ -9,7 +9,7 @@ use review_repository::diff::DiffRow;
 use review_repository::repository::RepoType;
 use review_source::ReviewCheckpoint;
 use review_state::ReviewStatus;
-use review_test_support::{HerdrTestServer, repository_fixture};
+use review_test_support::{PrivateHerdrServer, repository_fixture};
 use review_types::ReviewUnit;
 use review_ui::{DocumentAction, DocumentLoad};
 use ui_events::{
@@ -29,17 +29,17 @@ mod run_ahead;
 use fake_agent::{Events, Reported, Role, variables};
 use herdr_client::protocol::AgentStatus;
 
-/// The name the stand-in agent in the agent's pane reports under ([`variables::NAME`]).
+/// The name the fake agent in the agent's pane reports under ([`variables::NAME`]).
 const AGENT_NAME: &str = "agent";
-/// The name a second stand-in agent, in a pane of its own, reports under.
+/// The name a second fake agent, in a pane of its own, reports under.
 const SECOND_AGENT_NAME: &str = "second";
 
-/// The stand-in agent in the agent's pane, on the event socket.
+/// The fake agent in the agent's pane, on the event socket.
 fn agent_role() -> Role {
     Role::agent(AGENT_NAME)
 }
 
-/// A second stand-in agent, in a pane of its own, on the event socket.
+/// A second fake agent, in a pane of its own, on the event socket.
 fn second_agent_role() -> Role {
     Role::agent(SECOND_AGENT_NAME)
 }
@@ -52,10 +52,10 @@ enum AgentLifecycle {
     Native,
 }
 
-/// A private Herdr server whose workspace runs the stand-in agent, which reports to the test's
+/// A private Herdr server whose workspace runs the fake agent, which reports to the test's
 /// event socket ([`Self::events`]).
 struct IsolatedHerdrServer {
-    server: HerdrTestServer,
+    server: PrivateHerdrServer,
     workspace_id: WorkspaceId,
     /// The tab of the agent's pane, where the review pane would open.
     tab_id: TabId,
@@ -66,9 +66,9 @@ struct IsolatedHerdrServer {
     environment: Vec<String>,
     /// Whether Herdr reads the title of the agent that runs now.
     title_read: std::sync::atomic::AtomicBool,
-    /// What the stand-in agent and its forks report.
+    /// What the fake agent and its forks report.
     events: Events,
-    /// Whether real Claude Code runs in the agent's pane, in place of the stand-in.
+    /// Whether real Claude Code runs in the agent's pane, in place of the fake agent.
     real_agent: bool,
     /// The arguments the agent starts with.
     agent_arguments: Vec<String>,
@@ -80,22 +80,22 @@ impl IsolatedHerdrServer {
     }
 
     fn start_native(repository_root: &Path) -> Self {
-        Self::start_stand_in(
+        Self::start_fake_agent(
             repository_root,
             "codex",
             None,
             AgentLifecycle::Native,
-            run_ahead::StandIn::Plain,
+            run_ahead::FakeAgent::Plain,
         )
     }
 
     fn start_with_session(repository_root: &Path, agent: &str, session: Option<&str>) -> Self {
-        Self::start_stand_in(
+        Self::start_fake_agent(
             repository_root,
             agent,
             session,
             AgentLifecycle::Reported,
-            run_ahead::StandIn::Plain,
+            run_ahead::FakeAgent::Plain,
         )
     }
 
@@ -103,7 +103,7 @@ impl IsolatedHerdrServer {
     fn start_real(
         repository_root: &Path,
         agent: &str,
-        run: impl FnOnce(&HerdrTestServer, &PaneId),
+        run: impl FnOnce(&PrivateHerdrServer, &PaneId),
     ) -> Self {
         let mut server = Self::create(repository_root, agent, |_| Vec::new());
         server.real_agent = true;
@@ -111,16 +111,15 @@ impl IsolatedHerdrServer {
         server
     }
 
-    /// A Claude Code stand-in with the session `session` that run-ahead can fork, as
-    /// `stand_in` says: the stand-in agent, named `claude`, which plays a fork when it is started
-    /// as one.
-    fn start_forkable(repository_root: &Path, session: &str, stand_in: run_ahead::StandIn) -> Self {
-        let server = Self::start_stand_in(
+    /// A fake agent playing Claude Code, with the session `session`, which run-ahead can fork, set
+    /// up as `kind` says: named `claude`, it plays a fork when it is started as one.
+    fn start_forkable(repository_root: &Path, session: &str, kind: run_ahead::FakeAgent) -> Self {
+        let server = Self::start_fake_agent(
             repository_root,
             "claude",
             Some(session),
             AgentLifecycle::Reported,
-            stand_in,
+            kind,
         );
         // Herdr's own detection follows the agent's turns from here on.
         server.release_agent();
@@ -129,29 +128,29 @@ impl IsolatedHerdrServer {
 
     /// Starts the server and the agent `agent` on the session `session`, and returns once Herdr
     /// knows the agent.
-    fn start_stand_in(
+    fn start_fake_agent(
         repository_root: &Path,
         agent: &str,
         session: Option<&str>,
         lifecycle: AgentLifecycle,
-        stand_in: run_ahead::StandIn,
+        kind: run_ahead::FakeAgent,
     ) -> Self {
-        let mut server = Self::create(repository_root, agent, |root| stand_in.environment(root));
-        server.agent_arguments = stand_in.arguments(server.server.root());
-        stand_in_agent::install(&stand_in_program(), &server.agent_binary).unwrap();
+        let mut server = Self::create(repository_root, agent, |root| kind.environment(root));
+        server.agent_arguments = kind.arguments(server.server.root());
+        reviewer_fake_agent::install(&fake_agent_program(), &server.agent_binary).unwrap();
         server.start_agent(session, lifecycle);
         server
     }
 
-    /// Starts the server and the agent's workspace, whose variables are the stand-in's and those
+    /// Starts the server and the agent's workspace, whose variables are the fake agent's and those
     /// `more` gives for the server's directory; no agent runs in its pane yet.
     fn create(
         repository_root: &Path,
         agent: &str,
         more: impl FnOnce(&Path) -> Vec<String>,
     ) -> Self {
-        let server = HerdrTestServer::start(repository_root);
-        let events = Events::listen(&server.root().join("stand-in.sock")).unwrap();
+        let server = PrivateHerdrServer::start(repository_root);
+        let events = Events::listen(&server.root().join("fake-agent.sock")).unwrap();
         let mut environment = vec![
             format!("{}={}", variables::DIRECTORY, server.root().display()),
             format!("{}={}", variables::HERDR, server.binary().display()),
@@ -308,22 +307,22 @@ impl IsolatedHerdrServer {
         )
     }
 
-    /// The stand-in agent's directory: its switches, and what its forks record.
+    /// The fake agent's directory: its switches, and what its forks record.
     fn directory(&self) -> fake_agent::Directory {
         fake_agent::Directory::new(self.server.root().to_owned())
     }
 
-    /// What the stand-ins report.
+    /// What the fake agent and its forks report.
     fn events(&self) -> &Events {
         &self.events
     }
 
-    /// Every event the stand-ins reported so far.
+    /// Every event the fake agent and its forks reported so far.
     fn received(&self) -> Vec<Reported> {
         self.events.try_received().unwrap()
     }
 
-    /// Every event the stand-in agent reported up to a marker typed in its pane after what
+    /// Every event the fake agent reported up to a marker typed in its pane after what
     /// Herdr wrote there before: what the agent did with it.
     fn mark(&self) -> Vec<Reported> {
         self.events.mark(|prompt| {
@@ -443,7 +442,7 @@ impl IsolatedHerdrServer {
     }
 }
 
-/// The prompts that the stand-in agent `role` read, among the events `received`.
+/// The prompts that the fake agent `role` read, among the events `received`.
 fn prompts_of(role: &Role, received: &[Reported]) -> Vec<String> {
     received
         .iter()
@@ -455,10 +454,11 @@ fn prompts_of(role: &Role, received: &[Reported]) -> Vec<String> {
         .collect()
 }
 
-/// The stand-in agent that Cargo built beside the reviewer's programs.
-fn stand_in_program() -> PathBuf {
+/// The fake agent that Cargo built beside the reviewer's programs.
+fn fake_agent_program() -> PathBuf {
     let control = effects::fixture::test_fork_tools().control;
-    stand_in_agent::program(control.parent().unwrap()).unwrap_or_else(|error| panic!("{error}"))
+    reviewer_fake_agent::program(control.parent().unwrap())
+        .unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// The prompts `prompts`, each on its lines.
@@ -591,7 +591,7 @@ fn herdr_event_subscription_stops_without_a_new_server_event() {
     forwarding.join().unwrap().unwrap();
 }
 
-/// A stand-in agent whose state Herdr detects from its title, shown idle.
+/// A fake agent whose state Herdr detects from its title, shown idle.
 fn native_agent(repository: &Path) -> (IsolatedHerdrServer, review_test_support::AgentStatusWatch) {
     let herdr = IsolatedHerdrServer::start_native(repository);
     let statuses = herdr.server.agent_statuses(&herdr.pane_id);
@@ -605,8 +605,8 @@ fn native_agent(repository: &Path) -> (IsolatedHerdrServer, review_test_support:
     (herdr, statuses)
 }
 
-/// The events of `reported`, without the stand-in that reported them.
-fn stand_in_events(reported: Vec<Reported>) -> Vec<fake_agent::Event> {
+/// The events of `reported`, without the fake agent that reported them.
+fn fake_agent_events(reported: Vec<Reported>) -> Vec<fake_agent::Event> {
     reported
         .into_iter()
         .map(|reported| reported.event)
@@ -614,7 +614,7 @@ fn stand_in_events(reported: Vec<Reported>) -> Vec<fake_agent::Event> {
 }
 
 #[test]
-fn a_reporting_stand_in_ends_its_turn_once_herdr_saw_it_start() {
+fn a_reporting_fake_agent_ends_its_turn_once_herdr_saw_it_start() {
     let repository = tempfile::tempdir().unwrap();
     let (herdr, statuses) = native_agent(repository.path());
 
@@ -628,7 +628,7 @@ fn a_reporting_stand_in_ends_its_turn_once_herdr_saw_it_start() {
         .events_until("the end of the turn", |reported| {
             reported.event == fake_agent::Event::TurnEnded { blocked: None }
         });
-    assert!(stand_in_events(turn).ends_with(&[
+    assert!(fake_agent_events(turn).ends_with(&[
         fake_agent::Event::PromptReceived {
             text: "first".into()
         },
@@ -650,7 +650,7 @@ fn a_held_turn_lasts_until_the_test_ends_it() {
         .unwrap();
     statuses.wait_for(AgentStatus::Working);
 
-    let before_marker = stand_in_events(herdr.mark());
+    let before_marker = fake_agent_events(herdr.mark());
     assert!(before_marker.contains(&fake_agent::Event::TurnStarted));
     assert!(
         !before_marker.contains(&fake_agent::Event::TurnEnded { blocked: None }),

@@ -1,6 +1,6 @@
 //! The scratch repository a vision session reviews, and the files the session shares with its
-//! reviewer: its private state, its stand-in agent, browser and Jev script, and the turns it
-//! records. The stand-in agent and its forks keep their transcripts there too, never in the
+//! reviewer: its private state, its fake agent, browser and Jev script, and the turns it
+//! records. The fake agent and its forks keep their transcripts there too, never in the
 //! user's Claude Code configuration; the reviewer's hooks listen in the app sandbox's runtime
 //! directory. None of it is in the host's `/tmp`, which the bubblewrap sandbox does not show: the
 //! sandbox's processes reach each file at its own path.
@@ -161,12 +161,12 @@ impl Scratch {
         self.state().join("run-ahead.log")
     }
 
-    /// The stand-in agent's directory: its switches, and what its forks record.
+    /// The fake agent's directory: its switches, and what its forks record.
     pub(crate) fn agent_directory(&self) -> Directory {
         Directory::new(self.directory.join("agent"))
     }
 
-    /// The Claude Code configuration of the stand-in agent and its forks, with their transcripts.
+    /// The Claude Code configuration of the fake agent and its forks, with their transcripts.
     pub(crate) fn claude_config(&self) -> PathBuf {
         self.directory.join("claude-config")
     }
@@ -185,12 +185,12 @@ impl Scratch {
         self.agent_bin().join("claude")
     }
 
-    /// The directory that holds the stand-in agent as `claude`, first on the sandbox's `PATH`.
+    /// The directory that holds the fake agent as `claude`, first on the sandbox's `PATH`.
     fn agent_bin(&self) -> PathBuf {
         self.directory.join("agent-bin")
     }
 
-    /// Installs the stand-in agent as `claude`, the name herdr-core detects Claude Code by: the
+    /// Installs the fake agent as `claude`, the name herdr-core detects Claude Code by: the
     /// one Cargo built in this workspace's profile directory, beside the running program, whose
     /// fake agent is the one this workspace speaks to on the event socket. The workspace at the
     /// root takes fake-agent from git, at a revision that may differ from the checkout's.
@@ -203,17 +203,17 @@ impl Scratch {
         if profile.ends_with("deps") {
             profile = profile.parent().context("`deps` has no parent")?;
         }
-        let program = stand_in_agent::program(profile).map_err(|error| anyhow!(error))?;
+        let program = reviewer_fake_agent::program(profile).map_err(|error| anyhow!(error))?;
         fs::create_dir_all(self.agent_bin())?;
-        stand_in_agent::install(&program, &self.agent_program())?;
+        reviewer_fake_agent::install(&program, &self.agent_program())?;
         Ok(())
     }
 
-    /// The program of the stand-in agent's terminal, on its new session `session`: it plays
+    /// The program of the fake agent's terminal, on its new session `session`: it plays
     /// Claude Code, reports on the session's event socket and, with `hooks`, runs the hooks of
     /// the reviewer's Claude Code plugin through the `reviewer-control` beside `reviewer`. Each
-    /// turn ends by itself, unless the driver holds turns. `events` is the session's event
-    /// socket, as the sandbox's processes see it.
+    /// turn ends by itself, unless the agent driving the session holds turns. `events` is the
+    /// session's event socket, as the sandbox's processes see it.
     pub(crate) fn agent_command(
         &self,
         reviewer: &Path,
@@ -270,7 +270,7 @@ impl Scratch {
     }
 
     /// The variables every process of the app sandbox gets: the reviewer's in a vision session,
-    /// with private state, the session's browser, and a `PATH` that finds the stand-in agent as
+    /// with private state, the session's browser, and a `PATH` that finds the fake agent as
     /// `claude` first.
     pub(crate) fn sandbox_environment(&self) -> Vec<(OsString, OsString)> {
         let mut path = OsString::from(self.agent_bin());

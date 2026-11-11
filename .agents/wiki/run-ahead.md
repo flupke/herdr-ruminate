@@ -139,7 +139,7 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
 - Settling rests on Claude Code taking what is typed while it loads a session after it, in
   order: once a settling `/resume` is typed and Herdr reports the agent there, an earlier late
   resume cannot move it. The contract check checks it (below).
-- The test stand-in for Claude Code reports a resumed session to Herdr as Herdr's own hook
+- The fake agent that plays Claude Code reports a resumed session to Herdr as Herdr's own hook
   does, with a newer `--seq` and `--session-start-source resume`; without them Herdr kept
   reporting the first session.
 
@@ -202,20 +202,20 @@ Claude Code 2.1.292 does with it:
 
 ## The contract check
 
-The stand-in plays Claude Code in the run-ahead tests, so they hold only while Claude Code
-behaves as the stand-in assumes. Codex needs no contract check: the run-ahead tests of
+The fake agent plays Claude Code in the run-ahead tests, so they hold only while Claude Code
+behaves as the fake agent assumes. Codex needs no contract check: the run-ahead tests of
 `crates/reviewer/src/runtime/run_ahead/codex.tests.rs` run a real Codex TUI on the local model
 fixture, in `make test` ([Codex's daemon](codex-daemon.md#a-codex-tui-in-a-test)). The bodies of `crates/reviewer/src/runtime/run_ahead/contract.tests.rs`
 check those assumptions, each step naming the one it rests on (`Assumption`): the fork's command
 line, a typed `/resume` that Herdr follows, typed input taken in order, the transcripts' place.
 Each body runs twice:
 
-- its rehearsal (`rehearse_*`) runs the stand-in, in `make check`: it finds the faults of the
+- its rehearsal (`rehearse_*`) runs the fake agent, in `make check`: it finds the faults of the
   test itself, its assertions, timing and input box, at no cost; not a timing fault that only
-  real Claude Code's pace brings out: the stand-in tells Herdr it works as soon as it reads a
+  real Claude Code's pace brings out: the fake agent tells Herdr it works as soon as it reads a
   prompt, so a missing wait for that passes the rehearsal;
 - its contract check (`real_claude_code_*`), ignored by default, runs real Claude Code in the
-  isolated Herdr's pane, at `claude-sonnet-5-5`, about ten turns on the subscription of the
+  private Herdr's pane, at `claude-sonnet-5-5`, about ten turns on the subscription of the
   token's account. A failure names the assumption that broke, and prints the agent's pane.
 
 The contract check has not had a real run yet: its first needs a token from
@@ -231,7 +231,7 @@ the time.
 ```sh
 claude setup-token   # once: a token of the account whose subscription pays
 export CLAUDE_CODE_OAUTH_TOKEN=<the token>
-cargo build -p reviewer --bin reviewer-control -p review-mcp-config --bin reviewer-mcp -p stand-in-agent
+cargo build -p reviewer --bin reviewer-control -p review-mcp-config --bin reviewer-mcp -p reviewer-fake-agent
 cargo nextest run -p reviewer real_claude_code --run-ignored only
 ```
 
@@ -242,8 +242,8 @@ Claude Code keeps its MCP servers' logs): the check never reads nor writes `~/.c
 and `ANTHROPIC*` variables but the token: when the check runs under Claude Code, those of that
 session would load its plugins from `~/.claude` and reach the session. The configuration gets Herdr's session
 hook (`herdr integration install claude`), the reviewer's plugin with this build's
-`reviewer-control` (`claude plugin install`), the stand-in's observing hooks
-([test stand-ins](test-stand-ins.md)), and the permissions of an Explore turn ("don't ask", the
+`reviewer-control` (`claude plugin install`), the fake agent's observing hooks
+([the fake agent](private-herdr.md#real-claude-code-in-the-fake-agents-place)), and the permissions of an Explore turn ("don't ask", the
 submit tools). What it still touches is the user's `claude` program, run as it is, with its
 updater off, the token's account, and `~/.local/share/applications/claude-code-url-handler.desktop`,
 which Claude Code writes when it is missing.

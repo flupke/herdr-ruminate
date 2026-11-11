@@ -19,11 +19,11 @@ impl ForkOutput for Ignored {
     fn ended(self: Box<Self>, _exit: Exit) {}
 }
 
-/// A stand-in reviewer: it starts one fork, which holds the named pipe the test names open
-/// for writing for as long as it runs, then waits to be killed.
+/// The reviewer the test kills, run in a child process: it starts one fork, which holds the
+/// named pipe the test names open for writing for as long as it runs, then waits to be killed.
 #[test]
 #[ignore = "runs in a child process of a_fork_ends_when_its_reviewer_is_killed"]
-fn stand_in_reviewer() {
+fn reviewer_to_kill() {
     let Some(pipe) = std::env::var_os("FORK_LIFETIME_REVIEWER") else {
         return;
     };
@@ -61,7 +61,7 @@ fn a_fork_ends_when_its_reviewer_is_killed() {
             .success()
     );
     let mut reviewer = Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "stand_in_reviewer", "--ignored", "--nocapture"])
+        .args(["--exact", "reviewer_to_kill", "--ignored", "--nocapture"])
         .env("FORK_LIFETIME_REVIEWER", &pipe)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

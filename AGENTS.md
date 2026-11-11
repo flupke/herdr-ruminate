@@ -10,7 +10,7 @@ Give yourself eyes and hands on what you build: run it, look at it, act on it as
 would, and fix what you see. Tests prove what you thought of; eyes show what you did not.
 The vision MCP server runs the review pane in herdr-common's app sandbox, a private herdr-app
 on a headless display that never shows on the user's screen: run `make vision` once, then use
-its tools (`.agents/wiki/tui-vision.md`); `make explore-page` and `make explore-gallery` show
+its tools (`.agents/wiki/visual-testing.md`); `make explore-page` and `make explore-gallery` show
 the Explore page, and `make explore-script` acts on it with a throwaway script
 (`.agents/wiki/explore-page-standalone.md`); herdr-common's `app-sandbox` command keeps a
 private herdr-app running across shell commands, where the launcher mod opens the pane and
@@ -169,7 +169,7 @@ The vision MCP server and herdr-common's `app-sandbox` run herdr-app in a sandbo
 on a headless display, with their own core and environment, and act on nothing of the user's
 Herdr or herdr-app. The vision server's sandbox runs in bubblewrap, where its processes reach
 none of the user's Herdr, herdr-app or hc sockets, nor those of their runtime directory
-(`.agents/wiki/tui-vision.md`); the rest of the host's files show at their own paths.
+(`.agents/wiki/visual-testing.md`); the rest of the host's files show at their own paths.
 
 The Codex Linux sandbox blocks Unix-domain socket bind and connect operations.
 Run tests in the normal sandbox first. If an E2E test fails with `EPERM` while

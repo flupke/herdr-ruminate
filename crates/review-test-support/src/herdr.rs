@@ -32,7 +32,7 @@ const READY_LINE: &str = "herdr server running";
 ///
 /// Its private directory goes once the server stops: when it drops, and also when the test
 /// process dies without dropping it.
-pub struct HerdrTestServer {
+pub struct PrivateHerdrServer {
     directory: tempfile::TempDir,
     binary: PathBuf,
     repository_root: PathBuf,
@@ -42,7 +42,7 @@ pub struct HerdrTestServer {
     child: Option<Child>,
 }
 
-impl HerdrTestServer {
+impl PrivateHerdrServer {
     /// Start an isolated server, and return once its API socket accepts requests.
     pub fn start(repository_root: &Path) -> Self {
         let directory = tempfile::tempdir().unwrap();
@@ -109,7 +109,7 @@ impl HerdrTestServer {
         server.child = Some(child);
         if ready.recv_timeout(crate::GUARD).is_err() {
             let log = fs::read_to_string(server.root().join("server.log")).unwrap_or_default();
-            panic!("isolated Herdr server did not become ready:\n{log}");
+            panic!("private Herdr server did not become ready:\n{log}");
         }
         server
     }
@@ -260,7 +260,7 @@ fn herdr_config_directory(root: &Path) -> PathBuf {
     config_directory(root).join("herdr")
 }
 
-impl Drop for HerdrTestServer {
+impl Drop for PrivateHerdrServer {
     fn drop(&mut self) {
         let Some(child) = self.child.as_mut() else {
             return;

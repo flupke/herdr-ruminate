@@ -1,4 +1,4 @@
-# Terminal UI exploration (make vision)
+# Visual testing (make vision)
 
 How an agent drives the real reviewer pane through the vision MCP server, in herdr-common's app sandbox, how its tools wait for the reviewer, its gotchas, and turning findings into regression tests.
 
@@ -22,7 +22,7 @@ The server lives in [`tests/tui`](../../tests/tui), a Cargo workspace of its own
 herdr-common's app sandbox, vision core and fake agent by path from the checkout beside this
 one (`../herdr-common`), which a clone of this repository alone lacks, and patches the
 herdr-common git dependencies of the workspace's crates to that checkout. `start` builds the
-reviewer and the stand-in agent of the checkout in the dev shell, so each session runs the
+reviewer and the fake agent of the checkout in the dev shell, so each session runs the
 current code. The server itself does not rebuild: an MCP client keeps the process it started,
 so after a change under `tests/tui` the client must start the server again to get it.
 
@@ -30,7 +30,7 @@ so after a change under `tests/tui` the client must start the server again to ge
 
 `start` runs the reviewer in herdr-common's app sandbox: a private herdr-app, its own core and
 home, on a headless Weston that never shows on the user's screen nor takes their focus. It
-opens a "reviewer vision" space there, the stand-in agent in a tab, and the reviewer right of
+opens a "reviewer vision" space there, the fake agent in a tab, and the reviewer right of
 it, as the launcher mod opens it (`--focused-terminal`, `--herdr-app-home`): the reviewer runs
 its hc backend. The reviewer's terminal has the focus, so `key` and `type` reach it; `screenshot`
 is the whole window, as herdr-app draws it. The window is 1600x1000.
@@ -50,11 +50,11 @@ lives elsewhere:
 - The scratch repository is in `/var/tmp`, which the sandbox shows: the host's `/tmp` it does
   not, and the session directory sits under the checkout, whose `.envrc` direnv would refuse in
   the sandbox, failing the pane's language servers.
-- The stand-in agent's event socket is in the sandbox's own `/tmp`, which the server reaches
+- The fake agent's event socket is in the sandbox's own `/tmp`, which the server reaches
   through `AppSandbox::directory`: a socket's path must be short.
 
-The stand-in agent is herdr-common's fake agent, run from `crates/stand-in-agent`
-([test stand-ins](test-stand-ins.md)), named `claude`: it reports its state to herdr-core in
+The fake agent runs herdr-common's `fake_agent` from `crates/reviewer-fake-agent`
+([the fake agent's program](private-herdr.md#the-fake-agents-program)), named `claude`: it reports its state to herdr-core in
 OSC 7501, runs the hooks of the reviewer's Claude Code plugin through the checkout's
 `reviewer-control`, and plays a fork when run-ahead starts it as one. The agent and its forks
 keep their transcripts in `claude-config` in the session directory, and the reviewer's state is
@@ -102,7 +102,7 @@ These are gaps of herdr-common, for its owner to fill (its issues in brackets); 
   in one bracketed paste, as a terminal pastes the clipboard, which the reviewer's editors take
   whole.
 - `screenshot` returns the image alone: nothing is saved in the session directory.
-- The stand-in agent comes from tests/tui's build, with herdr-common's checkout's fake agent;
+- The fake agent comes from tests/tui's build, with the `fake-agent` crate of herdr-common's checkout;
   the reviewer comes from the root workspace's, with the `vision-signal` that `Cargo.lock` pins.
   After pulling herdr-common, `cargo update -p fake-agent` keeps the two at one revision: a
   changed frame marker would otherwise go unread.
@@ -168,7 +168,7 @@ next `turn` returns it.
 
 ### Scripting the forks and the switch
 
-Per question, the driver chooses what each fork does, once `forks` listed it:
+Per question, the agent driving the session chooses what each fork does, once `forks` listed it:
 
 - submits its turn: `fork_submit`;
 - is still working at the answer: nothing; the bare answer waits for it;
@@ -177,8 +177,8 @@ Per question, the driver chooses what each fork does, once `forks` listed it:
   run-ahead for the round, with a toast, and the round's later answers say `nothing was
   prepared`. Only a prepared turn used starts the count again;
 
-and before the answer, what the switch to a fork does: `switch_unheard` makes the agent's next
-`/resume` unheard, so the switch fails after its 20 s, the turn waits for Retry (`r`) and the agent
+and before the answer, what the switch to a fork does: `switch_unheard` makes the fake agent's next
+`/resume` unheard, so the switch fails after its 20 s, the turn waits for Retry (`r`) and the fake agent
 resumes its own session; with `heard_after_ms` it is heard that late and succeeds. Stop waiting
 and Cancel answer play while it waits.
 
@@ -203,14 +203,14 @@ plugin did not name. Two more lines have none: `the round changed after it was p
 turn but the unreviewed lines is fixed when the round starts, and `the turn for this choice was not
 ready yet`, which only an earlier version recorded.
 
-## Regression tests from explorations
+## Regression tests from vision sessions
 
 Populate [`tests/tui/tests`](../../tests/tui/tests/README.md) with deterministic E2E
-cases derived from recorded LLM explorations. Keep each case focused on a reproduced
+cases derived from recorded vision sessions. Keep each case focused on a reproduced
 finding, with the expected behavior and relevant interaction sequence. Preserve the
 evidence needed to understand the case alongside the test; session artifacts under
 `target/` are ignored by version control. A test drives the reviewer in an app sandbox, as
-the server does, or in a private Herdr (`HerdrTestServer`), never the user's.
+the server does, or in a private Herdr (`PrivateHerdrServer`), never the user's.
 
 `make e2e-tui` runs them with the server's own tests: its logic, and sessions in an app
-sandbox (`src/vision/session.tests.rs`) that wait on herdr-core's events and the stand-ins'.
+sandbox (`src/vision/session.tests.rs`) that wait on herdr-core's events and the fake agent's or its forks'.

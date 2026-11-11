@@ -1,9 +1,9 @@
-//! The run-ahead contract: what the stand-in assumes of Claude Code, checked against the real
-//! one. Each body runs twice. Its rehearsal runs the stand-in in the agent's pane, in `make
+//! The run-ahead contract: what the fake agent assumes of Claude Code, checked against the real
+//! one. Each body runs twice. Its rehearsal runs the fake agent in the agent's pane, in `make
 //! check`: it finds the faults of the test itself, its assertions, timing and input box, but
 //! for a timing fault that only real Claude Code's pace brings out. Its
 //! contract check, ignored by default, runs real Claude Code there on the token's account,
-//! with a scratch configuration: it tells whether the real agent still behaves as the stand-in
+//! with a scratch configuration: it tells whether the real agent still behaves as the fake agent
 //! assumes. A body says which [`Assumption`] each of its steps rests on, and a failure names it.
 
 use std::ffi::OsString;
@@ -32,7 +32,7 @@ const REAL_CHANGE: &[u8] =
       Reopen::WhenItsLinesChange => lines_changed,\n        \
       Reopen::WhenItsFileChanges => file_changed,\n    }\n}\n";
 
-/// What the stand-in assumes of Claude Code, on which a step of a body rests.
+/// What the fake agent assumes of Claude Code, on which a step of a body rests.
 #[derive(Clone, Copy, Debug)]
 enum Assumption {
     /// Claude Code starts in the agent's pane, logged in, runs Herdr's and the reviewer's hooks,
@@ -81,8 +81,8 @@ impl Assumption {
 /// The agent in the pane of a contract body.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Agent {
-    /// The stand-in, whose turns and whose forks' turns the test plays.
-    StandIn,
+    /// The fake agent, whose turns and whose forks' turns the test plays.
+    Fake,
     /// Real Claude Code, which takes its turns and its forks' turns itself.
     Real,
 }
@@ -101,8 +101,8 @@ impl ContractRun {
     /// The round with the agent `agent`, whose forks' host waits as `waits` say.
     fn start(agent: Agent, waits: review_run_ahead::ForkWaits) -> Self {
         let (run, session) = match agent {
-            Agent::StandIn => (
-                RunAheadFlow::start_with(StandIn::Forkable, waits),
+            Agent::Fake => (
+                RunAheadFlow::start_with(FakeAgent::Forkable, waits),
                 "session".into(),
             ),
             Agent::Real => {
@@ -131,7 +131,7 @@ impl ContractRun {
     /// How long a step waits without news.
     fn patience(&self) -> Duration {
         match self.agent {
-            Agent::StandIn => GUARD,
+            Agent::Fake => GUARD,
             Agent::Real => REAL_TURN,
         }
     }
@@ -157,7 +157,7 @@ impl ContractRun {
     }
 
     /// The agent takes its turn `version` on the prompt of `request`, which it read: the
-    /// stand-in submits a question as the test says, and real Claude Code as it sees fit, while
+    /// fake agent submits a question as the test says, and real Claude Code as it sees fit, while
     /// the test acknowledges each saved turn as the pane does. Returns once Herdr reports the
     /// agent idle again.
     fn agent_turn(&mut self, request: &TurnRequest, version: u32) {
@@ -167,8 +167,8 @@ impl ContractRun {
         statuses.wait_within(patience, herdr_client::protocol::AgentStatus::Working);
         let flow = &mut self.run.flow;
         match self.agent {
-            Agent::StandIn => {
-                // The stand-in holds its turn until it submitted, as an agent does that calls
+            Agent::Fake => {
+                // The fake agent holds its turn until it submitted, as an agent does that calls
                 // the reviewer's tools during its turn.
                 let accepted =
                     flow.submit(&super::super::explore_flow::agent_update(request, version));
@@ -205,7 +205,7 @@ impl ContractRun {
     /// The forks of each of the `count` choices of the question take their turn, submit it
     /// and end; returns the saved forks once they all ended.
     fn forks_take_turns(&mut self, count: usize) -> RoundForks {
-        if self.agent == Agent::StandIn {
+        if self.agent == Agent::Fake {
             for session in self.run.wait_for_forks(count) {
                 self.run.fork_submits(&session);
                 self.herdr()
@@ -319,13 +319,13 @@ impl Drop for ContractRun {
 fn failed(agent: Agent, assumption: Assumption) -> String {
     let assumption = assumption.says();
     match agent {
-        Agent::StandIn => format!(
-            "\nThe rehearsal failed where the test checks that {assumption}: the stand-in plays \
+        Agent::Fake => format!(
+            "\nThe rehearsal failed where the test checks that {assumption}: the fake agent plays \
              it, so the fault is the test's."
         ),
         Agent::Real => format!(
             "\nThe contract check failed where the test checks that {assumption}: real Claude \
-             Code may no longer behave as the stand-in assumes."
+             Code may no longer behave as the fake agent assumes."
         ),
     }
 }
@@ -498,9 +498,9 @@ fn settle_back_on_the_agent_s_own_session(mut contract: ContractRun) {
     let fork = ContractRun::fork_with_a_turn(&saved);
 
     contract.rests_on(Assumption::ResumeFollowed);
-    if contract.agent == Agent::StandIn {
+    if contract.agent == Agent::Fake {
         // Real Claude Code's hook reports the resume about 0.5 s after it is typed, after a
-        // switch that waits no time gave up; the stand-in's could come first.
+        // switch that waits no time gave up; the fake agent's could come first.
         fs::write(contract.herdr().directory().unreported_resume(), "").unwrap();
     }
     contract.stop_running_ahead();
@@ -546,7 +546,7 @@ fn settle_back_on_the_agent_s_own_session(mut contract: ContractRun) {
 
 #[test]
 fn rehearse_continuing_as_the_fork_of_a_bare_answer() {
-    continue_as_the_fork_of_a_bare_answer(ContractRun::start(Agent::StandIn, test_waits()));
+    continue_as_the_fork_of_a_bare_answer(ContractRun::start(Agent::Fake, test_waits()));
 }
 
 #[test]
@@ -566,10 +566,7 @@ fn unconfirmed_switch() -> review_run_ahead::ForkWaits {
 
 #[test]
 fn rehearse_settling_back_on_the_agent_s_own_session() {
-    settle_back_on_the_agent_s_own_session(ContractRun::start(
-        Agent::StandIn,
-        unconfirmed_switch(),
-    ));
+    settle_back_on_the_agent_s_own_session(ContractRun::start(Agent::Fake, unconfirmed_switch()));
 }
 
 #[test]
@@ -696,7 +693,7 @@ struct RealConfiguration(PathBuf);
 impl RealConfiguration {
     /// Sets up the configuration of the agent in `herdr`'s pane, which works in `repository`:
     /// Herdr's session hook, the reviewer's plugin with this build's `reviewer-control`, and the
-    /// hooks that report what the agent does as the stand-in reports it, each installed as its
+    /// hooks that report what the agent does as the fake agent reports it, each installed as its
     /// owner installs it; the permissions of the tools an Explore turn and its forks use; no
     /// first-run screen.
     fn write(herdr: &IsolatedHerdrServer, repository: &Path) -> Self {
@@ -727,7 +724,7 @@ impl RealConfiguration {
             ],
         );
         configuration.edit("settings.json", |settings| {
-            let observing = fake_agent::observing_hooks(&stand_in_program());
+            let observing = fake_agent::observing_hooks(&fake_agent_program());
             for (event, hooks) in observing.as_object().unwrap() {
                 let entries = settings["hooks"][event].as_array().cloned();
                 let mut entries = entries.unwrap_or_default();

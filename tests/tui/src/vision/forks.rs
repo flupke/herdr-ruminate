@@ -1,6 +1,6 @@
-//! What the stand-in agent and its forks reported on the session's event socket, as the driver
-//! reads it: each fork run-ahead started, with its prompt and how far it got, and the sessions the
-//! agent ran.
+//! What the fake agent and its forks reported on the session's event socket, as the agent
+//! driving the session reads it: each fork run-ahead started, with its prompt and how far it got,
+//! and the sessions the fake agent ran.
 
 use fake_agent::{Command, Event, Reported, Role};
 use serde::Serialize;
@@ -10,7 +10,7 @@ use super::session::AGENT;
 /// One fork, in the order the forks started.
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct Fork {
-    /// Its session, which the driver names to play it.
+    /// Its session, which the agent driving the session names to play it.
     pub(crate) session: String,
     /// The session it copies.
     parent: String,

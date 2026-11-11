@@ -169,7 +169,7 @@ fn without_frame_markers_an_acknowledgement_writes_nothing() {
 }
 
 #[test]
-fn a_pasted_acknowledgement_request_is_the_drivers_in_a_vision_session_only() {
+fn a_pasted_acknowledgement_request_is_the_vision_cores_in_a_vision_session_only() {
     for (acknowledges, acknowledged) in [(true, true), (false, false)] {
         let (sender, receiver) = crossbeam_channel::unbounded();
         let mut input = Some(crossterm::event::Event::Paste(

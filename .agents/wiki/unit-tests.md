@@ -57,9 +57,9 @@ advanced by hand), and wake the test with an event: a channel, a condvar, an eve
 code already publishes. Prove that nothing happened by ordering: send a marker through
 the same path and wait for it; what did not arrive before it did not happen.
 
-This holds for the tests that drive real processes too (a private Herdr, a stand-in agent,
-jj or git, a language server, a spawned binary): they wait on what those report, such as a
-stand-in's event socket or Herdr's event stream. A test may block on an event without a
+This holds for the tests that drive real processes too (a private Herdr, the fake agent,
+jj or git, a language server, a spawned binary): they wait on what those report, such as the
+fake agent's event socket or Herdr's event stream. A test may block on an event without a
 timeout of its own: nextest ends any test still running after two minutes
 (`.config/nextest.toml`; an hour for the contract checks, run-ahead's and that of delivery
 under herdr-core, which wait on real turns) and reports it, so a regression that loses the event fails instead of hanging. A

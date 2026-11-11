@@ -146,7 +146,7 @@ run-ahead's forks in [ADR 0011](../adr/0011-keep-a-codex-fork-read-only-with-the
 ## A Codex TUI in a test
 
 `crates/review-mcp-config/tests/codex_daemon.rs`, `crates/reviewer/tests/codex_hooks.rs` and the
-run-ahead tests of `crates/reviewer/src/runtime/run_ahead/codex.tests.rs` run one in a Herdr test
+run-ahead tests of `crates/reviewer/src/runtime/run_ahead/codex.tests.rs` run one in a private Herdr
 server, on an unmanaged app server and a scratch home, with a local model fixture
 (`review_test_support::codex`); they call no model API, and run in `make test`. The fixture
 hands each Explore prompt to the test, with the turn's files the prompt names, and calls the

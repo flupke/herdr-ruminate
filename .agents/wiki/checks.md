@@ -22,7 +22,7 @@ too.
 The tests do not use the Herdr installed on your machine. The Nix shell takes the Herdr,
 herdr-app and herdr-core (`hc`) releases that herdr-common's flake pins, shared with the other
 apps on Herdr, and points `TEST_HERDR_BIN_PATH`, `TEST_HERDR_APP_BIN_PATH` and
-`TEST_HC_BIN_PATH` at them; the test servers
+`TEST_HC_BIN_PATH` at them; the private Herdr servers
 run that binary. `herdr` on the `PATH` stays the installed Herdr, which
 `make install` uses. Outside the Nix shell, the tests fall back to `herdr` on
 the `PATH`. Set `TEST_HERDR_BIN_PATH` inside the shell to try another binary:
@@ -42,7 +42,7 @@ that ends in a background, such as a chip of the revision selector, needs a cell
 background after it, which ratatui writes only when it differs from the blank cell under it (a
 foreground of its own does).
 
-Each test server also detects agents with the rules in
+Each private Herdr server also detects agents with the rules in
 [`crates/review-test-support/agent-detection`](../../crates/review-test-support/agent-detection),
 copies of Herdr's published Codex and Claude rules. It installs them as local
 overrides, which Herdr prefers to the rules built into its binary, so the fake

@@ -8,7 +8,7 @@ use super::*;
 #[test]
 fn the_server_stops_when_its_owner_is_killed() {
     let repository = tempfile::tempdir().unwrap();
-    let mut server = HerdrTestServer::start(repository.path());
+    let mut server = PrivateHerdrServer::start(repository.path());
     let child = server.child.as_mut().unwrap();
     // Hand the only writing end of the server's pipe to a stand-in owner.
     let mut owner = Command::new("sleep")
@@ -32,7 +32,7 @@ fn the_server_stops_when_its_owner_is_killed() {
 #[test]
 fn agents_are_detected_with_the_rules_the_repository_keeps() {
     let repository = tempfile::tempdir().unwrap();
-    let server = HerdrTestServer::start(repository.path());
+    let server = PrivateHerdrServer::start(repository.path());
     for rules in &DetectionRules::ALL {
         let pane = server.pane(rules.agent());
         let events = server.events();
@@ -59,7 +59,7 @@ fn agents_are_detected_with_the_rules_the_repository_keeps() {
 #[test]
 fn a_dropped_server_stops_answering() {
     let repository = tempfile::tempdir().unwrap();
-    let server = HerdrTestServer::start(repository.path());
+    let server = PrivateHerdrServer::start(repository.path());
     let socket_path = server.socket_path.clone();
 
     drop(server);
@@ -67,7 +67,7 @@ fn a_dropped_server_stops_answering() {
     assert!(UnixStream::connect(socket_path).is_err());
 }
 
-impl HerdrTestServer {
+impl PrivateHerdrServer {
     /// A pane in a new workspace labelled `label`.
     fn pane(&self, label: &str) -> PaneId {
         let workspace = self.run_cli_json(&[

@@ -1,6 +1,6 @@
 //! Sessions in herdr-common's app sandbox, with the reviewer that `make e2e-tui` builds, in its
 //! dev shell, which names the sandbox's pinned programs. Every wait ends on an event of the
-//! app's or the stand-ins': the guard fires only when a test fails.
+//! app's, the fake agent's or its forks': the guard fires only when a test fails.
 
 use fake_agent::Reported;
 use serde_json::Value;
@@ -20,7 +20,7 @@ impl Fixture {
         Self::start_with(true)
     }
 
-    /// A session whose stand-in agent runs the reviewer's plugin hooks with `agent_hooks`, in a
+    /// A session whose fake agent runs the reviewer's plugin hooks with `agent_hooks`, in a
     /// directory under `target`: the bubblewrap sandbox does not show the host's `/tmp`.
     fn start_with(agent_hooks: bool) -> (Self, Screen) {
         let sessions = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/vision-tests");
@@ -106,7 +106,7 @@ fn each_action_returns_the_screen_of_the_reviewers_reaction() {
 }
 
 #[test]
-fn the_stand_in_agent_answers_an_explore_round_in_the_pane() {
+fn the_fake_agent_answers_an_explore_round_in_the_pane() {
     let (mut fixture, _) = Fixture::start();
     fixture.wait_for("math.rs");
     fixture.keys(&["e", "p"]);
@@ -204,7 +204,7 @@ fn tool_json(result: &Value) -> Value {
 }
 
 #[test]
-fn the_stand_in_agent_answers_a_review_comment_in_the_threads_tab() {
+fn the_fake_agent_answers_a_review_comment_in_the_threads_tab() {
     let (mut fixture, _) = Fixture::start();
     fixture.wait_for("math.rs");
     fixture.keys(&["tab", "j", "j", "a"]);
@@ -243,7 +243,7 @@ fn the_stand_in_agent_answers_a_review_comment_in_the_threads_tab() {
 }
 
 #[test]
-fn the_stand_in_agent_revises_the_open_question_in_the_pane() {
+fn the_fake_agent_revises_the_open_question_in_the_pane() {
     let (mut fixture, _) = Fixture::start();
     fixture.wait_for("math.rs");
     fixture.keys(&["e", "p"]);
@@ -277,7 +277,7 @@ fn the_stand_in_agent_revises_the_open_question_in_the_pane() {
 }
 
 #[test]
-fn the_driver_plays_a_fork_and_a_bare_answer_continues_as_it() {
+fn fork_submit_plays_a_fork_and_a_bare_answer_continues_as_it() {
     let (mut fixture, _) = Fixture::start();
     fixture.wait_for("math.rs");
     fixture.keys(&["e"]);
@@ -368,7 +368,7 @@ fn forks_of_the_question(fixture: &Fixture) -> (String, String) {
     (session_of("keep"), session_of("saturate"))
 }
 
-/// The fork that takes `choice` among the `forks` the driver listed: they start at once, so
+/// The fork that takes `choice` among the forks that the `forks` tool listed: they start at once, so
 /// their order is the order run-ahead's processes happened to report in.
 fn fork_of<'a>(forks: &'a Value, choice: &str) -> &'a Value {
     forks["forks"]
@@ -417,7 +417,7 @@ fn ask_again(fixture: &mut Fixture) -> Screen {
 }
 
 #[test]
-fn the_driver_ends_one_fork_without_a_turn_and_crashes_the_other() {
+fn fork_end_ends_one_fork_without_a_turn_and_crashes_the_other() {
     let (mut fixture, _) = Fixture::start();
     ask_with_run_ahead(&mut fixture);
     let (keep, saturate) = forks_of_the_question(&fixture);

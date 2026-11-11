@@ -337,3 +337,12 @@ The path of a turn without run-ahead: the reviewer's answer goes to the agent in
 takes the turn. Every answer that cannot use a prepared turn runs the plain chain; when run-ahead
 watched the question, the pane and the Explore page say with the turn, in one quiet line, why.
 _Avoid_: fallback, normal path
+
+## Testing
+
+The reviewer's tests and visual testing use herdr-common's terms, as its
+[CONTEXT.md](https://github.com/flupke/herdr-common/blob/main/CONTEXT.md) defines them: private
+Herdr, fake agent, visual testing, vision server, vision session, vision core and frame signal.
+_Avoid_: stand-in agent (the fake agent), Herdr test server (a private Herdr server), driver
+(the vision core, or the agent driving a vision session), UI exploration (visual testing, since
+Explore is the reviewer's interview)

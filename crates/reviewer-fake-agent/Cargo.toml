@@ -1,11 +1,11 @@
 [package]
-name = "stand-in-agent"
+name = "reviewer-fake-agent"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-description = "The stand-in agent and forks that the reviewer's tests and `make vision` run in a Herdr pane: herdr-common's fake agent, with the reviewer's hooks and turn files."
+description = "The fake agent and its forks that the reviewer's tests and `make vision` run in a Herdr pane: herdr-common's fake agent, with the reviewer's hooks and turn files."
 
 [dependencies]
 claude-hooks = { path = "../claude-hooks" }

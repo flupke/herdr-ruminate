@@ -45,14 +45,14 @@ impl<W: Write> TerminalBackend<W> {
     }
 
     /// Paints each frame as one synchronized update and ends it with a [`FrameMarker`], for the
-    /// driver of a vision session.
+    /// vision core in a vision session.
     pub(super) fn with_frame_markers(mut self) -> Self {
         self.markers = Some(FrameMarker::default());
         self
     }
 
     /// Empties the terminal title, which ends the frame markers of a vision session, as the
-    /// reviewer quits: the driver stops waiting on frames the shell left behind never paints.
+    /// reviewer quits: the vision core stops waiting on frames the shell left behind never paints.
     /// Without frame markers, writes nothing.
     pub(super) fn end_frame_markers(&mut self) -> io::Result<()> {
         if self.markers.take().is_some() {

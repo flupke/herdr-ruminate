@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the vision MCP server on standard input and output (.agents/wiki/tui-vision.md).
+# Runs the vision MCP server on standard input and output (.agents/wiki/visual-testing.md).
 # `.mcp.json` registers it; `make vision` builds it. A missing or stale server is built first, in
 # the dev shell, with a note and the build output on standard error: standard output carries the
 # MCP messages. The server gets the dev shell's pinned herdr-app, hc, Weston and Vulkan driver,

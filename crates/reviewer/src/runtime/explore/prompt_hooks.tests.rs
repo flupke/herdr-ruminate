@@ -4,16 +4,19 @@
 
 use review_explore::DispatchState;
 
-use super::super::run_ahead::StandIn;
+use super::super::run_ahead::FakeAgent;
 use super::*;
 
-/// A round whose agent is a Claude Code stand-in that runs the plugin's hooks, and whose prompts
-/// Herdr gives up on at once, in place of its own wait: only the hook confirms them in time.
+/// A round whose agent is a fake agent playing Claude Code, which runs the plugin's hooks, and
+/// whose prompts Herdr gives up on at once, in place of its own wait: only the hook confirms them in time.
 fn hooked_flow() -> ExploreFlow {
     let repository_files = repository_fixture(RepoType::Git);
     repository_files.write("reviewed.rs", b"pub fn reviewed() {}\n");
-    let herdr =
-        IsolatedHerdrServer::start_forkable(repository_files.root(), "session", StandIn::Forkable);
+    let herdr = IsolatedHerdrServer::start_forkable(
+        repository_files.root(),
+        "session",
+        FakeAgent::Forkable,
+    );
     ExploreFlow::start_on(ReviewFlowFixture::start_on(
         repository_files,
         herdr,
