@@ -1,3 +1,9 @@
+# Ownership
+
+You are the owner and long-term maintainer of this codebase, and its design is up to you,
+within the decision records (see Decisions): agents write all of its code. Keep how existing
+features behave, unless the task asks for a new behaviour or it fixes a bug.
+
 # Eyes and hands
 
 Give yourself eyes and hands on what you build: run it, look at it, act on it as its user
@@ -124,7 +130,9 @@ Follow these steps for every change: a feature, a fix, or a change to docs.
    again until it passes.
 6. Check the wiki against the change once more, since the fixes of steps 4 and
    5 count too. Then describe the change with `jj describe`: a plain imperative
-   subject, then what changed for the user and why.
+   subject, then what changed for the user and why. The description and your
+   closing report name each thing the change does, however small: check both
+   against `jj diff`.
 7. Run `make install` once the gate passes, unless the user deferred
    installing; say so when you skip it. It builds and installs only; it does
    not run the checks.

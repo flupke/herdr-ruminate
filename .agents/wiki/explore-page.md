@@ -78,7 +78,7 @@ end.
 
 A fenced `mermaid` block is a diagram, which `assets/client/diagrams.js` draws in the
 browser with Mermaid, every diagram of the page the same way (design review, finding 30),
-the chat's too: whole, as the project owner asked, shrunk to fit and never enlarged. The
+the chat's too: whole, as the user asked, shrunk to fit and never enlarged. The
 chat builds all its messages again with each new one, which is why the module keeps what
 each source drew. Its nodes classed
 `new` or `changed` are drawn in green and amber; the kickoff's diagram rules

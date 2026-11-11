@@ -158,7 +158,7 @@ answer. To check it again after a change to the forks or the switch:
    `"explore_round":{"run_ahead":"recommended"}` and `"explore_page":{"pane_starts":"in_pane"}`.
 3. A scratch jj repository with one change, then `herdr-app do space.new '{"folder": ...}'`.
 4. Type the agent into its terminal with `hc send`: `env` with the `CLAUDE*` variables unset and
-   `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` unset (the owner's,
+   `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` unset (the user's,
    see [herdr-app](herdr-app.md#a-private-herdr-app)), then `claude --settings <file>`, the
    file holding `pluginConfigs` with this checkout's `bin/reviewer-control` as the plugin's
    `control`, as herdr-bowtie's agents carry a settings file. Accept the folder's trust with
@@ -166,7 +166,7 @@ answer. To check it again after a change to the forks or the switch:
 5. `herdr-app do mod.open '{"name":"herdr-progressive-reviewer"}'`; in the pane, `e`, then `p`
    (Start in the pane). Once `run-ahead.log` in the private state says the fork submitted, `end`,
    `1`, `ctrl+enter`: the pane shows the next turn with `Prepared while you were thinking`.
-   About ten Sonnet turns on the owner's subscription.
+   About ten Sonnet turns on the user's subscription.
 
 ## The reviewer's Claude Code plugin
 
@@ -238,13 +238,13 @@ cargo nextest run -p reviewer real_claude_code --run-ignored only
 The agent and its forks log in with that token and run in a configuration of their own, under
 the test's Herdr directory and gone with it (`CLAUDE_CONFIG_DIR`, and `XDG_CACHE_HOME`, where
 Claude Code keeps its MCP servers' logs): the check never reads nor writes `~/.claude` nor
-`~/.cache`. Never copy the owner's credentials there. They take none of the test's `CLAUDE*`
+`~/.cache`. Never copy the user's credentials there. They take none of the test's `CLAUDE*`
 and `ANTHROPIC*` variables but the token: when the check runs under Claude Code, those of that
 session would load its plugins from `~/.claude` and reach the session. The configuration gets Herdr's session
 hook (`herdr integration install claude`), the reviewer's plugin with this build's
 `reviewer-control` (`claude plugin install`), the stand-in's observing hooks
 ([test stand-ins](test-stand-ins.md)), and the permissions of an Explore turn ("don't ask", the
-submit tools). What it still touches is the owner's `claude` program, run as it is, with its
+submit tools). What it still touches is the user's `claude` program, run as it is, with its
 updater off, the token's account, and `~/.local/share/applications/claude-code-url-handler.desktop`,
 which Claude Code writes when it is missing.
 

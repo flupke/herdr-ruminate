@@ -265,9 +265,9 @@ pixels, `stop <name>` ends it. Use it to see the review pane as herdr-app draws 
   that the port is in use.
 
 Never give Claude Code a scratch `XDG_DATA_HOME`, as a private core's terminals have: 2.1.318
-copies itself into `$XDG_DATA_HOME/claude/versions` and points the owner's `~/.local/bin/claude`
-there, even with `DISABLE_AUTOUPDATER`, which leaves the owner a `claude` that is gone with the
-scratch folder. Run it there through `env` with the owner's data, state and configuration
+copies itself into `$XDG_DATA_HOME/claude/versions` and points the user's `~/.local/bin/claude`
+there, even with `DISABLE_AUTOUPDATER`, which leaves the user a `claude` that is gone with the
+scratch folder. Run it there through `env` with the user's data, state and configuration
 folders, as the contract check does (below).
 
 ## The contract check
@@ -277,11 +277,11 @@ reviewer's prompts through herdr-core as the reviewer expects: its hook reports 
 as typed, a long one too, and the text left in its input box joined to it; it runs a prompt
 the user submits while the send waits for them; it reports `working` after a send, and
 `blocked` while a question waits on its user, when herdr-core types nothing. It runs the
-owner's `claude` on the owner's login and configuration, with the reviewer's plugin set to
+user's `claude` on the user's login and configuration, with the reviewer's plugin set to
 this build's `reviewer-control` by `--settings`: the plugin must be installed (`make install`).
 Unlike the run-ahead check ([Run-ahead](run-ahead.md#the-contract-check)), which never reads
-`~/.claude`, it needs no token of `claude setup-token`: the owner chose their own login. It
-leaves in the owner's configuration the session of each run, and the trust of its folder,
+`~/.claude`, it needs no token of `claude setup-token`: the user chose their own login. It
+leaves in the user's configuration the session of each run, and the trust of its folder,
 `~/.cache/herdr-reviewer/hc-contract-check`, recorded once; it runs their other plugins,
 hooks and MCP servers, on a private core. About 30 s and five Sonnet turns. Run it after an
 upgrade of Claude Code or herdr-core, or a change to the prompts' delivery
