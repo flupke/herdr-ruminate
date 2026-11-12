@@ -16,7 +16,7 @@ use crossbeam_channel::{Receiver as EventReceiver, Sender as EventSender};
 use herdr_client::protocol::{AgentHost, AgentTarget, HerdrEvent, PaneId};
 use review_explore_page::RoundPublisher;
 use review_explore_page_host::PageOpener;
-use review_explore_page_opening::PageScreen;
+use review_explore_page_opening::{PageNotOpened, PageScreen};
 use review_explore_session::{self as explore_session, ExploreSession};
 use review_repository::repository::Repository;
 use review_significance::JevClassifier;
@@ -53,8 +53,6 @@ pub(super) struct Setup {
     pub(super) source_watches: Option<SourceWatchRequests>,
     /// Where the Explore session publishes its round for the Explore page.
     pub(super) page: RoundPublisher,
-    /// Opens the Explore page when the pane asks; `None` in tests, which never open a browser.
-    pub(super) page_opener: Option<PageOpener>,
     /// The Explore page's link to the review threads, which hold the round's conversation.
     pub(super) page_threads: Arc<PageThreads>,
     /// Where the hooks of the agents of Herdr's server reach the reviewer; `None` when it is
@@ -130,6 +128,8 @@ pub(super) struct Effects {
     source_watches: Option<SourceWatchRequests>,
     commands: Sender<WorkerCommand>,
     documents: Sender<document::Command>,
+    /// Opens the Explore page that this reviewer serves, when the pane asks; `None` until the
+    /// page is served, and in tests that open no browser.
     page_opener: Option<PageOpener>,
     page_threads: Arc<PageThreads>,
     /// Applies the network settings to the Explore page; `None` until the page is served, and
@@ -166,7 +166,6 @@ impl Effects {
             turns,
             source_watches,
             page,
-            page_opener,
             page_threads,
             hook_directory,
             run_ahead,
@@ -235,7 +234,7 @@ impl Effects {
             source_watches,
             commands,
             documents,
-            page_opener,
+            page_opener: None,
             page_threads,
             page_sharing: None,
             messages,
@@ -299,6 +298,11 @@ impl Effects {
         self.page_sharing = Some(sharing);
     }
 
+    /// Open the Explore page with `opener` when the pane asks.
+    pub(super) fn open_page_with(&mut self, opener: PageOpener) {
+        self.page_opener = Some(opener);
+    }
+
     /// Where inputs for the Explore session join repository work.
     pub(super) fn explore_inbox(&self) -> explore_session::Inbox {
         inbox_for(self.commands.clone())
@@ -357,9 +361,16 @@ impl Effects {
     }
 
     /// Open the Explore page in the browser on `screen`, on a thread of its own since the browser
-    /// program may take its time; the pane hears only of a failure.
+    /// program may take its time; the pane hears only of a failure. Without a page, there is none
+    /// to open: the pane hears why.
     fn open_page(&self, screen: PageScreen) {
         let Some(opener) = self.page_opener.clone() else {
+            let _ = self
+                .messages
+                .send(ui_events::ExplorePageNotOpened(PageNotOpened {
+                    url: None,
+                    reason: "the Explore page is not served".into(),
+                }));
             return;
         };
         let messages = self.messages.clone();

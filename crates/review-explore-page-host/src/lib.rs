@@ -3,17 +3,18 @@
 //! served to the network for a phone, behind a new token for each round.
 //!
 //! The reviewer starts a [`PageHost`], which serves the page on a loopback port behind a token,
-//! and leaves the page's address in the plugin's state directory, in the record of its Herdr
-//! workspace; a reviewer of the same review that starts again keeps the address and the token,
-//! so that an open page reconnects. The action reads that record through the [`PageDirectory`]. Unless the
-//! [`NetworkAccess`] settings turn it off, the host also [shares](PageNetwork::share) the page
-//! on a network interface, and announces the address of each round's page, and of the start
-//! screen's while no round runs, for the pane's QR code; a change of the settings moves it to
-//! another listener or [takes it off](PageNetwork::unshare) the network. The reviewer can also
-//! [share the running round over a tunnel](PageNetwork::open_tunnel), behind the same token on
-//! the network, until the round ends. A [`PageOpener`] opens
-//! the page of a workspace in the default browser, for the action and for the pane's Start,
-//! Start with Challenger and Past rounds.
+//! and leaves the page's address in the plugin's state directory, in the record of its
+//! [place](PanePlace); a reviewer of the same review that starts again there keeps the address
+//! and the token, so that an open page reconnects. The action reads that record through the
+//! [`PageDirectory`]. Unless the [`NetworkAccess`] settings turn it off, the host also
+//! [shares](PageNetwork::share) the page on a network interface, and announces the address of
+//! each round's page, and of the start screen's while no round runs, for the pane's QR code; a
+//! change of the settings moves it to another listener or [takes it off](PageNetwork::unshare)
+//! the network. The reviewer can also [share the running round over a
+//! tunnel](PageNetwork::open_tunnel), behind the same token on the network, until the round
+//! ends. A [`PageOpener`] opens the page in the default browser: for the action, the page its
+//! tab's record names; for the pane's Start, Start with Challenger, Open the Explore page and
+//! Past rounds, the host's own ([`PageHost::opener`]).
 
 mod browser;
 mod network;
@@ -31,7 +32,7 @@ use std::path::{Path, PathBuf};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use herdr_client::protocol::WorkspaceId;
+use herdr_client::protocol::{TabId, WorkspaceId};
 use review_explore_page::{ExplorePage, Hosts, PageFiles, PageRound, Rounds, Token, page_listener};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -40,8 +41,8 @@ use tokio::sync::oneshot;
 /// How long the action waits for a recorded page to answer.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Where open reviewers leave the address of their Explore page: one record per Herdr
-/// workspace, readable only by the user, since the address carries the page's token.
+/// Where open reviewers leave the address of their Explore page: one record per
+/// [`PanePlace`], readable only by the user, since the address carries the page's token.
 #[derive(Clone, Debug)]
 pub struct PageDirectory(PathBuf);
 
@@ -59,6 +60,15 @@ struct PageAddress {
     /// The review the page shows: the root of its repository.
     #[serde(default)]
     review: PathBuf,
+}
+
+/// Where a review pane runs, which names the record of its page: its Herdr workspace, which is
+/// herdr-app's space, and its tab. A tab holds one review pane, while a workspace holds one per
+/// tab: the panes of a workspace's tabs each find their own page.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PanePlace {
+    pub workspace: WorkspaceId,
+    pub tab: TabId,
 }
 
 impl PageAddress {
@@ -88,10 +98,10 @@ impl PageDirectory {
         Self(state_dir.join("explore-page"))
     }
 
-    /// The address of the page that the open reviewer of `workspace` serves, or `None` when
-    /// no reviewer of that workspace serves one.
-    pub fn address(&self, workspace: &WorkspaceId) -> io::Result<Option<String>> {
-        let record = match fs::read(self.record(workspace)) {
+    /// The address of the page that the open reviewer at `place` serves, or `None` when no
+    /// reviewer there serves one.
+    pub fn address(&self, place: &PanePlace) -> io::Result<Option<String>> {
+        let record = match fs::read(self.record(place)) {
             Ok(record) => record,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error),
@@ -102,10 +112,15 @@ impl PageDirectory {
             .map(|address| address.url))
     }
 
-    /// The record of `workspace`'s page, named after a digest of the workspace ID so that any
-    /// ID makes a file name.
-    fn record(&self, workspace: &WorkspaceId) -> PathBuf {
-        let digest = Sha256::digest(workspace.0.as_bytes());
+    /// The record of the page at `place`, named after a digest of its IDs so that any IDs make
+    /// a file name.
+    fn record(&self, place: &PanePlace) -> PathBuf {
+        // The NUL between the IDs, which neither holds, keeps two places from making one name.
+        let digest = Sha256::new()
+            .chain_update(place.workspace.0.as_bytes())
+            .chain_update([0])
+            .chain_update(place.tab.0.as_bytes())
+            .finalize();
         let name = digest.iter().fold(String::new(), |mut name, byte| {
             let _ = write!(name, "{byte:02x}");
             name
@@ -113,10 +128,10 @@ impl PageDirectory {
         self.0.join(name)
     }
 
-    /// The address the reviewer of `review` in `workspace` that closed last served its page at,
+    /// The address the reviewer of `review` at `place` that closed last served its page at,
     /// when no reviewer serves it now.
-    fn closed(&self, workspace: &WorkspaceId, review: &Path) -> Option<PageAddress> {
-        let record = fs::read(self.record(workspace)).ok()?;
+    fn closed(&self, place: &PanePlace, review: &Path) -> Option<PageAddress> {
+        let record = fs::read(self.record(place)).ok()?;
         serde_json::from_slice::<PageAddress>(&record)
             .ok()
             .filter(|address| address.review == review && !address.token.is_empty())
@@ -156,16 +171,17 @@ pub struct PageHost {
 
 impl PageHost {
     /// Serves the page of `round`, of the review of the repository at `review`, on the loopback
-    /// interface, and records its address for `workspace` in `directory`. The page keeps the
-    /// address and the token of the page of the same review that the workspace's reviewer served
-    /// before it restarted, when its port is free; else it takes a free port, and a new token.
+    /// interface, and records its address for the review pane at `place` in `directory`. The
+    /// page keeps the address and the token of the page of the same review that the reviewer at
+    /// `place` served before it restarted, when its port is free; else it takes a free port, and
+    /// a new token.
     pub fn start(
         round: PageRound,
         directory: &PageDirectory,
-        workspace: &WorkspaceId,
+        place: &PanePlace,
         review: &Path,
     ) -> io::Result<Self> {
-        let earlier = directory.closed(workspace, review);
+        let earlier = directory.closed(place, review);
         let (listener, token) = earlier
             .and_then(|earlier| {
                 let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, earlier.port));
@@ -217,7 +233,7 @@ impl PageHost {
             })?;
         let host = Self {
             address,
-            record: directory.record(workspace),
+            record: directory.record(place),
             network: PageNetwork::new(round, handle),
             stop: Some(stop),
             thread: Some(thread),
@@ -229,6 +245,12 @@ impl PageHost {
     /// The address that opens the page, with its token.
     pub fn url(&self) -> &str {
         &self.address.url
+    }
+
+    /// Opens this page with `browser`, for the pane of the reviewer that serves it: never the
+    /// page of another reviewer of the pane's tab, which may hold its record.
+    pub fn opener(&self, browser: Browser) -> PageOpener {
+        PageOpener::served(self.address.url.clone(), browser)
     }
 
     /// The page on the network, which the reviewer's settings share and take off it.

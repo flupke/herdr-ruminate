@@ -50,7 +50,7 @@ use ratatui::backend::Backend;
 use review_explore_page::{
     CommandSender, PageConversation, PageRound, PastRounds, RoundFeed, RoundPublisher, ThreadsFeed,
 };
-use review_explore_page_host::{Browser, PageDirectory, PageHost, PageOpener, TunnelProgram};
+use review_explore_page_host::{Browser, PageDirectory, PageHost, PanePlace, TunnelProgram};
 use review_explore_page_settings::ExplorePageSettings;
 use review_explore_session as explore_session;
 use review_repository::repository::Repository;
@@ -201,7 +201,6 @@ impl Runtime {
                 turns: vision_turns_from_env(),
                 source_watches: Some(watcher.source_requests()),
                 page: page_round,
-                page_opener: Some(self.page_opener()),
                 page_threads: Arc::clone(&page_threads),
                 hook_directory: agent_hooks::HookDirectory::from_env(),
                 run_ahead: RunAheadSetup {
@@ -333,7 +332,7 @@ impl Runtime {
             .with_conversation(conversation)
             .with_past_rounds(past);
         let review = self.repository.root();
-        let host = match PageHost::start(round, &directory, &self.workspace_id, review) {
+        let host = match PageHost::start(round, &directory, &self.page_place(), review) {
             Ok(host) => host,
             Err(error) => {
                 let _ = events.send(EventEnvelope::new(ui_events::ToastRequested {
@@ -346,16 +345,17 @@ impl Runtime {
         let sharing = page_sharing::PageSharing::new(host.network(), events.clone(), tunnel);
         sharing.apply(&settings.network);
         effects.share_page(sharing);
+        effects.open_page_with(host.opener(Browser::from_env()));
         Some(host)
     }
 
-    /// What opens the Explore page from the pane, as the Herdr action opens it.
-    fn page_opener(&self) -> PageOpener {
-        PageOpener::new(
-            PageDirectory::new(&self.state_dir),
-            self.workspace_id.clone(),
-            Browser::from_env(),
-        )
+    /// The review pane's place, which names the record of its Explore page for the Herdr action:
+    /// its tab, since the tabs of a workspace each hold a review pane of their own.
+    fn page_place(&self) -> PanePlace {
+        PanePlace {
+            workspace: self.workspace_id.clone(),
+            tab: self.tab_id.clone(),
+        }
     }
 
     /// Saved Explore state changed by another reviewer reaches the Explore session, and the

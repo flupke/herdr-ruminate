@@ -263,6 +263,17 @@ pixels, `stop <name>` ends it. Use it to see the review pane as herdr-app draws 
   it (above): check it on several opens, in fresh tabs, by the first line of `hc read`.
 - The reviewers it starts share the checkout's MCP port, so all but the first show a toast
   that the port is in use.
+- Several review panes, one per tab of a space, as the user runs them (the Explore page's
+  address is recorded per tab): `hc <name> run --bg --keep --no-parent --cwd <repository>
+  --label herdr.space=<sp…> --label herdr.tab=<tb…> -- env BROWSER=<script>
+  <checkout>/bin/reviewer` for each, with the same space and a tab of its own, and a fresh
+  scratch repository each. A `BROWSER` script that appends `$1` and `readlink
+  /proc/$PPID/cwd` to a log in a host folder shows which pane opened which page; the records
+  under `/tmp/state/herdr-progressive-reviewer/explore-page/`, read with `app-sandbox run`,
+  name the review of each port. `e` then `s` opens the page on Start, and `o` opens it
+  again.
+- The sandbox's `hc keys` sends an upper-case letter as its lower-case key: `H` presses
+  `h`, `W` presses `w`, so shortcuts on upper-case letters (Past rounds) are out of its reach.
 
 Never give Claude Code a scratch `XDG_DATA_HOME`, as a private core's terminals have: 2.1.318
 copies itself into `$XDG_DATA_HOME/claude/versions` and points the user's `~/.local/bin/claude`

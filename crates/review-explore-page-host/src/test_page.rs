@@ -7,7 +7,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-use herdr_client::protocol::WorkspaceId;
+use herdr_client::protocol::{TabId, WorkspaceId};
 use review_explore::{RoundOverview, TabTitle};
 use review_explore_page::{
     CommandRefusal, CommandSender, PageCommand, PageRound, PastChange, PastRound, PastRoundEntry,
@@ -15,7 +15,7 @@ use review_explore_page::{
     RoundStage,
 };
 
-use crate::{NetworkAccess, NetworkListener, PageDirectory, PageHost};
+use crate::{NetworkAccess, NetworkListener, PageDirectory, PageHost, PanePlace};
 
 /// The round `id`, with nothing more to publish.
 pub(crate) fn published(id: &str) -> PublishedRound<'_> {
@@ -162,7 +162,10 @@ pub(crate) fn page_host(state: &std::path::Path) -> (Arc<RoundPublisher>, PageHo
     let host = PageHost::start(
         PageRound::new(round.subscribe(), commands).with_past_rounds(past_rounds()),
         &PageDirectory::new(state),
-        &WorkspaceId("w1".into()),
+        &PanePlace {
+            workspace: WorkspaceId("w1".into()),
+            tab: TabId("t1".into()),
+        },
         std::path::Path::new("/repositories/drafts"),
     )
     .unwrap();

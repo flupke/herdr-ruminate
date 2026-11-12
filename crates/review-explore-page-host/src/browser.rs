@@ -1,5 +1,6 @@
-//! Opening the page of a workspace's open reviewer in the default browser of this machine, for
-//! the Herdr action, for the pane's Start and Start with Challenger, and for its Past rounds.
+//! Opening the page of a review pane's reviewer in the default browser of this machine: for the
+//! Herdr action, by the record of its tab; for the pane's Start, Start with Challenger, Open the
+//! Explore page and Past rounds, at the address its reviewer serves the page at.
 //! `BROWSER` names the program and its arguments; by default `xdg-open` on Linux, `open` on
 //! macOS. The page opens at the address of this machine's loopback listener, the only one that
 //! offers past rounds (ADR 0003, ADR 0004).
@@ -9,24 +10,44 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use herdr_client::protocol::WorkspaceId;
 use review_explore_page_opening::{PageNotOpened, PageScreen};
 
-use crate::PageDirectory;
+use crate::{PageDirectory, PanePlace};
 
-/// Opens the page that the open reviewer of a workspace serves on this machine.
+/// Opens the page of a review pane's reviewer, which it serves on this machine.
 #[derive(Clone, Debug)]
 pub struct PageOpener {
-    pages: PageDirectory,
-    workspace: WorkspaceId,
+    page: PageSource,
     browser: Browser,
 }
 
+/// Where the opener finds the page's address.
+#[derive(Clone, Debug)]
+enum PageSource {
+    /// The address that the reviewer serving the page holds: the pane's own page, whatever
+    /// other reviewer runs in its tab.
+    Served(String),
+    /// The record of the review pane at the place, which the Herdr action reads from outside
+    /// the reviewer.
+    Recorded {
+        pages: PageDirectory,
+        place: PanePlace,
+    },
+}
+
 impl PageOpener {
-    pub fn new(pages: PageDirectory, workspace: WorkspaceId, browser: Browser) -> Self {
+    /// Opens the page of the review pane at `place`, by its record in `pages`.
+    pub fn new(pages: PageDirectory, place: PanePlace, browser: Browser) -> Self {
         Self {
-            pages,
-            workspace,
+            page: PageSource::Recorded { pages, place },
+            browser,
+        }
+    }
+
+    /// Opens the page at `address`, which the reviewer serves itself.
+    pub(crate) fn served(address: String, browser: Browser) -> Self {
+        Self {
+            page: PageSource::Served(address),
             browser,
         }
     }
@@ -34,17 +55,21 @@ impl PageOpener {
     /// Opens the page in the browser, on `screen`. Waits for the browser program to exit: run it
     /// off any thread that must stay responsive.
     pub fn open(&self, screen: PageScreen) -> Result<(), PageNotOpened> {
-        let address = self
-            .pages
-            .address(&self.workspace)
-            .map_err(|error| PageNotOpened {
-                url: None,
-                reason: format!("Cannot read the address of the Explore page: {error}"),
-            })?
-            .ok_or_else(|| PageNotOpened {
-                url: None,
-                reason: "No open reviewer in this workspace: open the progressive reviewer, then its Explore page".into(),
-            })?;
+        let address = match &self.page {
+            PageSource::Served(address) => address.clone(),
+            PageSource::Recorded { pages, place } => pages
+                .address(place)
+                .map_err(|error| PageNotOpened {
+                    url: None,
+                    reason: format!("Cannot read the address of the Explore page: {error}"),
+                })?
+                .ok_or_else(|| PageNotOpened {
+                    url: None,
+                    reason: "No open reviewer in this tab: open the progressive reviewer, then \
+                             its Explore page"
+                        .into(),
+                })?,
+        };
         let url = format!("{address}{}", screen.fragment());
         self.browser.open(&url).map_err(|reason| PageNotOpened {
             url: Some(url),

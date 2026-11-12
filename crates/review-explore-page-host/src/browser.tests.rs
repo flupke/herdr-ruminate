@@ -1,32 +1,51 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+use herdr_client::protocol::{TabId, WorkspaceId};
 use review_explore_page::RoundPublisher;
 
 use super::*;
 use crate::PageHost;
 use crate::tests::page_round;
 
-/// The workspace whose reviewer the tests open.
-fn workspace() -> WorkspaceId {
-    WorkspaceId("w1".into())
+/// The review pane in tab `tab` of the tests' workspace.
+fn in_tab(tab: &str) -> PanePlace {
+    PanePlace {
+        workspace: WorkspaceId("w1".into()),
+        tab: TabId(tab.into()),
+    }
 }
 
-/// The page of [`workspace`]'s reviewer, recorded under `state`.
-fn host(state: &Path) -> PageHost {
+/// The review pane whose page the tests open.
+fn place() -> PanePlace {
+    in_tab("t1")
+}
+
+/// The page of the reviewer at `place`, recorded under `state`.
+fn host_at(state: &Path, place: &PanePlace) -> PageHost {
     let round = RoundPublisher::default();
     PageHost::start(
         page_round(&round),
         &PageDirectory::new(state),
-        &workspace(),
+        place,
         Path::new("/repositories/drafts"),
     )
     .unwrap()
 }
 
-/// Opens the page of [`workspace`] under `state` with `browser`.
+/// The page of the reviewer at [`place`], recorded under `state`.
+fn host(state: &Path) -> PageHost {
+    host_at(state, &place())
+}
+
+/// Opens the page of the review pane at `place` under `state` with `browser`.
+fn opener_at(state: &Path, place: PanePlace, browser: Browser) -> PageOpener {
+    PageOpener::new(PageDirectory::new(state), place, browser)
+}
+
+/// Opens the page of [`place`] under `state` with `browser`.
 fn opener(state: &Path, browser: Browser) -> PageOpener {
-    PageOpener::new(PageDirectory::new(state), workspace(), browser)
+    opener_at(state, place(), browser)
 }
 
 /// A browser that writes the address it opens to `address_file`, then exits with `status`.
@@ -45,7 +64,7 @@ fn browser(directory: &Path, address_file: &Path, status: u8) -> Browser {
 }
 
 #[test]
-fn the_opener_opens_the_page_of_the_workspaces_reviewer_in_the_browser() {
+fn the_opener_opens_the_page_of_its_tabs_reviewer_in_the_browser() {
     let state = tempfile::tempdir().unwrap();
     let host = host(state.path());
     let address_file = state.path().join("address_file");
@@ -55,6 +74,27 @@ fn the_opener_opens_the_page_of_the_workspaces_reviewer_in_the_browser() {
         .unwrap();
 
     assert_eq!(std::fs::read_to_string(&address_file).unwrap(), host.url());
+}
+
+#[test]
+fn each_tab_opens_the_page_of_its_own_reviewer_whichever_started_last() {
+    let state = tempfile::tempdir().unwrap();
+    let first = host_at(state.path(), &in_tab("t1"));
+    let second = host_at(state.path(), &in_tab("t2"));
+    let opened = |tab: &str| {
+        let address_file = state.path().join(format!("opened-from-{tab}"));
+        opener_at(
+            state.path(),
+            in_tab(tab),
+            browser(state.path(), &address_file, 0),
+        )
+        .open(PageScreen::Current)
+        .unwrap();
+        std::fs::read_to_string(&address_file).unwrap()
+    };
+
+    assert_eq!(opened("t1"), first.url());
+    assert_eq!(opened("t2"), second.url());
 }
 
 #[test]

@@ -262,10 +262,11 @@ mod explore_page {
     use std::path::Path;
     use std::sync::mpsc;
 
-    use herdr_client::protocol::WorkspaceId;
+    use herdr_client::protocol::{TabId, WorkspaceId};
     use review_explore_page::{CommandRefusal, CommandSender, PageRound, RoundPublisher};
     use review_explore_page_host::{
-        Browser, NetworkAccess, PageDirectory, PageHost, PageOpener, TunnelProgram, TunnelState,
+        Browser, NetworkAccess, PageDirectory, PageHost, PageOpener, PanePlace, TunnelProgram,
+        TunnelState,
     };
     use review_explore_page_settings::{ExplorePageSetting, PaneStarts};
     use review_ui::ExplorePageAction;
@@ -281,7 +282,15 @@ mod explore_page {
 
     use super::*;
 
-    /// A reviewer's page, served for workspace `w1` under `state`.
+    /// The place of the tests' review pane.
+    fn place() -> PanePlace {
+        PanePlace {
+            workspace: WorkspaceId("w1".into()),
+            tab: TabId("t1".into()),
+        }
+    }
+
+    /// A reviewer's page, served for the review pane at [`place`] under `state`.
     fn host(state: &Path) -> PageHost {
         let round = RoundPublisher::default();
         let commands = CommandSender::new(|_, reply| {
@@ -292,7 +301,7 @@ mod explore_page {
         PageHost::start(
             PageRound::new(round.subscribe(), commands),
             &PageDirectory::new(state),
-            &WorkspaceId("w1".into()),
+            &place(),
             std::path::Path::new("/repositories/drafts"),
         )
         .unwrap()
@@ -320,9 +329,9 @@ mod explore_page {
         received
     }
 
-    /// Opens the page of `w1` under `state` with a browser that writes the address it opens
-    /// to `address_file`, then exits with `status`.
-    fn opener(state: &Path, address_file: &Path, status: u8) -> PageOpener {
+    /// Opens the page of `host` with a browser, written under `state`, that writes the address
+    /// it opens to `address_file`, then exits with `status`.
+    fn opener(host: &PageHost, state: &Path, address_file: &Path, status: u8) -> PageOpener {
         let script = state.join("browser");
         std::fs::write(
             &script,
@@ -333,11 +342,7 @@ mod explore_page {
         )
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        PageOpener::new(
-            PageDirectory::new(state),
-            WorkspaceId("w1".into()),
-            Browser::command(&script.display().to_string()),
-        )
+        host.opener(Browser::command(&script.display().to_string()))
     }
 
     fn open() -> Action {
@@ -352,10 +357,10 @@ mod explore_page {
         let host = host(pages.path());
         let address_file = pages.path().join("address_file");
         let addresses = read_pipe(&address_file);
-        let opener = opener(pages.path(), &address_file, 0);
-        let fixture = EffectsFixture::start(repository_fixture(RepoType::Git), |setup| {
-            setup.page_opener = Some(opener);
-        });
+        let mut fixture = EffectsFixture::new(RepoType::Git);
+        fixture
+            .effects
+            .open_page_with(opener(&host, pages.path(), &address_file, 0));
 
         fixture.perform([open()]);
 
@@ -363,14 +368,34 @@ mod explore_page {
     }
 
     #[test]
+    fn the_pane_opens_its_own_page_when_a_later_reviewer_of_its_tab_holds_the_record() {
+        let pages = tempfile::tempdir().unwrap();
+        let own = host(pages.path());
+        // Another reviewer started in the same tab, by hand or from a pane moved there.
+        let later = host(pages.path());
+        let address_file = pages.path().join("address_file");
+        let addresses = read_pipe(&address_file);
+        let mut fixture = EffectsFixture::new(RepoType::Git);
+        fixture
+            .effects
+            .open_page_with(opener(&own, pages.path(), &address_file, 0));
+
+        fixture.perform([open()]);
+
+        let opened = addresses.recv_timeout(GUARD).unwrap();
+        assert_eq!(opened, own.url());
+        assert_ne!(opened, later.url());
+    }
+
+    #[test]
     fn a_browser_that_fails_tells_the_pane_why_with_the_address() {
         let pages = tempfile::tempdir().unwrap();
         let host = host(pages.path());
         let address_file = pages.path().join("address_file");
-        let opener = opener(pages.path(), &address_file, 3);
-        let mut fixture = EffectsFixture::start(repository_fixture(RepoType::Git), |setup| {
-            setup.page_opener = Some(opener);
-        });
+        let mut fixture = EffectsFixture::new(RepoType::Git);
+        fixture
+            .effects
+            .open_page_with(opener(&host, pages.path(), &address_file, 3));
 
         fixture.perform([open()]);
 
@@ -380,19 +405,14 @@ mod explore_page {
     }
 
     #[test]
-    fn without_an_opener_nothing_opens_and_nothing_fails() {
+    fn without_a_served_page_opening_it_tells_the_pane_why() {
         let mut fixture = EffectsFixture::new(RepoType::Git);
 
-        // Without an opener, opening starts no thread that could fail later: what it says,
-        // it says before `perform` returns.
         fixture.perform([open()]);
 
-        assert!(
-            fixture
-                .drain_events()
-                .iter()
-                .all(|event| event.downcast_ref::<ExplorePageNotOpened>().is_none())
-        );
+        let ExplorePageNotOpened(failure) = fixture.wait_for::<ExplorePageNotOpened>();
+        assert_eq!(failure.url, None);
+        assert!(failure.reason.contains("not served"), "{}", failure.reason);
     }
 
     /// Network access on the loopback interface, which stands in for a network interface.
@@ -564,7 +584,7 @@ mod explore_page {
         let host = PageHost::start(
             PageRound::new(round.subscribe(), commands),
             &PageDirectory::new(pages.path()),
-            &WorkspaceId("w1".into()),
+            &place(),
             Path::new("/repositories/drafts"),
         )
         .unwrap();

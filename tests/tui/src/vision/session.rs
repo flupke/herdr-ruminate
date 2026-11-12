@@ -57,7 +57,7 @@ struct Terminals {
 }
 
 pub(crate) struct Session {
-    /// The "reviewer vision" space, which the reviewer's Explore page is the page of.
+    /// The "reviewer vision" space, where the reviewer runs.
     space: String,
     terminals: Terminals,
     /// What the fake agent and its forks report.
@@ -352,7 +352,10 @@ impl Session {
     pub(crate) fn explore_page(&self, vision: &Vision) -> Result<String> {
         let sandbox = vision.sandbox();
         let action = sandbox.command(&self.reviewer_program.with_file_name("reviewer-control"));
-        let page = self.scratch.open_explore_page(action, &self.space)?;
+        let listed = sandbox.herdr_app(&["ls"]).map_err(from_eyre)?;
+        let tab = tab_of(&listed, &self.terminals.reviewer)
+            .ok_or_else(|| anyhow!("the app lists no tab of the reviewer"))?;
+        let page = self.scratch.open_explore_page(action, &self.space, tab)?;
         sandbox.forward(loopback_port(&page)?).map_err(from_eyre)?;
         Ok(page)
     }
@@ -555,16 +558,33 @@ fn do_command(vision: &Vision, command: &str, arguments: &Value) -> Result<Value
         .map_err(from_eyre)
 }
 
-/// The entry of the terminal `address` in `herdr-app ls`.
-fn terminal_entry<'a>(listed: &'a Value, address: &str) -> Option<&'a Value> {
+/// The tabs of every space in `herdr-app ls`.
+fn listed_tabs(listed: &Value) -> impl Iterator<Item = &Value> {
     listed["spaces"]
-        .as_array()?
-        .iter()
+        .as_array()
+        .into_iter()
+        .flatten()
         .filter_map(|space| space["tabs"].as_array())
         .flatten()
-        .filter_map(|tab| tab["terminals"].as_array())
-        .flatten()
+}
+
+/// The terminals that `tab`, an entry of `herdr-app ls`, shows.
+fn tab_terminals(tab: &Value) -> impl Iterator<Item = &Value> {
+    tab["terminals"].as_array().into_iter().flatten()
+}
+
+/// The entry of the terminal `address` in `herdr-app ls`.
+fn terminal_entry<'a>(listed: &'a Value, address: &str) -> Option<&'a Value> {
+    listed_tabs(listed)
+        .flat_map(tab_terminals)
         .find(|terminal| terminal["terminal"] == address)
+}
+
+/// The ID of the tab that shows the terminal `address` in `herdr-app ls`.
+fn tab_of<'a>(listed: &'a Value, address: &str) -> Option<&'a str> {
+    listed_tabs(listed)
+        .find(|tab| tab_terminals(tab).any(|terminal| terminal["terminal"] == address))?["id"]
+        .as_str()
 }
 
 /// Wait until `herdr-app ls` satisfies `holds`.

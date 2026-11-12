@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use fake_agent::{Directory, variables};
-use herdr_client::protocol::{PluginContext, WorkspaceId};
+use herdr_client::protocol::{PluginContext, TabId, WorkspaceId};
 use review_explore_page_settings::ExplorePageSettings;
 use review_repository::repository::RepoType;
 use review_test_support::{
@@ -296,13 +296,14 @@ impl Scratch {
     }
 
     /// Run the Herdr action that opens the Explore page, as Herdr would run it in the reviewer's
-    /// space `space`, with a browser that records the address it opens: `action` runs
-    /// `reviewer-control` in the sandbox, where the action checks that the page answers. Returns
-    /// that address, with its token.
+    /// tab `tab` of its space `space`, with a browser that records the address it opens:
+    /// `action` runs `reviewer-control` in the sandbox, where the action checks that the page
+    /// answers. Returns that address, with its token.
     pub(crate) fn open_explore_page(
         &self,
         mut action: std::process::Command,
         space: &str,
+        tab: &str,
     ) -> Result<String> {
         let opened = self.directory.join("explore-page-url");
         let _ = fs::remove_file(&opened);
@@ -313,7 +314,7 @@ impl Scratch {
         )?;
         let context = PluginContext {
             workspace_id: Some(WorkspaceId(space.to_owned())),
-            tab_id: None,
+            tab_id: Some(TabId(tab.to_owned())),
             focused_pane_id: None,
             focused_pane_cwd: Some(self.root().to_owned()),
         };

@@ -13,8 +13,8 @@ losing writes. The decision and its alternatives are in
   `~/.local/state/herdr/plugins/herdr.progressive-reviewer`, and leaves a link to it in its
   place ([ADR 0015](../adr/0015-move-the-state-off-herdr-s-plugin-folder-and-link-it-back.md)).
   Backups taken before stay in `herdr.progressive-reviewer.backups/`, which `migration.json`
-  names. `settings.json`, `explore-page/`, `git/` and `run-ahead.log` there stay global or per
-  workspace; everything about reviews is in `repositories/<parent worktree>-<16 hex>/`, one
+  names. `settings.json`, `git/` and `run-ahead.log` there stay global or per workspace, and
+  `explore-page/` holds a record per tab; everything about reviews is in `repositories/<parent worktree>-<16 hex>/`, one
   folder per repository, whose `repository.json` names the jj store or Git common directory.
 - `cat repositories/*/repository.json` tells which folder is which repository.
 

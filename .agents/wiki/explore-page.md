@@ -128,11 +128,17 @@ The list stays open only from 89rem, where the page makes room for the column; b
 lies over the page, so the list closes as the page goes to another screen or round.
 
 The reviewer records the page's address, readable only by the user, under
-`explore-page/` of the state root, one record per Herdr workspace. The
-Herdr action `explore-page` (`reviewer-control explore-page`) reads the record
-of its workspace, checks that the page answers, and opens it with `$BROWSER`,
-`xdg-open` or `open`. The record keeps the page's token and the review it shows after
-the reviewer closes: a reviewer of the same review that starts again in the workspace
+`explore-page/` of the state root, one record per tab of a Herdr workspace (`PanePlace`):
+a tab holds one review pane (herdr-app's launcher and Herdr's actions toggle it), while a
+workspace, herdr-app's space, often holds one in each tab, and a record per workspace would
+give every pane of the space the page of the reviewer that started last. The Herdr action
+`explore-page` (`reviewer-control explore-page`) reads the record of its tab, checks that the
+page answers, and opens it with `$BROWSER`, `xdg-open` or `open`. The pane's Start, Open the
+Explore page and Past rounds read no record: they open the address of the page its own
+reviewer serves (`PageHost::opener`), so a second reviewer in the tab, started by hand or
+from a pane moved there under Herdr, whose `HERDR_TAB_ID` does not follow the move, cannot
+take it. The record keeps the page's token and the review it shows after
+the reviewer closes: a reviewer of the same review that starts again in the tab
 serves the page at the same address with the same token, when its port is free, so that a
 page left open reconnects to it.
 

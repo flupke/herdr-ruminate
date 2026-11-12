@@ -61,7 +61,6 @@ impl EffectsFixture {
             turns: None,
             source_watches: None,
             page: review_explore_page::RoundPublisher::default(),
-            page_opener: None,
             page_threads: std::sync::Arc::default(),
             hook_directory: None,
             run_ahead: RunAheadSetup {
@@ -130,11 +129,6 @@ impl EffectsFixture {
     /// The next event, or `None` after `timeout`.
     pub(in crate::runtime) fn recv_timeout(&mut self, timeout: Duration) -> Option<EventEnvelope> {
         self.inbox.recv_within(timeout)
-    }
-
-    /// Every event already delivered.
-    pub(in crate::runtime) fn drain_events(&mut self) -> Vec<EventEnvelope> {
-        std::iter::from_fn(|| self.inbox.try_recv()).collect()
     }
 
     pub(in crate::runtime) fn next_event(&mut self) -> EventEnvelope {
