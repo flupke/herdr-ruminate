@@ -97,6 +97,56 @@ fn deleted_file_diff_includes_the_reviewed_content(repository_type: RepoType) {
 
 #[test_case(RepoType::Git; "git")]
 #[test_case(RepoType::Jj; "jj")]
+fn every_line_of_a_deleted_file_marked_reads_back_reviewed(repository_type: RepoType) {
+    let fixture = review_fixture(repository_type, b"after\n");
+    fixture.repository_files.remove("reviewed.txt");
+    let deleted = complete_repository_snapshot(&fixture.repository);
+    let file = &deleted.files[0];
+    assert_eq!(file.new_path, None);
+    let before = fixture.tracker.lines(&deleted, file).unwrap();
+
+    fixture
+        .tracker
+        .accept_lines(&deleted, file, &before.open_selection(), &MarkAuthor::Jev)
+        .unwrap();
+
+    let after = fixture.tracker.lines(&deleted, file).unwrap();
+    assert_eq!(after.open, []);
+    assert_eq!(
+        after.reviewed.removed,
+        [(0, MarkAuthor::Jev)].into_iter().collect()
+    );
+    assert_eq!(
+        fixture.tracker.status(&deleted, file).unwrap().status,
+        ReviewStatus::Reviewed
+    );
+    let loaded = fixture.tracker.diff(&deleted, file).unwrap();
+    assert_eq!(loaded.old_content, None);
+}
+
+#[test_case(RepoType::Git; "git")]
+#[test_case(RepoType::Jj; "jj")]
+fn a_deleted_file_marked_whole_reads_back_reviewed(repository_type: RepoType) {
+    let fixture = review_fixture(repository_type, b"after\n");
+    fixture.repository_files.remove("reviewed.txt");
+    let deleted = complete_repository_snapshot(&fixture.repository);
+    let file = &deleted.files[0];
+
+    fixture
+        .tracker
+        .mark(&deleted, file, &MarkAuthor::Reviewer)
+        .unwrap();
+
+    let lines = fixture.tracker.lines(&deleted, file).unwrap();
+    assert_eq!(lines.open, []);
+    assert_eq!(
+        lines.reviewed.removed,
+        [(0, MarkAuthor::Reviewer)].into_iter().collect()
+    );
+}
+
+#[test_case(RepoType::Git; "git")]
+#[test_case(RepoType::Jj; "jj")]
 fn unreview_removes_the_stored_review_mark(repository_type: RepoType) {
     let fixture = review_fixture(repository_type, b"after\n");
     fixture

@@ -210,7 +210,12 @@ impl RepositoryBackend for JjBackend {
         self.reader(repository)?.diff(repository, snapshot, file)
     }
 
-    fn file_at(&self, repository: &Repository, revision: &str, path: &RepoPath) -> Result<Vec<u8>> {
+    fn file_at(
+        &self,
+        repository: &Repository,
+        revision: &str,
+        path: &RepoPath,
+    ) -> Result<Option<Vec<u8>>> {
         self.reader(repository)?.file_at(repository, revision, path)
     }
 

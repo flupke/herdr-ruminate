@@ -112,6 +112,8 @@ These are gaps of herdr-common, for its owner to fill (its issues in brackets); 
 
 - The first screen `start` returns can come before the repository has loaded: `wait_for`
   a file name first.
+- `start`'s `change` only writes files: for a change that deletes one, put it in `base`, then
+  remove it from the repository `start` returns; `wait_for` its name shows the reviewer saw it.
 - While the reviewer has handed the terminal to `$EDITOR`, the editor reads the input and
   the acknowledgement request, and no frame names the request: an action then fails after
   its guard. Quit the editor through its own keys before acting on the reviewer again.

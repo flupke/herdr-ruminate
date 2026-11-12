@@ -329,13 +329,39 @@ impl RepositoryBackend for GitBackend {
         Ok(self.run(repository, arguments)?.stdout)
     }
 
-    fn file_at(&self, repository: &Repository, revision: &str, path: &RepoPath) -> Result<Vec<u8>> {
-        let mut object = OsString::from(revision);
-        object.push(":");
-        object.push(path.as_os_str());
-        Ok(self
-            .run(repository, [OsString::from("show"), object])?
-            .stdout)
+    fn file_at(
+        &self,
+        repository: &Repository,
+        revision: &str,
+        path: &RepoPath,
+    ) -> Result<Option<Vec<u8>>> {
+        let read = self.output(repository, cat_file_blob(revision, path))?;
+        if read.status.success() {
+            return Ok(Some(read.stdout));
+        }
+        // `git cat-file` fails the same way on a missing path, a directory and a broken read:
+        // only the revision's listing of the path tells them apart. A directory where a file
+        // was is no file at `path`, as a deleted one is.
+        let listed = self.run(
+            repository,
+            [
+                OsString::from("--literal-pathspecs"),
+                OsString::from("ls-tree"),
+                OsString::from("--full-tree"),
+                OsString::from("-z"),
+                OsString::from(revision),
+                OsString::from("--"),
+                path.as_os_str().to_owned(),
+            ],
+        )?;
+        let kind = listed.stdout.split(|&byte| byte == b' ').nth(1);
+        if listed.stdout.is_empty() || kind == Some(b"tree") {
+            return Ok(None);
+        }
+        Err(Error::CommandFailed {
+            operation: "read Git repository".to_owned(),
+            code: read.status.code(),
+        })
     }
 
     fn base_file_at(
@@ -344,7 +370,8 @@ impl RepositoryBackend for GitBackend {
         snapshot: &Snapshot,
         path: &RepoPath,
     ) -> Result<Vec<u8>> {
-        self.file_at(repository, snapshot.identity.review_unit().as_str(), path)
+        let read = cat_file_blob(snapshot.identity.review_unit().as_str(), path);
+        Ok(self.run(repository, read)?.stdout)
     }
 
     fn interdiff(
@@ -497,6 +524,15 @@ impl Drop for GitCache {
         lock.push(".lock");
         let _ = std::fs::remove_file(lock);
     }
+}
+
+/// The arguments that read the file at `path` in `revision`: `git cat-file`, unlike `git show`,
+/// takes no pathspec, so a missing path with a wildcard fails instead of reading as empty.
+fn cat_file_blob(revision: &str, path: &RepoPath) -> [OsString; 3] {
+    let mut object = OsString::from(revision);
+    object.push(":");
+    object.push(path.as_os_str());
+    [OsString::from("cat-file"), OsString::from("blob"), object]
 }
 
 #[cfg(test)]

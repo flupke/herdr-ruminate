@@ -82,15 +82,21 @@ impl JjReader {
         repository: &Repository,
         revision: &str,
         path: &RepoPath,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Option<Vec<u8>>> {
         block_on(async {
             Self::check_cancelled(repository)?;
             let commit = self.commit(revision).await?;
-            let part = self.part(repository, &commit.tree(), Some(path)).await?;
-            if part.mode.is_none() {
-                return Err(Self::error("read missing file"));
+            let tree = commit.tree();
+            // A directory where a file was is no file at `path`, as a deleted one is.
+            let value = tree
+                .path_value(Self::jj_path(path)?)
+                .await
+                .map_err(|_| Self::error("read tree path"))?;
+            if value.is_tree() {
+                return Ok(None);
             }
-            Ok(part.content.contents.to_vec())
+            let part = self.part(repository, &tree, Some(path)).await?;
+            Ok(part.mode.is_some().then(|| part.content.contents.to_vec()))
         })
     }
 
@@ -200,8 +206,7 @@ impl JjReader {
             .await
             .map_err(|_| Self::error("read absent file"));
         };
-        let path = std::str::from_utf8(path.as_bytes()).map_err(|_| Self::error("decode path"))?;
-        let path = JjPath::from_internal_string(path).map_err(|_| Self::error("parse path"))?;
+        let path = Self::jj_path(path)?;
         let value = tree
             .path_value(path)
             .await
@@ -222,6 +227,11 @@ impl JjReader {
         Self::check_cancelled(repository)?;
         Self::check_size(repository, part.content.contents.len())?;
         Ok(part)
+    }
+
+    fn jj_path(path: &RepoPath) -> Result<&JjPath> {
+        let path = std::str::from_utf8(path.as_bytes()).map_err(|_| Self::error("decode path"))?;
+        JjPath::from_internal_string(path).map_err(|_| Self::error("parse path"))
     }
 
     fn check_cancelled(repository: &Repository) -> Result<()> {

@@ -761,9 +761,10 @@ impl ReviewTracker {
         if kind != FileKind::File {
             return Ok(None);
         }
-        path.map(|path| self.repository.file_at(revision, path))
-            .transpose()
-            .map_err(Into::into)
+        let Some(path) = path else {
+            return Ok(None);
+        };
+        Ok(self.repository.file_at(revision, path)?)
     }
 
     fn base_file_content(

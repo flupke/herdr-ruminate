@@ -453,7 +453,10 @@ impl Comparison {
         path: &RepoPath,
     ) -> Option<Vec<u8>> {
         match side {
-            SourceSide::New => repository.file_at(&self.checkpoint.checkpoint, path).ok(),
+            SourceSide::New => repository
+                .file_at(&self.checkpoint.checkpoint, path)
+                .ok()
+                .flatten(),
             SourceSide::Old => {
                 let snapshot = Snapshot {
                     identity: self.base.clone()?,

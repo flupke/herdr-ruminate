@@ -1,5 +1,7 @@
 use review_repository::diff::{DiffRow, NoticeKind, parse_file_diff};
-use review_repository::repository::{ChangeKind, FileKind, Interdiff, RepoType, Repository};
+use review_repository::repository::{
+    ChangeKind, FileKind, Interdiff, RepoPath, RepoType, Repository,
+};
 use review_test_support::{
     ReviewRepositoryFixture, complete_repository_snapshot, repository_fixture,
 };

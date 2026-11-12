@@ -74,7 +74,7 @@ impl LibraryComparison {
                 self.repository
                     .file_at(snapshot.identity.snapshot_id(), path)
                     .unwrap(),
-                expected
+                Some(expected)
             );
         }
     }
@@ -110,7 +110,7 @@ fn library_reads_match_cli_with_configured_context_and_special_file_changes(layo
     for file in &snapshot.files {
         comparison.assert_diff_matches_cli(&snapshot, file);
     }
-    assert!(
+    assert_eq!(
         comparison
             .repository
             .file_at(
@@ -122,7 +122,8 @@ fn library_reads_match_cli_with_configured_context_and_special_file_changes(layo
                     .unwrap()
                     .review_path()
             )
-            .is_err()
+            .unwrap(),
+        None
     );
     fixture.write("added.txt", b"written after the library was opened\n");
     let newer = complete_repository_snapshot(&comparison.repository);

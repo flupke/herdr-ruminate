@@ -545,7 +545,12 @@ trait RepositoryBackend: std::fmt::Debug + Send + Sync {
         snapshot: &Snapshot,
         file: &ChangedFile,
     ) -> Result<Vec<u8>>;
-    fn file_at(&self, repository: &Repository, revision: &str, path: &RepoPath) -> Result<Vec<u8>>;
+    fn file_at(
+        &self,
+        repository: &Repository,
+        revision: &str,
+        path: &RepoPath,
+    ) -> Result<Option<Vec<u8>>>;
     fn base_file_at(
         &self,
         repository: &Repository,
@@ -772,8 +777,9 @@ impl Repository {
         self.backend.diff(self, snapshot, file)
     }
 
-    /// Read one file at an exact revision.
-    pub fn file_at(&self, revision: &str, path: &RepoPath) -> Result<Vec<u8>> {
+    /// Read one file at an exact revision, or `None` when the revision has no entry at `path`:
+    /// a file it deletes or never had.
+    pub fn file_at(&self, revision: &str, path: &RepoPath) -> Result<Option<Vec<u8>>> {
         self.backend.file_at(self, revision, path)
     }
 
