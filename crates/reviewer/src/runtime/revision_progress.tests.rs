@@ -128,7 +128,7 @@ fn revisions_come_nearest_to_the_current_one_first_without_immutable_or_graph_ro
     let mut progress = HistoryProgress::default();
     assert!(
         progress
-            .start(RevisionHistoryLoadId::new(1), &lines, &store)
+            .start(RevisionHistoryLoadId::new(1), &lines, &store, &|_, _| false)
             .queue
     );
     assert_eq!(drain(&mut progress), ["current", "below", "above", "top"]);
@@ -141,11 +141,11 @@ fn one_command_is_queued_at_a_time_until_none_is_left() {
     let mut progress = HistoryProgress::default();
     assert!(
         progress
-            .start(RevisionHistoryLoadId::new(1), &lines, &store)
+            .start(RevisionHistoryLoadId::new(1), &lines, &store, &|_, _| false)
             .queue
     );
     // A second history while the command is queued queues no other.
-    let second = progress.start(RevisionHistoryLoadId::new(2), &lines, &store);
+    let second = progress.start(RevisionHistoryLoadId::new(2), &lines, &store, &|_, _| false);
     assert!(!second.queue);
     let (load_id, first) = progress.next().unwrap();
     assert_eq!(
@@ -167,6 +167,7 @@ fn a_history_without_revisions_to_compute_queues_nothing() {
         RevisionHistoryLoadId::new(1),
         &[line("trunk", true, true)],
         &store,
+        &|_, _| false,
     );
     assert!(!started.queue);
     assert!(progress.next().is_none());
@@ -178,7 +179,7 @@ fn every_revision_of_a_long_history_gets_its_share() {
     let mut lines = vec![line("current", true, false)];
     lines.extend((0..60).map(|row| line(&format!("below-{row}"), false, false)));
     let mut progress = HistoryProgress::default();
-    progress.start(RevisionHistoryLoadId::new(1), &lines, &store);
+    progress.start(RevisionHistoryLoadId::new(1), &lines, &store, &|_, _| false);
 
     let revisions = drain(&mut progress);
 
@@ -204,6 +205,7 @@ fn a_share_stays_known_while_its_commit_and_marks_are_the_same() {
         RevisionHistoryLoadId::new(1),
         &[reviewed.line(&reviewed.commit)],
         &reviewed.store,
+        &|_, _| false,
     );
 
     let known = again
@@ -222,7 +224,12 @@ fn a_share_stays_known_for_the_row_jj_log_gives_its_revision() {
     reviewed.compute(&mut progress);
     let history = reviewed.repository.revision_history().unwrap();
 
-    let again = progress.start(RevisionHistoryLoadId::new(1), &history, &reviewed.store);
+    let again = progress.start(
+        RevisionHistoryLoadId::new(1),
+        &history,
+        &reviewed.store,
+        &|_, _| false,
+    );
 
     assert!(
         again
@@ -243,6 +250,7 @@ fn a_share_is_computed_again_once_the_commit_or_the_marks_change() {
         RevisionHistoryLoadId::new(1),
         &[reviewed.line("another-commit")],
         &reviewed.store,
+        &|_, _| false,
     );
     assert!(rewritten.known.is_empty() && rewritten.queue);
 
@@ -257,10 +265,27 @@ fn a_share_is_computed_again_once_the_commit_or_the_marks_change() {
         RevisionHistoryLoadId::new(2),
         &[reviewed.line(&reviewed.commit)],
         &reviewed.store,
+        &|_, _| false,
     );
     assert!(unmarked.known.is_empty() && unmarked.queue);
     progress.next();
     assert_eq!(reviewed.compute(&mut progress), Some(0));
+}
+
+#[test]
+fn a_share_is_computed_again_while_the_revision_would_take_marks() {
+    let reviewed = Reviewed::new();
+    let mut progress = HistoryProgress::default();
+    reviewed.compute(&mut progress);
+
+    let taking = progress.start(
+        RevisionHistoryLoadId::new(1),
+        &[reviewed.line(&reviewed.commit)],
+        &reviewed.store,
+        &|change, commit| change == &reviewed.review && commit.as_str() == reviewed.commit,
+    );
+
+    assert!(taking.known.is_empty() && taking.queue);
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -375,6 +376,89 @@ impl ReviewStore {
             }
         }
         Ok(copy)
+    }
+
+    /// Whether `review_unit` has a review mark.
+    pub fn has_marks(&self, review_unit: &ReviewUnit) -> Result<bool> {
+        ReviewUnitKey::validate(review_unit)?;
+        Ok(!self.record_files(review_unit)?.is_empty())
+    }
+
+    /// Give `review_unit`, when it never had a review mark, the marks of `origins`: each path
+    /// that exactly one of them marked takes that mark, the same but for its review. A path that
+    /// several of them marked takes none, since their marks disagree. `lock` is the marks lock
+    /// of `review_unit`. Returns whether a path took a mark.
+    pub fn take_marks(
+        &self,
+        _lock: &MarksLock,
+        review_unit: &ReviewUnit,
+        origins: &[ReviewUnit],
+    ) -> Result<bool> {
+        ReviewUnitKey::validate(review_unit)?;
+        if self.marks_stamp(review_unit)?.is_some() || self.has_marks(review_unit)? {
+            return Ok(false);
+        }
+        let mut marks = BTreeMap::<Vec<u8>, Vec<ReviewRecord>>::new();
+        for origin in origins {
+            ReviewUnitKey::validate(origin)?;
+            for file in self.record_files(origin)? {
+                let path = Self::read_stored(&file)?
+                    .and_then(|stored| stored.decode_path())
+                    .filter(|path| {
+                        StatePath::validate(path).is_ok() && file == self.record_path(origin, path)
+                    });
+                // `load` checks the mark as every read of it does.
+                if let Some(path) = path
+                    && let LoadResult::Reviewed(record) = self.load(origin, &path)?
+                {
+                    marks.entry(path).or_default().push(record);
+                }
+            }
+        }
+        let mut taken = false;
+        for records in marks.into_values() {
+            if let Ok([record]) = <[ReviewRecord; 1]>::try_from(records) {
+                self.write_record(review_unit, &record)?;
+                taken = true;
+            }
+        }
+        if taken {
+            self.stamp_marks(review_unit)?;
+        }
+        Ok(taken)
+    }
+
+    /// The record files of the marks of `review_unit`.
+    fn record_files(&self, review_unit: &ReviewUnit) -> Result<Vec<PathBuf>> {
+        let directory = self.record_directory(review_unit);
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(source) => {
+                return Err(Error::StateIo {
+                    operation: "read review marks",
+                    path: directory,
+                    source,
+                });
+            }
+        };
+        let mut files = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|source| Error::StateIo {
+                operation: "read review marks",
+                path: directory.clone(),
+                source,
+            })?;
+            let path = entry.path();
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+                && entry.file_type().is_ok_and(|kind| kind.is_file())
+            {
+                files.push(path);
+            }
+        }
+        Ok(files)
     }
 
     /// A value that changes each time the marks of `review_unit` change, from any process: what

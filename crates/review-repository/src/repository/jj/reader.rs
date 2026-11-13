@@ -1,6 +1,9 @@
 //! In-process reads of pinned jj commits; workspace mutations remain with the CLI.
 
-use futures::{AsyncReadExt, executor::block_on};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use futures::{AsyncReadExt, TryStreamExt, executor::block_on};
 use jj_lib::backend::CommitId;
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
@@ -11,14 +14,18 @@ use jj_lib::default_backend_factories::{
     default_backend_factories, default_working_copy_factories,
 };
 use jj_lib::diff_presentation::unified::{GitDiffPart, git_diff_part};
+use jj_lib::evolution::{CommitEvolutionEntry, walk_predecessors};
 use jj_lib::merged_tree::MergedTree;
-use jj_lib::repo::RepoLoader;
+use jj_lib::object_id::ObjectId as _;
+use jj_lib::repo::{ReadonlyRepo, RepoLoader};
 use jj_lib::repo_path::RepoPath as JjPath;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
 use super::patch::GitPatch;
-use crate::repository::{COMMAND_OUTPUT_LIMIT, ChangedFile, RepoPath, Repository, Snapshot};
+use crate::repository::{
+    COMMAND_OUTPUT_LIMIT, ChangeEvolution, ChangeId, ChangedFile, RepoPath, Repository, Snapshot,
+};
 use crate::{Error, Result};
 
 pub(super) struct JjReader {
@@ -160,34 +167,64 @@ impl JjReader {
                 .await
                 .map(|commit| commit.tree())
                 .map_err(|_| Self::error("read parent commit")),
-            _ => {
-                // Loading a specific operation avoids load_at_head(), which may
-                // reconcile concurrent operations and write repository state.
-                let heads = self
-                    .loader
-                    .op_heads_store()
-                    .get_op_heads()
-                    .await
-                    .map_err(|_| Self::error("read operation heads"))?;
-                let [head] = heads.as_slice() else {
-                    return Err(Self::error("read concurrent operation heads"));
-                };
-                let operation = self
-                    .loader
-                    .load_operation(head)
-                    .await
-                    .map_err(|_| Self::error("read operation"))?;
-                let repo = self
-                    .loader
-                    .load_at(&operation)
-                    .await
-                    .map_err(|_| Self::error("load operation"))?;
-                commit
-                    .parent_tree(repo.as_ref())
-                    .await
-                    .map_err(|_| Self::error("merge parent trees"))
-            }
+            _ => commit
+                .parent_tree(self.head_repo().await?.as_ref())
+                .await
+                .map_err(|_| Self::error("merge parent trees")),
         }
+    }
+
+    /// The repository at its single operation head. Loading a specific operation avoids
+    /// `load_at_head()`, which may reconcile concurrent operations and write repository state.
+    async fn head_repo(&self) -> Result<Arc<ReadonlyRepo>> {
+        let heads = self
+            .loader
+            .op_heads_store()
+            .get_op_heads()
+            .await
+            .map_err(|_| Self::error("read operation heads"))?;
+        let [head] = heads.as_slice() else {
+            return Err(Self::error("read concurrent operation heads"));
+        };
+        let operation = self
+            .loader
+            .load_operation(head)
+            .await
+            .map_err(|_| Self::error("read operation"))?;
+        self.loader
+            .load_at(&operation)
+            .await
+            .map_err(|_| Self::error("load operation"))
+    }
+
+    /// The evolution of the commit `revision`, by the predecessors jj recorded for each commit.
+    /// A line ends at a commit whose evolution `known` gives, which it adds, or at a commit with
+    /// no predecessor.
+    pub(super) fn evolution(
+        &self,
+        repository: &Repository,
+        revision: &str,
+        known: &dyn Fn(&str) -> Option<Arc<ChangeEvolution>>,
+    ) -> Result<ChangeEvolution> {
+        block_on(async {
+            Self::check_cancelled(repository)?;
+            let start = self.commit(revision).await?;
+            let repo = self.head_repo().await?;
+            let mut predecessors = std::pin::pin!(walk_predecessors(&repo, &[start.id().clone()]));
+            let mut walk = EvolutionWalk::new(&start);
+            while !walk.pending.is_empty() {
+                let Some(entry) = predecessors
+                    .try_next()
+                    .await
+                    .map_err(|_| Self::error("read commit evolution"))?
+                else {
+                    break;
+                };
+                Self::check_cancelled(repository)?;
+                walk.visit(&entry, known);
+            }
+            Ok(walk.evolution)
+        })
     }
 
     async fn part(
@@ -256,5 +293,58 @@ impl JjReader {
 
     fn error(operation: &'static str) -> Error {
         Error::JjLibrary { operation }
+    }
+}
+
+/// The walk of [`JjReader::evolution`], one commit at a time.
+struct EvolutionWalk<'a> {
+    start: &'a Commit,
+    /// The commits whose entry is still to come, each with the changes of the lines that
+    /// reached it.
+    pending: HashMap<CommitId, Vec<ChangeId>>,
+    evolution: ChangeEvolution,
+}
+
+impl<'a> EvolutionWalk<'a> {
+    fn new(start: &'a Commit) -> Self {
+        let change = Self::change(start);
+        Self {
+            start,
+            pending: HashMap::from([(start.id().clone(), vec![change.clone()])]),
+            evolution: ChangeEvolution::of(change),
+        }
+    }
+
+    /// Record the change of `entry` on the lines that reached it, and follow them to its
+    /// predecessors, unless its evolution is known.
+    fn visit(
+        &mut self,
+        entry: &CommitEvolutionEntry,
+        known: &dyn Fn(&str) -> Option<Arc<ChangeEvolution>>,
+    ) {
+        let commit = &entry.commit;
+        let Some(above) = self.pending.remove(commit.id()) else {
+            return;
+        };
+        let change = Self::change(commit);
+        for line in &above {
+            self.evolution.add(line, &change);
+        }
+        if commit.id() != self.start.id()
+            && let Some(known) = known(&commit.id().hex())
+        {
+            self.evolution.extend(&known);
+            return;
+        }
+        for predecessor in entry.predecessor_ids() {
+            let lines = self.pending.entry(predecessor.clone()).or_default();
+            if !lines.contains(&change) {
+                lines.push(change.clone());
+            }
+        }
+    }
+
+    fn change(commit: &Commit) -> ChangeId {
+        ChangeId::from(commit.change_id().reverse_hex())
     }
 }

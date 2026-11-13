@@ -1,10 +1,12 @@
 //! Review state derived from stored repository baselines.
 
+#[path = "carried_marks.rs"]
+mod carried_marks;
 #[path = "diff_cache.rs"]
 mod diff_cache;
 
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use diff_cache::DiffCache;
 use review_hunks::{
@@ -209,6 +211,10 @@ pub struct ReviewTracker {
     repository: Repository,
     store: ReviewStore,
     diffs: Mutex<DiffCache>,
+    /// The evolutions of the commits read so far, which a copy of the tracker shares.
+    evolutions: Arc<carried_marks::Evolutions>,
+    /// The searches for origins that took no mark.
+    fruitless: carried_marks::Fruitless,
 }
 
 impl ReviewTracker {
@@ -218,16 +224,21 @@ impl ReviewTracker {
             repository,
             store,
             diffs: Mutex::new(DiffCache::default()),
+            evolutions: Arc::default(),
+            fruitless: carried_marks::Fruitless::default(),
         }
     }
 
     /// A tracker of the same repository over a copy of the review marks of `review_unit`, kept
     /// under `state_root`: what it marks changes no mark of this tracker.
     pub fn copy_into(&self, review_unit: &ReviewUnit, state_root: &Path) -> eyre::Result<Self> {
-        Ok(Self::new(
-            self.repository.clone(),
-            self.store.copy_marks_to(review_unit, state_root)?,
-        ))
+        Ok(Self {
+            evolutions: Arc::clone(&self.evolutions),
+            ..Self::new(
+                self.repository.clone(),
+                self.store.copy_marks_to(review_unit, state_root)?,
+            )
+        })
     }
 
     /// Mark one path at the current exact commit.
@@ -256,8 +267,10 @@ impl ReviewTracker {
         Ok(self.compare(snapshot, file)?.state(file))
     }
 
-    /// Derive all path states with comparisons grouped by stored baseline.
+    /// Derive all path states with comparisons grouped by stored baseline. A change that never
+    /// had a review mark first takes those of the changes jj made it from.
     pub fn statuses(&self, snapshot: &Snapshot) -> eyre::Result<Vec<ReviewState>> {
+        self.take_origin_marks(snapshot);
         let review_unit = snapshot.identity.review_unit();
         let mut plan = BaselineComparisonPlan::default();
         let mut planned_states = Vec::with_capacity(snapshot.files.len());

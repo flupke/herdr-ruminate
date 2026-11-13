@@ -1,8 +1,9 @@
 # Review state
 
 Where a repository's review state lives, how the states that each workspace kept before are
-merged into it, the backup taken first, and the locks that keep concurrent reviewers from
-losing writes. The decision and its alternatives are in
+merged into it, the backup taken first, how marks follow a rewrite that gives the code a new
+change ID, and the locks that keep concurrent reviewers from losing writes. The decision to
+share the state, and its alternatives, are in
 [ADR 0013](../adr/0013-share-review-state-across-the-workspaces-of-a-repository.md).
 
 ## Where it lives
@@ -45,6 +46,40 @@ losing writes. The decision and its alternatives are in
   `cp -a <backup>/. <state root>/` and remove the copied `RESTORE.md`.
 - A failed copy merges nothing; the pane shows "Could not back up the review state; nothing
   was merged" and works on the shared state as it is. The next open tries again.
+
+## Marks across a new change ID
+
+The decision and its alternatives are in
+[ADR 0018](../adr/0018-carry-review-marks-along-jj-s-record-of-predecessors.md).
+
+- A review's marks live under its change ID. jj gives a new one to the copy a `jj duplicate`
+  makes and to the second half of a `jj split`, and a `jj squash` puts other changes' code in
+  the destination. So a change that never had a mark (no `marks-stamp`, no record) takes
+  the marks of its origins at each `statuses` of it, until it has marks. Its origins are the
+  nearest change with marks on each line of its evolution, which is jj's record of each
+  commit's predecessors (`jj evolog`, jj-lib's `walk_predecessors`). The walk goes past a
+  change that never had marks, and a line ends at one whose marks were cleared. A path that
+  several origins marked takes none. Each record keeps its baseline commit or partial base, so
+  the lines rewritten since show as changed since review (`review-state/src/carried_marks.rs`,
+  `ReviewStore::take_marks`).
+- jj 0.45 and 0.47 record a duplicate's source as its predecessor, and a split's second half
+  and a squash's destination keep their sources as predecessors (checked with `jj evolog`).
+- A change whose marks were all cleared keeps its `marks-stamp`, and takes nothing again. The
+  stamp's write is not synced to disk, so a crash right after a clear can lose it.
+- A commit's evolution never changes. Each process keeps the evolution of each commit it read
+  (`Evolutions`, shared with Explore's copy of the tracker), and the walk of a later commit
+  ends where it reaches one of them. So each snapshot of a working copy no one has reviewed
+  costs one step. Which changes have marks is read again each time, so a copy read before its
+  origin was reviewed takes the marks made since. The revision selector computes a share
+  again while its revision would take marks (`ReviewTracker::would_take_marks`). A search
+  whose origins all disagree takes nothing, and is not run again until one of their stamps
+  changes.
+- A walk reads the operation log back to the creation of the oldest change on its lines:
+  `jj evolog` takes about 7 µs per operation, measured on a scratch repository of 3,000
+  operations. It runs on the worker thread, once per commit.
+- The search is best effort. One that fails, such as while jj has two operation heads,
+  leaves the change unmarked, and `statuses` goes on. The next read searches again. A write
+  that fails partway leaves the marks it wrote, which the change then keeps as its own.
 
 ## Concurrent reviewers
 

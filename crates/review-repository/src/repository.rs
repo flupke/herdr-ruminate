@@ -20,12 +20,14 @@ use crate::{Error, Result};
 use review_types::ReviewUnit;
 
 mod comparison_plan;
+mod evolution;
 mod git;
 mod jj;
 mod watch;
 mod workspaces;
 
 pub use comparison_plan::{BaselineComparison, BaselineComparisonPlan, BaselineComparisonResults};
+pub use evolution::{Candidate, ChangeEvolution};
 pub use watch::{MetadataScope, MetadataWatch, WatchPlan};
 
 const COMMAND_OUTPUT_LIMIT: usize = 256 * 1024 * 1024;
@@ -596,6 +598,12 @@ trait RepositoryBackend: std::fmt::Debug + Send + Sync {
     ) -> Result<Vec<RevisionCandidate>>;
     fn revision_history(&self, repository: &Repository) -> Result<Vec<RevisionHistoryLine>>;
     fn edit_revision(&self, repository: &Repository, change_id: &ChangeId) -> Result<bool>;
+    fn evolution(
+        &self,
+        repository: &Repository,
+        identity: &SnapshotIdentity,
+        known: &dyn Fn(&str) -> Option<Arc<ChangeEvolution>>,
+    ) -> Result<ChangeEvolution>;
 }
 
 /// The repository implementation selected during discovery.
@@ -793,6 +801,17 @@ impl Repository {
     /// Snapshot and read the current change identity.
     pub fn current_identity(&self) -> Result<SnapshotIdentity> {
         self.backend.current_identity(self)
+    }
+
+    /// The evolution of the commit of `identity`, by jj's record of the predecessors of each
+    /// commit. A line ends at a commit whose evolution `known` gives, by its commit ID. A Git
+    /// working tree was made from no other change.
+    pub fn evolution(
+        &self,
+        identity: &SnapshotIdentity,
+        known: &dyn Fn(&str) -> Option<Arc<ChangeEvolution>>,
+    ) -> Result<ChangeEvolution> {
+        self.backend.evolution(self, identity, known)
     }
 
     /// Read and parse the full Git-style diff for one changed file.

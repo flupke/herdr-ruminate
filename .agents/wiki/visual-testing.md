@@ -114,6 +114,11 @@ These are gaps of herdr-common, for its owner to fill (its issues in brackets); 
   a file name first.
 - `start`'s `change` only writes files: for a change that deletes one, put it in `base`, then
   remove it from the repository `start` returns; `wait_for` its name shows the reviewer saw it.
+- A jj history (a `jj duplicate`, `split`, `squash` or `abandon` of a reviewed change) runs
+  from your shell in the repository `start` returns: the reviewer follows `@` through jj's
+  operation heads, so `wait_for` the new change ID, and `key` `v` `v` shows each revision's
+  share. Reproduce it first in a unit test over `JjFixture`, as `carried_marks.tests.rs` in
+  `review-state` does: the session shows what the pane makes of it.
 - While the reviewer has handed the terminal to `$EDITOR`, the editor reads the input and
   the acknowledgement request, and no frame names the request: an action then fails after
   its guard. Quit the editor through its own keys before acting on the reviewer again.

@@ -12,10 +12,10 @@ use sha2::{Digest, Sha256};
 
 use super::watch::{MetadataScope, resolve_directory_or_link_file};
 use super::{
-    BaselineComparison, BaselineComparisonPlan, BaselineComparisonResults, Cancellation, ChangeId,
-    ChangedFile, Interdiff, RepoPath, RepoType, Repository, RepositoryBackend, RepositoryProcess,
-    RevisionCandidate, RevisionDirection, RevisionHistoryLine, Snapshot, SnapshotIdentity,
-    WatchPlan, path_from_output, trim_line_ending,
+    BaselineComparison, BaselineComparisonPlan, BaselineComparisonResults, Cancellation,
+    ChangeEvolution, ChangeId, ChangedFile, Interdiff, RepoPath, RepoType, Repository,
+    RepositoryBackend, RepositoryProcess, RevisionCandidate, RevisionDirection,
+    RevisionHistoryLine, Snapshot, SnapshotIdentity, WatchPlan, path_from_output, trim_line_ending,
 };
 use crate::{Error, Result};
 
@@ -472,6 +472,15 @@ impl RepositoryBackend for GitBackend {
 
     fn edit_revision(&self, _repository: &Repository, _change_id: &ChangeId) -> Result<bool> {
         Ok(false)
+    }
+
+    fn evolution(
+        &self,
+        _repository: &Repository,
+        identity: &SnapshotIdentity,
+        _known: &dyn Fn(&str) -> Option<Arc<ChangeEvolution>>,
+    ) -> Result<ChangeEvolution> {
+        Ok(ChangeEvolution::of(ChangeId::from(identity.review_unit())))
     }
 }
 

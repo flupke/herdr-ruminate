@@ -47,6 +47,7 @@ impl HistoryProgress {
         load_id: RevisionHistoryLoadId,
         lines: &[RevisionHistoryLine],
         store: &ReviewStore,
+        would_take_marks: &dyn Fn(&ChangeId, &SnapshotId) -> bool,
     ) -> Started {
         let current = lines.iter().position(|line| line.is_current).unwrap_or(0);
         let mut rows = lines
@@ -67,7 +68,7 @@ impl HistoryProgress {
             let Some(change_id) = line.change_id.clone() else {
                 continue;
             };
-            match self.still_known(&change_id, line.commit_id.as_ref(), store) {
+            match self.still_known(&change_id, line.commit_id.as_ref(), store, would_take_marks) {
                 Some(progress) => known.push((change_id, progress)),
                 None => self.revisions.push_back(change_id),
             }
@@ -78,16 +79,21 @@ impl HistoryProgress {
         }
     }
 
-    /// The share of `change_id`, if it was computed at `commit` with the marks as they are.
+    /// The share of `change_id`, if it was computed at `commit` with the marks as they are, and
+    /// the revision would take no marks of the changes jj made it from.
     fn still_known(
         &self,
         change_id: &ChangeId,
         commit: Option<&SnapshotId>,
         store: &ReviewStore,
+        would_take_marks: &dyn Fn(&ChangeId, &SnapshotId) -> bool,
     ) -> Option<ReviewProgress> {
         let known = self.known.get(change_id)?;
         let stamp = store.marks_stamp(change_id.review_unit()).ok()?;
-        (Some(&known.commit) == commit && known.stamp == stamp).then_some(known.progress)
+        (Some(&known.commit) == commit
+            && known.stamp == stamp
+            && !would_take_marks(change_id, &known.commit))
+        .then_some(known.progress)
     }
 
     /// The next revision to compute, as the worker's queued command runs.

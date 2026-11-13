@@ -9,10 +9,11 @@ use std::sync::{Arc, Mutex};
 use super::git::GitBackend;
 use super::watch::{MetadataScope, resolve_directory_or_link_file};
 use super::{
-    BaselineComparison, BaselineComparisonPlan, BaselineComparisonResults, Cancellation, ChangeId,
-    ChangedFile, Interdiff, RepoPath, RepoType, Repository, RepositoryBackend, RepositoryProcess,
-    RevisionCandidate, RevisionDirection, RevisionHistoryLine, RevisionRef, RevisionRefKind,
-    Snapshot, SnapshotId, SnapshotIdentity, WatchPlan, path_from_output,
+    BaselineComparison, BaselineComparisonPlan, BaselineComparisonResults, Cancellation,
+    ChangeEvolution, ChangeId, ChangedFile, Interdiff, RepoPath, RepoType, Repository,
+    RepositoryBackend, RepositoryProcess, RevisionCandidate, RevisionDirection,
+    RevisionHistoryLine, RevisionRef, RevisionRefKind, Snapshot, SnapshotId, SnapshotIdentity,
+    WatchPlan, path_from_output,
 };
 use crate::{Error, Result};
 
@@ -366,6 +367,16 @@ impl RepositoryBackend for JjBackend {
         repository
             .run_jj(["edit", change_id.as_str()])
             .map(|_| true)
+    }
+
+    fn evolution(
+        &self,
+        repository: &Repository,
+        identity: &SnapshotIdentity,
+        known: &dyn Fn(&str) -> Option<Arc<ChangeEvolution>>,
+    ) -> Result<ChangeEvolution> {
+        self.reader(repository)?
+            .evolution(repository, identity.snapshot_id(), known)
     }
 }
 

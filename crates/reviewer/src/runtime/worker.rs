@@ -231,10 +231,13 @@ impl Worker {
             .repository
             .revision_history()
             .map_err(|error| error.to_string());
-        let started = result
-            .as_ref()
-            .ok()
-            .map(|lines| self.revision_progress.start(load_id, lines, &self.store));
+        let started = result.as_ref().ok().map(|lines| {
+            self.revision_progress
+                .start(load_id, lines, &self.store, &|change, commit| {
+                    self.tracker
+                        .would_take_marks(change.review_unit(), commit.as_str())
+                })
+        });
         let _ = messages.send(RevisionHistoryLoaded { load_id, result });
         let Some(started) = started else {
             return;
