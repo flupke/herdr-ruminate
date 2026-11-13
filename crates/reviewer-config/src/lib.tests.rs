@@ -43,3 +43,26 @@ fn a_file_that_is_not_toml_names_the_line_but_not_its_text() {
     assert!(error.contains("at line 2"), "{error}");
     assert!(!error.contains("sk-secret-value"), "{error}");
 }
+
+#[test]
+fn reads_a_table_setting() {
+    let config = config("[linear]\nworkspace = \"acme\"\n").unwrap();
+
+    let table = config.table("linear").unwrap().unwrap();
+
+    assert_eq!(
+        table.get("workspace").and_then(toml::Value::as_str),
+        Some("acme")
+    );
+    assert!(config.table("other").unwrap().is_none());
+}
+
+#[test]
+fn a_string_where_a_table_belongs_names_the_setting_but_not_its_value() {
+    let config = config("linear = \"acme-secret\"\n").unwrap();
+
+    let error = config.table("linear").unwrap_err().to_string();
+
+    assert!(error.contains("`linear`"), "{error}");
+    assert!(!error.contains("acme-secret"), "{error}");
+}

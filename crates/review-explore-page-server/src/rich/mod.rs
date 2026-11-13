@@ -9,6 +9,7 @@ mod design;
 mod past;
 mod questions;
 
+use linear_issues::LinearIssue;
 use review_explore::{Conclusion, Design, Question};
 use review_explore_page::{QuestionMarks, ReviewName, TurnResponse};
 use review_repository::repository::ShortRevision;
@@ -28,6 +29,10 @@ impl RoundData for Rich {
                 rest: "zlpnrt".into(),
             },
             title: "Batch the reviewer's replies into one agent notification".into(),
+            issues: vec![LinearIssue {
+                id: "ENG-2243".into(),
+                url: "https://linear.app/acme/issue/ENG-2243".into(),
+            }],
         }
     }
 

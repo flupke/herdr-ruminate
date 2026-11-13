@@ -5,10 +5,13 @@ use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender};
 
 use component_core::ApplicationEventSender;
+use linear_issues::{LinearIssue, LinearSettings};
 use review_explore_page::{PageCommand, Recovery};
 use review_explore_session::{self as explore_session, ExploreSession};
 use review_hunks::HunkMark;
-use review_repository::repository::{ChangeId, ChangedFile, PollResult, Repository, Snapshot};
+use review_repository::repository::{
+    ChangeId, ChangedFile, PollResult, Repository, Snapshot, SnapshotIdentity,
+};
 use review_significance::JevClassifier;
 use review_source::ReviewCheckpoint;
 use review_state::{MarkResult, ReviewState, ReviewTracker};
@@ -33,6 +36,8 @@ pub(super) struct Worker {
     pub(super) commands: Sender<WorkerCommand>,
     pub(super) explore: ExploreSession,
     pub(super) jev: JevClassifier,
+    /// The Linear workspace and teams whose issues the header and the page link to.
+    pub(super) linear: Option<LinearSettings>,
     pub(super) auto_review: Option<Arc<AtomicBool>>,
     /// An Explore kickoff waiting for Jev to mark what it dismisses first.
     pub(super) held_kickoff: Option<review_explore::TurnRequest>,
@@ -303,17 +308,19 @@ impl Worker {
         if self
             .snapshot
             .as_ref()
-            .is_some_and(|previous| previous.identity != snapshot.identity)
+            .is_some_and(|previous| !previous.identity.same_snapshot(&snapshot.identity))
         {
             self.cancel_auto_review();
         }
         let _ = self
             .documents
             .send(document::Command::Snapshot(snapshot.clone()));
+        let issues = self.linear_issues(&snapshot.identity);
         let _ = messages.send(RepositoryMetadataChanged {
             review_checkpoint: review_checkpoint.clone(),
             description: snapshot.identity.description().to_owned(),
             display_id: snapshot.identity.display_id().to_owned(),
+            issues: issues.clone(),
         });
         let _ = messages.send(RepositoryFilesChanged {
             review_checkpoint,
@@ -321,10 +328,23 @@ impl Worker {
         });
         let review_unit = snapshot.identity.review_unit().clone();
         self.explore.marks_changed(&snapshot, &states);
-        self.explore.name_review(&snapshot.identity);
+        self.explore.name_review(&snapshot.identity, issues);
         self.explore.checkpoint_changed(&review_unit);
         self.snapshot = Some(snapshot);
         true
+    }
+
+    /// The Linear issues that the change of `identity` names, in its description, then its
+    /// bookmarks and its workspaces' names; none without the `[linear]` settings.
+    fn linear_issues(&self, identity: &SnapshotIdentity) -> Vec<LinearIssue> {
+        self.linear.as_ref().map_or_else(Vec::new, |linear| {
+            linear.issues(
+                identity
+                    .change_description()
+                    .into_iter()
+                    .chain(identity.names().iter().map(String::as_str)),
+            )
+        })
     }
 
     fn set_hunk_reviewed(

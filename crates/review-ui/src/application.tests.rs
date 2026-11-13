@@ -114,6 +114,7 @@ fn publish_repository(
         display_id: "abcd1234".to_owned(),
         review_checkpoint: review_checkpoint.clone(),
         description,
+        issues: Vec::new(),
     });
     actions.extend(application.publish(RepositoryFilesChanged {
         review_checkpoint,
@@ -423,6 +424,45 @@ fn clicking_the_change_id_opens_the_revision_selector_and_the_title_the_commit_m
     application.update(UserInput::MouseClick { column: 11, row: 0 });
     assert!(rendered_application(&application).contains("Commit message"));
     assert!(!rendered_application(&application).contains("Select revision"));
+}
+
+#[test]
+fn clicking_a_linear_issue_in_the_header_opens_its_page() {
+    let mut application = application();
+    let url = "https://linear.app/acme/issue/ENG-12";
+    application.publish(RepositoryMetadataChanged {
+        display_id: "abcd1234".to_owned(),
+        review_checkpoint: ReviewCheckpoint::new(ReviewUnit::from("change"), "commit".to_owned()),
+        description: "Commit title (ENG-12)\n".to_owned(),
+        issues: vec![linear_issues::LinearIssue {
+            id: "ENG-12".to_owned(),
+            url: url.to_owned(),
+        }],
+    });
+    let header = rendered_application(&application)
+        .chars()
+        .take(80)
+        .collect::<String>();
+    let column = header
+        .find("ENG-12  ")
+        .and_then(|byte| header.get(..byte))
+        .map(|before| u16::try_from(before.chars().count()).unwrap())
+        .expect("the header shows the issue");
+
+    for (offset, expected) in [(0, true), (5, true), (6, false)] {
+        let actions = application.update(UserInput::MouseClick {
+            column: column + offset,
+            row: 0,
+        });
+        assert_eq!(
+            actions.contains(&Action::OpenLink(url.to_owned())),
+            expected,
+            "a click {offset} columns into the issue: {actions:?}"
+        );
+    }
+    // The title's own click keeps its columns.
+    application.update(UserInput::MouseClick { column: 11, row: 0 });
+    assert!(rendered_application(&application).contains("Commit message"));
 }
 
 #[test]

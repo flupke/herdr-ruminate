@@ -48,6 +48,24 @@
   text-overflow: ellipsis;
 }
 .masthead .review code, .menu-review code { font-size: 13px; }
+/* The Linear issues the change names, after the title, which gives way before them. */
+.masthead .issues {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  white-space: nowrap;
+}
+.masthead .issue, .menu-review .issue {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.masthead .issue:hover, .masthead .issue:focus-visible,
+.menu-review .issue:hover, .menu-review .issue:focus-visible { text-decoration: underline; }
+.menu-review .issue + .issue { margin-left: 8px; }
 /* A wider gap after the revision than between words, as the pane's header leaves before the
    title. */
 .masthead .review .revision, .menu-review .revision { margin-right: 0.3em; }
@@ -264,7 +282,7 @@
    into the menu. */
 @media (max-width: 40rem) {
   .masthead { gap: 8px; }
-  .masthead .review { display: none; }
+  .masthead .review, .masthead .issues { display: none; }
   .rail { font-size: 12px; font-weight: 650; }
   .rail > ol { gap: 6px; }
   /* Too little room beside the product's name (masthead.js `fit`): the chips of the screens

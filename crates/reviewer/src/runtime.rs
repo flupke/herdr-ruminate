@@ -45,6 +45,7 @@ use crossterm::terminal::{
 };
 use herdr_client::client::EventCanceller;
 use herdr_client::protocol::{AgentHost, AgentTarget, PaneId, TabId, WorkspaceId};
+use linear_issues::LinearSettings;
 use ratatui::Terminal;
 use ratatui::backend::Backend;
 use review_explore_page::{
@@ -90,6 +91,9 @@ pub struct Runtime {
     theme: Theme,
     /// Jev, when a `TypeSafe` API key enables it.
     jev: JevClassifier,
+    /// The Linear workspace and teams whose issues the header links to; none without the
+    /// `[linear]` table of `config.toml`.
+    linear: Option<LinearSettings>,
 }
 
 struct TerminalGuard {
@@ -158,6 +162,7 @@ impl Runtime {
             host: host.agents,
             theme: Theme::from_config(&config)?,
             jev: jev::classifier(&config)?,
+            linear: LinearSettings::from_config(&config)?,
         })
     }
 
@@ -198,6 +203,7 @@ impl Runtime {
                 endpoint: review_mcp::Endpoint::from_env(self.repository.root()),
                 theme: self.theme,
                 jev: self.jev.clone(),
+                linear: self.linear.clone(),
                 turns: vision_turns_from_env(),
                 source_watches: Some(watcher.source_requests()),
                 page: page_round,

@@ -18,6 +18,7 @@ fn external_events_change_visible_header_output() {
         display_id: "\x1b[31mab\x1b[90mcd1234\x1b[0m".to_owned(),
         review_checkpoint: review_source::ReviewCheckpoint::new("change", "snapshot"),
         description: "Component migration\nbody".to_owned(),
+        issues: Vec::new(),
     })
     .unwrap();
     let lines = |lines_added| DiffStatistics {
@@ -98,6 +99,7 @@ fn long_subject_leaves_revision_id_and_statistics_visible() {
         display_id: "abcd1234".to_owned(),
         review_checkpoint: review_source::ReviewCheckpoint::new("change", "snapshot"),
         description: "A long subject repeated many times ".repeat(10),
+        issues: Vec::new(),
     })
     .unwrap();
     let mut buffer = Buffer::empty(Rect::new(0, 0, 40, 1));
@@ -181,4 +183,87 @@ fn the_footer_shows_the_keys_of_the_open_pane_before_help_and_leaves_out_those_t
         "the help key stays"
     );
     assert_eq!(footer_with(&bus, target, 8, &hints).trim_end(), "? help");
+}
+
+fn issue(id: &str) -> linear_issues::LinearIssue {
+    linear_issues::LinearIssue {
+        id: id.to_owned(),
+        url: format!("https://linear.app/acme/issue/{id}"),
+    }
+}
+
+fn header_with_issues(title: &str, issues: &[&str], width: u16) -> (String, Buffer) {
+    let mut bus = ComponentEventBus::<Action>::new();
+    let target = bus.mount(StatusComponent::new);
+    bus.publish(RepositoryMetadataChanged {
+        display_id: "abcd1234".to_owned(),
+        review_checkpoint: review_source::ReviewCheckpoint::new("change", "snapshot"),
+        description: title.to_owned(),
+        issues: issues.iter().map(|id| issue(id)).collect(),
+    })
+    .unwrap();
+    let mut buffer = Buffer::empty(Rect::new(0, 0, width, 1));
+    bus.get::<StatusComponent>(target).unwrap().render_header(
+        buffer.area,
+        &mut buffer,
+        Theme::default().palette,
+    );
+    let rendered = buffer
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect::<String>();
+    (rendered, buffer)
+}
+
+#[test]
+fn the_issues_show_as_links_before_the_summary_and_the_title_gives_way() {
+    let (rendered, buffer) = header_with_issues(
+        &"A long subject repeated many times ".repeat(4),
+        &["ENG-12", "OPS-3"],
+        90,
+    );
+
+    let summary = "+0 -0  ━━━━━━━━━━━━ 0% reviewed ";
+    assert!(
+        rendered.ends_with(&format!("  ENG-12  OPS-3  {summary}")),
+        "{rendered:?}"
+    );
+    let issue = u16::try_from(rendered.chars().count() - summary.chars().count() - 15).unwrap();
+    assert_eq!(
+        &rendered[usize::from(issue)..usize::from(issue) + 6],
+        "ENG-12"
+    );
+    let palette = Theme::default().palette;
+    assert_eq!(buffer[(issue, 0)].fg, palette.focus);
+    assert!(buffer[(issue, 0)].modifier.contains(Modifier::UNDERLINED));
+    assert!(
+        !buffer[(issue - 1, 0)]
+            .modifier
+            .contains(Modifier::UNDERLINED)
+    );
+    assert!(rendered.starts_with(" abcd1234  A long subject"));
+}
+
+#[test]
+fn a_narrow_header_leaves_out_the_issues_that_would_crowd_the_title_from_the_last() {
+    let title = "A long subject repeated many times ".repeat(4);
+
+    let (rendered, _) = header_with_issues(&title, &["ENG-12", "OPS-3"], 64);
+    assert!(rendered.contains("  ENG-12  +0 -0"), "{rendered:?}");
+    assert!(!rendered.contains("OPS-3"), "{rendered:?}");
+
+    let (rendered, _) = header_with_issues(&title, &["ENG-12", "OPS-3"], 50);
+    assert!(!rendered.contains("ENG-12"), "{rendered:?}");
+    assert!(rendered.starts_with(" abcd1234  A long subject"));
+}
+
+#[test]
+fn a_short_title_leaves_the_issues_more_room() {
+    let (rendered, _) = header_with_issues("Fix", &["ENG-12", "OPS-3"], 50);
+
+    assert!(
+        rendered.starts_with(" abcd1234  Fix  ENG-12  OPS-3  +0 -0"),
+        "{rendered:?}"
+    );
 }

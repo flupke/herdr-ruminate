@@ -14,8 +14,9 @@ use agent_hooks::AgentHooks;
 use component_core::{ApplicationEventSender, EventEnvelope};
 use crossbeam_channel::{Receiver as EventReceiver, Sender as EventSender};
 use herdr_client::protocol::{AgentHost, AgentTarget, HerdrEvent, PaneId};
+use linear_issues::LinearSettings;
 use review_explore_page::RoundPublisher;
-use review_explore_page_host::PageOpener;
+use review_explore_page_host::{Browser, PageOpener};
 use review_explore_page_opening::{PageNotOpened, PageScreen};
 use review_explore_session::{self as explore_session, ExploreSession};
 use review_repository::repository::Repository;
@@ -48,6 +49,8 @@ pub(super) struct Setup {
     pub(super) endpoint: Result<review_mcp::Endpoint, String>,
     pub(super) theme: Theme,
     pub(super) jev: JevClassifier,
+    /// The Linear workspace and teams whose issues the header and the page link to.
+    pub(super) linear: Option<LinearSettings>,
     /// Where a vision session reads the Explore prompts sent.
     pub(super) turns: Option<vision_turns::TurnLog>,
     pub(super) source_watches: Option<SourceWatchRequests>,
@@ -163,6 +166,7 @@ impl Effects {
             endpoint,
             theme,
             jev,
+            linear,
             turns,
             source_watches,
             page,
@@ -215,6 +219,7 @@ impl Effects {
             commands: commands.clone(),
             explore,
             jev,
+            linear,
             auto_review: None,
             held_kickoff: None,
             documents: documents.clone(),
@@ -377,6 +382,20 @@ impl Effects {
         thread::spawn(move || {
             if let Err(failure) = opener.open(screen) {
                 let _ = messages.send(ui_events::ExplorePageNotOpened(failure));
+            }
+        });
+    }
+
+    /// Open `url` in the default browser, on a thread of its own since the browser program may
+    /// take its time; the pane hears only of a failure, in a toast.
+    fn open_link(&self, url: String) {
+        let messages = self.messages.clone();
+        thread::spawn(move || {
+            if let Err(reason) = Browser::from_env().open(&url) {
+                let _ = messages.send(ui_events::ToastRequested {
+                    text: format!("Cannot open {url}: {reason}"),
+                    kind: toasts::ToastKind::Error,
+                });
             }
         });
     }
@@ -559,6 +578,11 @@ impl ActionExecutors for Performer<'_, '_> {
             .send(WorkerCommand::Explore(explore_session::Input::Command(
                 command,
             )))?;
+        Ok(())
+    }
+
+    fn open_link(&mut self, url: String) -> eyre::Result<()> {
+        self.effects.open_link(url);
         Ok(())
     }
 

@@ -11,6 +11,7 @@ name = "explore-page-server"
 path = "src/main.rs"
 
 [dependencies]
+linear-issues = { path = "../linear-issues" }
 axum.workspace = true
 review-explore = { path = "../review-explore" }
 review-explore-citations = { path = "../review-explore-citations" }

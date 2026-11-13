@@ -9,6 +9,7 @@ license.workspace = true
 jev-evals = ["dep:serde"]
 
 [dependencies]
+linear-issues = { path = "../linear-issues" }
 vision-turns = { path = "../vision-turns" }
 agent-fork = { path = "../agent-fork" }
 agent-forks = { path = "../agent-forks" }

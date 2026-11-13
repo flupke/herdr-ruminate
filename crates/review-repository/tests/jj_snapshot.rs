@@ -163,6 +163,36 @@ fn reports_conflicts_from_real_jj_merges(layout: JjLayout) {
 }
 
 #[test]
+fn identity_names_the_change_s_bookmarks_and_its_workspace() {
+    let context = JjRepositoryTestContext::new(JjLayout::NonColocated);
+    context.fixture.new_change("fix the sync");
+    context
+        .fixture
+        .jj(["bookmark", "create", "luper/eng-12-fix", "-r", "@"]);
+    context
+        .fixture
+        .jj(["bookmark", "create", "eng-13", "-r", "@"]);
+    // jj names the workspaces only once a repository has more than one.
+    let second = context.fixture.root().with_file_name("second");
+    context.fixture.jj([
+        "workspace",
+        "add",
+        second.to_str().unwrap(),
+        "--name",
+        "eng-14-sync",
+    ]);
+
+    let identity = context.repository.current_identity().unwrap();
+    let second = Repository::discover(&second)
+        .unwrap()
+        .current_identity()
+        .unwrap();
+
+    assert_eq!(identity.names(), ["eng-13", "luper/eng-12-fix", "default"]);
+    assert_eq!(second.names(), ["eng-14-sync"]);
+}
+
+#[test]
 fn header_id_uses_jj_abbreviation_and_configured_colours() {
     let context = JjRepositoryTestContext::new(JjLayout::NonColocated);
     context

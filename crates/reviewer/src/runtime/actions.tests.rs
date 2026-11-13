@@ -60,6 +60,11 @@ impl ActionExecutors for Recorder {
         Ok(())
     }
 
+    fn open_link(&mut self, url: String) -> eyre::Result<()> {
+        self.record("open link", Action::OpenLink(url));
+        Ok(())
+    }
+
     fn terminal(&mut self, action: TerminalAction) -> eyre::Result<ControlFlow<()>> {
         let flow = match action {
             TerminalAction::Quit => ControlFlow::Break(()),
@@ -92,6 +97,7 @@ fn each_action_group_reaches_its_own_executor_with_its_payload() {
         Action::Lsp(LspAction::Restart),
         Action::Settings(SettingsAction::SaveFilePaneWidth(42)),
         Action::Repository(RepositoryAction::UnreviewAll(checkpoint())),
+        Action::OpenLink("https://linear.app/acme/issue/ENG-12".into()),
         Action::Terminal(TerminalAction::OpenInEditor {
             path: PathBuf::from("src/lib.rs"),
             line: Some(3),
@@ -109,6 +115,7 @@ fn each_action_group_reaches_its_own_executor_with_its_payload() {
         "lsp",
         "settings",
         "repository",
+        "open link",
         "terminal",
     ];
     let expected = executors.into_iter().zip(actions).collect::<Vec<_>>();

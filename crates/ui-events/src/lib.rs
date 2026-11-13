@@ -39,6 +39,8 @@ pub struct RepositoryMetadataChanged {
     pub description: String,
     /// Abbreviated revision identifier, optionally containing ANSI colour escapes.
     pub display_id: String,
+    /// The Linear issues the change names, which the header links to.
+    pub issues: Vec<linear_issues::LinearIssue>,
 }
 
 /// Aggregate values shown in the repository header.

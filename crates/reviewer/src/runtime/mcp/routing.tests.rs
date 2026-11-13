@@ -13,6 +13,7 @@ impl ConversationFixture {
             display_id: "review".into(),
             review_checkpoint: review_source::ReviewCheckpoint::new("review", "now"),
             description: "Reply notification".into(),
+            issues: Vec::new(),
         });
         app.publish(ui_events::RepositoryFilesChanged {
             review_checkpoint: review_source::ReviewCheckpoint::new("review", "now"),

@@ -80,6 +80,13 @@ review. It is "changed since review" when it rewrites reviewed lines.
 A change from the base that the reviewed version holds and the current file
 still matches. The diff folds it into one row.
 
+**Linear issue**:
+An issue of the Linear tracker that the reviewed change names, by its identifier (a team's
+key, a dash and a number) in the change's description, its bookmarks or the name of its jj
+workspace. The pane's header and the Explore page's masthead link to its page, for the
+teams that the reviewer's `config.toml` lists.
+_Avoid_: ticket, task
+
 ## Explore
 
 **Explore round**:

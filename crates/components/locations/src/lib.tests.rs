@@ -181,6 +181,7 @@ fn mounted_locations() -> (ComponentEventBus<Action>, component_core::ComponentT
             display_id: "abcd1234".to_owned(),
             review_checkpoint: ReviewCheckpoint::new("change", "snapshot"),
             description: String::new(),
+            issues: Vec::new(),
         })
         .expect("repository metadata must dispatch");
     event_bus

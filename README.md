@@ -86,4 +86,15 @@ Jev, which marks changed lines too insignificant to review, runs with a TypeSafe
 `TYPESAFE_API_KEY` in the review pane's environment (under herdr-app, the one your agent
 started with), or `typesafe_api_key = "<key>"` in that `config.toml`; keep the file readable by you alone (`chmod 600`). The environment's key wins.
 
+The pane's header and the Explore page link to the Linear issues the reviewed change names, in
+its description, its bookmarks or its jj workspace's name, such as `(ENG-12)` or
+`eng-12-fix-login`, once that `config.toml` names your Linear workspace, as in its addresses,
+and the keys of its teams:
+
+```toml
+[linear]
+workspace = "acme"
+teams = ["ENG", "OPS"]
+```
+
 Contributor instructions are in [AGENTS.md](AGENTS.md).

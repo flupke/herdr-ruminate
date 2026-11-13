@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
+use linear_issues::LinearIssue;
 use review_explore::{
     CitedLines, CodeLocation, Comparison, DispatchState, EvidenceRef, Exploration, ExploreRound,
     ImplementationDelivery, KeptAnswer, Question, ReviewerAnswer, RoundOverview, TurnMarks,
@@ -180,11 +181,13 @@ impl ExploreSession {
         })
     }
 
-    /// The reviewer now shows the snapshot `identity`: the page names the review it belongs to,
-    /// as the pane's header does.
-    pub fn name_review(&self, identity: &SnapshotIdentity) {
-        self.page
-            .name(ReviewName::of(self.repository.root(), identity));
+    /// The reviewer now shows the snapshot `identity`, which names the Linear `issues`: the page
+    /// names the review it belongs to, and links to the issues, as the pane's header does.
+    pub fn name_review(&self, identity: &SnapshotIdentity, issues: Vec<LinearIssue>) {
+        self.page.name(ReviewName {
+            issues,
+            ..ReviewName::of(self.repository.root(), identity)
+        });
     }
 
     /// Carries out `command` from the page, or refuses it, and replies.

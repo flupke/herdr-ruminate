@@ -27,6 +27,7 @@ impl RoundData for Short {
                 rest: "zqvtyx".into(),
             },
             title: "Keep the reviewer's draft when a round reopens".into(),
+            issues: Vec::new(),
         }
     }
 

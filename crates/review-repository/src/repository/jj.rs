@@ -25,7 +25,15 @@ mod records;
 use git_diff::{DESCRIPTION_DIFF_PATHS, JjGitDiffParser};
 use reader::JjReader;
 
-const IDENTITY_TEMPLATE: &str = r#"change_id ++ "\0" ++ commit_id ++ "\0" ++ description ++ "\0" ++ change_id.shortest(8) ++ "\0""#;
+/// The change, its commit, its description and its abbreviation, then its local bookmarks and the
+/// names of the workspaces whose working copy it is, each list one name a line. jj names the
+/// workspaces only in a repository that has more than one.
+const IDENTITY_TEMPLATE: &str = concat!(
+    r#"change_id ++ "\0" ++ commit_id ++ "\0" ++ description ++ "\0" ++ "#,
+    r#"change_id.shortest(8) ++ "\0" ++ "#,
+    r#"local_bookmarks.map(|bookmark| bookmark.name()).join("\n") ++ "\0" ++ "#,
+    r#"working_copies.map(|workspace| workspace.name()).join("\n") ++ "\0""#,
+);
 const FILE_TEMPLATE: &str = concat!(
     r#"source.path() ++ "\0" ++ target.path() ++ "\0" ++ "#,
     r#"source.file_type() ++ "\0" ++ target.file_type() ++ "\0" ++ "#,

@@ -20,6 +20,8 @@ pub(super) trait ActionExecutors {
     fn lsp(&mut self, action: LspAction) -> eyre::Result<()>;
     fn settings(&mut self, action: SettingsAction) -> eyre::Result<()>;
     fn repository(&mut self, action: RepositoryAction) -> eyre::Result<()>;
+    /// Open `url` in the default browser.
+    fn open_link(&mut self, url: String) -> eyre::Result<()>;
     /// Run terminal work; `Break` stops the runtime.
     fn terminal(&mut self, action: TerminalAction) -> eyre::Result<ControlFlow<()>>;
 
@@ -43,6 +45,7 @@ pub(super) trait ActionExecutors {
             Action::Lsp(action) => self.lsp(action)?,
             Action::Settings(action) => self.settings(action)?,
             Action::Repository(action) => self.repository(action)?,
+            Action::OpenLink(url) => self.open_link(url)?,
             Action::Terminal(action) => return self.terminal(action),
         }
         Ok(ControlFlow::Continue(()))

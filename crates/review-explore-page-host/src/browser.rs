@@ -1,6 +1,7 @@
 //! Opening the page of a review pane's reviewer in the default browser of this machine: for the
 //! Herdr action, by the record of its tab; for the pane's Start, Start with Challenger, Open the
-//! Explore page and Past rounds, at the address its reviewer serves the page at.
+//! Explore page and Past rounds, at the address its reviewer serves the page at. The pane opens
+//! other addresses with the same [`Browser`], such as a Linear issue's page from its header.
 //! `BROWSER` names the program and its arguments; by default `xdg-open` on Linux, `open` on
 //! macOS. The page opens at the address of this machine's loopback listener, the only one that
 //! offers past rounds (ADR 0003, ADR 0004).
@@ -107,7 +108,10 @@ impl Browser {
 
     /// Opens `url`. The program's output is dropped: it would draw over the pane. A failure
     /// names the program by its file name, which the pane has room for.
-    fn open(&self, url: &str) -> Result<(), String> {
+    ///
+    /// # Errors
+    /// Fails when the program does not start or reports a failure.
+    pub fn open(&self, url: &str) -> Result<(), String> {
         let program = Path::new(&self.program)
             .file_name()
             .unwrap_or(&self.program)

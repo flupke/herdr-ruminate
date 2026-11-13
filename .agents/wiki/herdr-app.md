@@ -265,13 +265,18 @@ pixels, `stop <name>` ends it. Use it to see the review pane as herdr-app draws 
   that the port is in use.
 - Several review panes, one per tab of a space, as the user runs them (the Explore page's
   address is recorded per tab): `hc <name> run --bg --keep --no-parent --cwd <repository>
-  --label herdr.space=<sp…> --label herdr.tab=<tb…> -- env BROWSER=<script>
+  --label herdr.space=<sp…> --label herdr.tab=<tb…> -- /usr/bin/env BROWSER=<script>
   <checkout>/bin/reviewer` for each, with the same space and a tab of its own, and a fresh
   scratch repository each. A `BROWSER` script that appends `$1` and `readlink
   /proc/$PPID/cwd` to a log in a host folder shows which pane opened which page; the records
   under `/tmp/state/herdr-progressive-reviewer/explore-page/`, read with `app-sandbox run`,
   name the review of each port. `e` then `s` opens the page on Start, and `o` opens it
   again.
+- A click on the window: `app-sandbox run <name> xdotool mousemove <x> <y> click 1`, at the
+  pixels of `shot` (the display is X's `:0`), as on a header link of the pane.
+- `hc run` finds no `env` on the sandbox's `PATH` (herdr-app 0.1.13): give `/usr/bin/env`, as
+  above. The reviewer's settings reach a pane through `XDG_CONFIG_HOME=<host folder>`, with its
+  `config.toml` in `<folder>/herdr-progressive-reviewer/` (`[linear]`, `theme`).
 - The sandbox's `hc keys` sends an upper-case letter as its lower-case key: `H` presses
   `h`, `W` presses `w`, so shortcuts on upper-case letters (Past rounds) are out of its reach.
 

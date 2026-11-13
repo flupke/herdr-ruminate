@@ -31,6 +31,8 @@ pub enum Action {
     Repository(RepositoryAction),
     /// Work that needs the terminal the UI runs in.
     Terminal(TerminalAction),
+    /// Open this address in the default browser, such as a Linear issue's page.
+    OpenLink(String),
 }
 
 /// Work on the Explore page the pane serves.

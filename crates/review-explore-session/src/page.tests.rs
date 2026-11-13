@@ -239,7 +239,14 @@ fn the_page_names_the_review_it_belongs_to_as_the_panes_header_does() {
     assert_eq!(harness.page.review(), None);
     let snapshot = complete_repository_snapshot(&harness.repository);
 
-    harness.session.name_review(&snapshot.identity);
+    let issue = linear_issues::LinearIssue {
+        id: "ENG-12".into(),
+        url: "https://linear.app/acme/issue/ENG-12".into(),
+    };
+
+    harness
+        .session
+        .name_review(&snapshot.identity, vec![issue.clone()]);
 
     let repository = harness.repository.root().file_name().unwrap();
     assert_eq!(
@@ -252,6 +259,7 @@ fn the_page_names_the_review_it_belongs_to_as_the_panes_header_does() {
                 rest: snapshot.identity.display_id().to_owned(),
             },
             title: "Git working tree".into(),
+            issues: vec![issue],
         })
     );
 }

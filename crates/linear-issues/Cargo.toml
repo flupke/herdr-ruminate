@@ -1,0 +1,21 @@
+[package]
+name = "linear-issues"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The Linear issues a reviewed change names, and the addresses of their pages."
+
+[dependencies]
+eyre.workspace = true
+reviewer-config = { path = "../reviewer-config" }
+serde.workspace = true
+toml.workspace = true
+ts-rs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

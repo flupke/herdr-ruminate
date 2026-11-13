@@ -123,6 +123,7 @@ fn publish_repository(
         display_id: "abcd1234".to_owned(),
         review_checkpoint: review_checkpoint.clone(),
         description,
+        issues: Vec::new(),
     });
     actions.extend(application.publish(RepositoryFilesChanged {
         review_checkpoint,

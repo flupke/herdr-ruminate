@@ -3006,6 +3006,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "linear-issues"
+version = "0.2.0"
+dependencies = [
+ "eyre",
+ "reviewer-config",
+ "serde",
+ "tempfile",
+ "toml",
+ "ts-rs",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4184,6 +4196,7 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "futures",
+ "linear-issues",
  "markdown-html",
  "mermaid-js",
  "notify",
@@ -4237,6 +4250,7 @@ name = "review-explore-page-server"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "linear-issues",
  "review-explore",
  "review-explore-citations",
  "review-explore-page",
@@ -4296,6 +4310,7 @@ dependencies = [
  "crossbeam-channel",
  "eyre",
  "herdr-client",
+ "linear-issues",
  "review-explore",
  "review-explore-citations",
  "review-explore-page",
@@ -4619,6 +4634,7 @@ dependencies = [
  "explore-component",
  "eyre",
  "files-component",
+ "linear-issues",
  "locations-component",
  "overlay-component",
  "ratatui 0.30.2",
@@ -4680,6 +4696,7 @@ dependencies = [
  "herdr-app-focus",
  "herdr-client",
  "ignore",
+ "linear-issues",
  "notify",
  "process-environment",
  "ratatui 0.30.2",
@@ -5313,6 +5330,7 @@ version = "0.2.0"
 dependencies = [
  "ansi-to-tui",
  "component-core",
+ "linear-issues",
  "ratatui 0.30.2",
  "review-repository",
  "review-source",
@@ -6089,6 +6107,7 @@ dependencies = [
 name = "ui-events"
 version = "0.2.0"
 dependencies = [
+ "linear-issues",
  "review-explore",
  "review-explore-page-opening",
  "review-explore-page-settings",

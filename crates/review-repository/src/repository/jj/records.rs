@@ -136,11 +136,11 @@ impl SnapshotIdentity {
     pub(super) fn parse_jj(output: &[u8]) -> Result<Self> {
         let raw_fields: Vec<_> = output.split(|byte| *byte == 0).collect();
         let fields: Vec<_> = raw_fields.iter().map(strip_ansi_escapes::strip).collect();
-        if fields.len() != 5
+        if fields.len() != 7
             || fields[0].is_empty()
             || fields[1].is_empty()
             || fields[3].is_empty()
-            || !fields[4].is_empty()
+            || !fields[6].is_empty()
         {
             return Err(Error::Protocol {
                 operation: "read jj snapshot identity".to_owned(),
@@ -159,6 +159,14 @@ impl SnapshotIdentity {
             operation: "read jj snapshot identity".to_owned(),
             detail: "jj returned a non-UTF-8 commit description",
         })?;
+        let mut names = Vec::new();
+        for list in &fields[4..6] {
+            let list = std::str::from_utf8(list).map_err(|_| Error::Protocol {
+                operation: "read jj snapshot identity".to_owned(),
+                detail: "jj returned a non-UTF-8 bookmark or workspace name",
+            })?;
+            names.extend(list.lines().map(str::to_owned));
+        }
 
         Ok(Self::Jj {
             change_id: ChangeId::from(change_id.to_owned()),
@@ -168,6 +176,7 @@ impl SnapshotIdentity {
                 operation: "read jj snapshot identity".to_owned(),
                 detail: "jj returned a non-UTF-8 display ID",
             })?,
+            names,
         })
     }
 }

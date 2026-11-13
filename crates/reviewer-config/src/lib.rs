@@ -73,6 +73,21 @@ impl ReviewerConfig {
             })
             .transpose()
     }
+
+    /// The table `name`, such as `[linear]`, if the file has it.
+    ///
+    /// # Errors
+    /// Fails when the setting is not a table.
+    pub fn table(&self, name: &str) -> eyre::Result<Option<&toml::Table>> {
+        self.table
+            .get(name)
+            .map(|value| {
+                value.as_table().ok_or_else(|| {
+                    eyre::eyre!("`{name}` in {} must be a table", self.path.display())
+                })
+            })
+            .transpose()
+    }
 }
 
 #[cfg(test)]

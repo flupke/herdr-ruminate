@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+linear-issues = { path = "../linear-issues" }
 review-explore = { path = "../review-explore" }
 review-explore-page-opening = { path = "../review-explore-page-opening" }
 review-explore-page-settings = { path = "../review-explore-page-settings" }

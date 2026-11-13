@@ -8,7 +8,8 @@
 // own, which the meter draws on. On a phone the rail shows chips: the design, the current
 // step, the screen in view and the screens beside it, and the review's title moves into the menu
 // (masthead.css, swipe.css). The browser tab's title says whose turn it is, after the count of
-// the agent's replies the reviewer has not seen.
+// the agent's replies the reviewer has not seen. The Linear issues the change names follow the
+// review's title, as links to their pages.
 //
 // The rail and the tab title come from the round's overview, which the tool derives: every
 // question number here is a step of the rail, never a count of the question's versions. While
@@ -166,7 +167,7 @@ export class Masthead {
         h(
           'div',
           { class: 'menu-popover', id: 'round-menu', hidden: true },
-          view.review ? h('p', { class: 'menu-review' }, reviewParts(view.review)) : null,
+          view.review ? h('p', { class: 'menu-review' }, reviewParts(view.review), view.review.issues.length > 0 ? [' ', issueLinks(view.review)] : null) : null,
           confirmation() ?? [
                 shownPast !== null ? backLink('menu-item') : null,
                 copyLink(view.rail.length > 0 ? "Copy the round's link" : "Copy the page's link"),
@@ -349,18 +350,29 @@ export class Masthead {
 
 /**
  * The review's revision, then its title, as the pane's header orders them; on the start cover,
- * whose headline is the title, the repository.
+ * whose headline is the title, the repository. The Linear issues the change names follow, on
+ * every screen, apart from the line so that a long title gives way before them.
  * @param {ReviewName | null} review
  * @param {boolean} cover
  */
 function reviewLine(review, cover) {
   if (!review) return null;
-  return h('p', { class: 'review' }, cover ? review.repository : reviewParts(review));
+  const line = h('p', { class: 'review' }, cover ? review.repository : reviewParts(review));
+  return review.issues.length > 0 ? [line, h('p', { class: 'issues' }, issueLinks(review))] : line;
 }
 
-/** @param {ReviewName} review */
+/** The revision, then the title, as the pane's header orders them.
+ * @param {ReviewName} review */
 function reviewParts(review) {
   return [revisionCode(review.revision), review.title ? [' ', h('span', { class: 'review-title' }, review.title)] : null];
+}
+
+/** Each Linear issue the change names, a link to its page in a new tab.
+ * @param {ReviewName} review */
+function issueLinks(review) {
+  return review.issues.map((issue) =>
+    h('a', { class: 'issue', href: issue.url, target: '_blank', rel: 'noopener noreferrer' }, issue.id),
+  );
 }
 
 /**

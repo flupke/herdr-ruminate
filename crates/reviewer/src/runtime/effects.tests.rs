@@ -39,6 +39,48 @@ fn event_names(events: &[EventEnvelope]) -> Vec<&'static str> {
         .collect()
 }
 
+#[test]
+fn a_refresh_names_the_change_s_linear_issues_to_the_header_and_the_page() {
+    let files = review_test_support::JjFixture::new(review_test_support::JjLayout::NonColocated);
+    files.new_change("Fix the sync (ENG-12)");
+    files.jj(["bookmark", "create", "luper/ops-3-sync", "-r", "@"]);
+    let config = tempfile::tempdir().unwrap();
+    std::fs::write(
+        config.path().join("config.toml"),
+        "[linear]\nworkspace = \"acme\"\nteams = [\"ENG\", \"OPS\"]\n",
+    )
+    .unwrap();
+    let linear = linear_issues::LinearSettings::from_config(
+        &reviewer_config::ReviewerConfig::from_dir(config.path()).unwrap(),
+    )
+    .unwrap();
+    let page = review_explore_page::RoundPublisher::default();
+    let feed = page.subscribe();
+    let mut fixture = EffectsFixture::start(Box::new(files), |setup| {
+        setup.linear = linear;
+        setup.page = page;
+    });
+
+    let events = fixture.refresh();
+
+    let expected = [
+        linear_issues::LinearIssue {
+            id: "ENG-12".into(),
+            url: "https://linear.app/acme/issue/ENG-12".into(),
+        },
+        linear_issues::LinearIssue {
+            id: "OPS-3".into(),
+            url: "https://linear.app/acme/issue/OPS-3".into(),
+        },
+    ];
+    let metadata = events
+        .iter()
+        .find_map(|event| event.downcast_ref::<RepositoryMetadataChanged>())
+        .unwrap();
+    assert_eq!(metadata.issues, expected);
+    assert_eq!(feed.review().unwrap().issues, expected);
+}
+
 #[test_case::test_case(RepoType::Git; "git")]
 #[test_case::test_case(RepoType::Jj; "jj")]
 fn a_refresh_publishes_files_the_documents_can_load_then_restores_explore(kind: RepoType) {

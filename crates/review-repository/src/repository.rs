@@ -425,6 +425,10 @@ pub enum SnapshotIdentity {
         description: String,
         /// Repository-aware abbreviated ID, including jj terminal colours.
         display_id: String,
+        /// The names the change goes by: its local bookmarks, then the jj workspaces whose
+        /// working copy it is. A round saved before they were read has none.
+        #[serde(default)]
+        names: Vec<String>,
     },
     /// A Git working-tree snapshot.
     Git {
@@ -453,6 +457,12 @@ impl SnapshotIdentity {
         }
     }
 
+    /// Whether `other` names the same change at the same commit, whatever its bookmarks and
+    /// workspaces: the same files, the same comparison.
+    pub fn same_snapshot(&self, other: &Self) -> bool {
+        self.review_unit() == other.review_unit() && self.snapshot_id() == other.snapshot_id()
+    }
+
     /// Get the abbreviated revision identifier, with terminal colours when available.
     pub fn display_id(&self) -> &str {
         match self {
@@ -478,6 +488,15 @@ impl SnapshotIdentity {
                 Some(description.trim()).filter(|description| !description.is_empty())
             }
             Self::Git { .. } => None,
+        }
+    }
+
+    /// The names the change goes by, beside its description: its local bookmarks, then the jj
+    /// workspaces whose working copy it is. A Git working tree has none.
+    pub fn names(&self) -> &[String] {
+        match self {
+            Self::Jj { names, .. } => names,
+            Self::Git { .. } => &[],
         }
     }
 
@@ -749,11 +768,15 @@ impl Repository {
         self.backend.read_stats(self, &identity, &mut files)?;
         let verified = self.current_identity()?;
 
-        if identity != verified {
+        // A bookmark set meanwhile changes no file the poll read: the later read names it.
+        if !identity.same_snapshot(&verified) {
             return Ok(PollResult::ChangedDuringPoll);
         }
 
-        Ok(PollResult::Complete(Snapshot { identity, files }))
+        Ok(PollResult::Complete(Snapshot {
+            identity: verified,
+            files,
+        }))
     }
 
     /// The snapshot of the revision of `change_id`, read from the commit as it is, without

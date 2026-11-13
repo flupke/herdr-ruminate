@@ -161,6 +161,59 @@ fn automatic_review_announces_the_hunks_it_marks(kind: RepoType) {
     );
 }
 
+/// Classifies as [`LINE_THREE`] does, once the test lets it go on.
+struct HeldLineThree(std::sync::Mutex<crossbeam_channel::Receiver<()>>);
+
+impl review_significance::SignificanceClassifier for HeldLineThree {
+    fn rubric(&self) -> &'static str {
+        LINE_THREE.rubric()
+    }
+
+    fn plan(
+        &self,
+        comparison: &review_explore::Comparison,
+        known: &dyn Fn(&str) -> bool,
+    ) -> review_significance::SignificancePlan {
+        let _ = self.0.lock().unwrap().recv();
+        LINE_THREE.plan(comparison, known)
+    }
+}
+
+#[test]
+fn a_bookmark_set_on_the_change_during_an_automatic_review_does_not_cancel_it() {
+    let files = review_test_support::JjFixture::new(review_test_support::JjLayout::NonColocated);
+    files.write("file.rs", &text(&[]));
+    files.new_change("review");
+    files.write("file.rs", &text(&[(3, "three"), (20, "twenty")]));
+    let (release, held) = crossbeam_channel::bounded(1);
+    let root = files.root().to_owned();
+    let mut fixture = EffectsFixture::start(Box::new(files), |setup| {
+        setup.jev = review_significance::JevClassifier::enabled(std::sync::Arc::new(
+            HeldLineThree(std::sync::Mutex::new(held)),
+        ));
+    });
+    let checkpoint = fixture.refreshed_checkpoint();
+    fixture.perform([Action::Repository(RepositoryAction::AutoReview(checkpoint))]);
+    let started = fixture.wait_for::<ui_events::ToastRequested>();
+    assert!(
+        started.text.starts_with("Jev: classifying"),
+        "{}",
+        started.text
+    );
+
+    let bookmark = std::process::Command::new("jj")
+        .args(["bookmark", "create", "eng-12-review", "-r", "@"])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(bookmark.status.success());
+    fixture.refresh();
+    release.send(()).unwrap();
+
+    let toast = fixture.wait_for::<ui_events::ToastRequested>();
+    assert!(toast.text.contains("1 hunk reviewed"), "{}", toast.text);
+}
+
 #[test_case::test_case(RepoType::Git; "git")]
 #[test_case::test_case(RepoType::Jj; "jj")]
 fn an_explore_kickoff_waits_for_jev_to_mark_what_it_dismisses(kind: RepoType) {

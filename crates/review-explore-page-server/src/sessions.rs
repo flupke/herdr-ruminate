@@ -1529,6 +1529,8 @@ fn past_rounds(session: &str, clock: Clock, data: &'static dyn RoundData) -> Vec
                     prefix: saved.revision.0.to_owned(),
                     rest: saved.revision.1.to_owned(),
                 },
+                // A past round links to no issue.
+                issues: Vec::new(),
                 ..data.review()
             };
             past.past_at(review, clock.now_ms() - saved.minutes_ago * MINUTE_MS)

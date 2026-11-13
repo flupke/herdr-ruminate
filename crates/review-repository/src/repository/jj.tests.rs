@@ -306,22 +306,51 @@ fn jj_statistics_require_complete_groups_and_update_matching_files() {
 #[test]
 fn jj_snapshot_identity_requires_two_nonempty_ids_and_a_terminator() {
     assert_eq!(
-        SnapshotIdentity::parse_jj(b"change\0commit\0description\0short\0").unwrap(),
+        SnapshotIdentity::parse_jj(b"change\0commit\0description\0short\0\0\0").unwrap(),
         SnapshotIdentity::Jj {
             change_id: ChangeId::from("change".to_owned()),
             snapshot_id: SnapshotId::from("commit".to_owned()),
             description: "description".to_owned(),
             display_id: "short".to_owned(),
+            names: Vec::new(),
         }
     );
     for invalid in [
-        &b"\0commit\0description\0"[..],
-        &b"change\0\0description\0"[..],
-        &b"change\0commit\0description"[..],
-        &b"change\0commit\0description\0extra"[..],
+        &b"\0commit\0description\0short\0\0\0"[..],
+        &b"change\0\0description\0short\0\0\0"[..],
+        &b"change\0commit\0description\0short\0\0"[..],
+        &b"change\0commit\0description\0short\0\0\0extra"[..],
+        &b"change\0commit\0description\0short\0"[..],
     ] {
         assert!(SnapshotIdentity::parse_jj(invalid).is_err(), "{invalid:?}");
     }
+}
+
+#[test]
+fn jj_snapshot_identity_names_the_bookmarks_then_the_workspaces_without_their_colours() {
+    let identity = SnapshotIdentity::parse_jj(
+        b"change\0commit\0description\0short\0\x1b[35mmain\x1b[39m\nluper/eng-12\0default\nfnd-2243 x\0",
+    )
+    .unwrap();
+
+    assert_eq!(
+        identity.names(),
+        ["main", "luper/eng-12", "default", "fnd-2243 x"]
+    );
+}
+
+#[test]
+fn a_snapshot_stays_the_same_whatever_its_bookmarks_and_workspaces() {
+    let identity = SnapshotIdentity::parse_jj(b"change\0commit\0description\0short\0\0\0").unwrap();
+    let bookmarked =
+        SnapshotIdentity::parse_jj(b"change\0commit\0description\0short\0eng-12\0default\0")
+            .unwrap();
+    let amended = SnapshotIdentity::parse_jj(b"change\0other\0description\0short\0\0\0").unwrap();
+    let another = SnapshotIdentity::parse_jj(b"other\0commit\0description\0short\0\0\0").unwrap();
+
+    assert!(identity.same_snapshot(&bookmarked));
+    assert!(!identity.same_snapshot(&amended));
+    assert!(!identity.same_snapshot(&another));
 }
 
 #[test]

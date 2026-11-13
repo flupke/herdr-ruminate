@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+linear-issues = { path = "../linear-issues" }
 agent-hooks = { path = "../agent-hooks" }
 vision-turns = { path = "../vision-turns" }
 component-core = { path = "../component-core" }

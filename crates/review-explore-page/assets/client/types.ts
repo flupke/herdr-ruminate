@@ -467,6 +467,18 @@ choice: string | null,
  */
 comment: string, };
 /**
+ * A Linear issue that the reviewed change names, with the address of its page.
+ */
+export type LinearIssue = { 
+/**
+ * Its identifier, as Linear writes it: the team's key in capitals, a dash and its number.
+ */
+id: string, 
+/**
+ * The address of its page on linear.app.
+ */
+url: string, };
+/**
  * How the panel shows the list to be implemented, and the actions around it besides the card's.
  */
 export type ListView = { "kind": "editable" } | { "kind": "draft", html: string, } | { "kind": "request", 
@@ -914,7 +926,11 @@ revision: ShortRevision,
 /**
  * The first line of the change's description; empty when it has none.
  */
-title: string, };
+title: string, 
+/**
+ * The Linear issues the change names, which the masthead links to; none for a past round.
+ */
+issues: Array<LinearIssue>, };
 /**
  * The notice above a question the agent revised from the round conversation.
  */

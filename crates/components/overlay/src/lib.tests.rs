@@ -90,6 +90,7 @@ fn commit_message_renders_from_repository_event() {
         display_id: "abcd1234".to_owned(),
         review_checkpoint: review_source::ReviewCheckpoint::new("change", "snapshot"),
         description: "Explain the component migration".to_owned(),
+        issues: Vec::new(),
     })
     .unwrap();
     bus.dispatch_global_input(&EventEnvelope::new(Key::Char('c')))
@@ -127,6 +128,7 @@ fn commit_message_closes_on_its_own_and_the_clear_keys() {
             display_id: "abcd1234".to_owned(),
             review_checkpoint: review_source::ReviewCheckpoint::new("change", "snapshot"),
             description: "Explain the component migration".to_owned(),
+            issues: Vec::new(),
         })
         .unwrap();
         let open = OverlayShortcut::ShowCommitMessage.keys().next().unwrap();
@@ -152,6 +154,7 @@ fn stale_hover_results_do_not_replace_the_current_overlay() {
         display_id: "abcd1234".to_owned(),
         review_checkpoint: review_source::ReviewCheckpoint::new("change", "current"),
         description: String::new(),
+        issues: Vec::new(),
     })
     .unwrap();
 
@@ -180,6 +183,7 @@ fn stale_lsp_failures_do_not_create_toasts() {
         display_id: "abcd1234".to_owned(),
         review_checkpoint: review_source::ReviewCheckpoint::new("change", "current"),
         description: String::new(),
+        issues: Vec::new(),
     })
     .unwrap();
 

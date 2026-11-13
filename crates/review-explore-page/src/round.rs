@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use linear_issues::LinearIssue;
 pub use review_explore::ImplementationState;
 use review_explore::{
     CodeLocation, Conclusion, ConversationTurn, Design, Exploration, Interpretation,
@@ -444,6 +445,8 @@ pub struct ReviewName {
     pub revision: ShortRevision,
     /// The first line of the change's description; empty when it has none.
     pub title: String,
+    /// The Linear issues the change names, which the masthead links to; none for a past round.
+    pub issues: Vec<LinearIssue>,
 }
 
 impl ReviewName {

@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 ansi-to-tui.workspace = true
 component-core = { path = "../../component-core" }
+linear-issues = { path = "../../linear-issues" }
 ratatui.workspace = true
 ui-actions = { path = "../../ui-actions" }
 ui-controls = { path = "../../ui-controls" }
