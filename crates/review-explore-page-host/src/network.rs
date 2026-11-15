@@ -311,18 +311,56 @@ fn interface_address(name: &str) -> io::Result<Ipv4Addr> {
         })
 }
 
-/// The address of the interface of the route to the internet. Connecting a UDP socket sends
-/// nothing: it only picks the interface.
+/// The address of the interface of the route to the internet, when it is on a local network.
+/// Connecting a UDP socket sends nothing: it only picks the interface.
 fn default_address() -> io::Result<Ipv4Addr> {
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
     socket.connect((Ipv4Addr::new(192, 0, 2, 1), 9))?;
     match socket.local_addr()?.ip() {
-        std::net::IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_unspecified() => Ok(ip),
+        std::net::IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_unspecified() => {
+            on_local_network(ip, interface_of(ip).as_deref())
+        }
         _ => Err(io::Error::new(
             io::ErrorKind::NotFound,
             "this machine has no network address",
         )),
     }
+}
+
+/// The name of the interface whose IPv4 address is `ip`, if any.
+fn interface_of(ip: Ipv4Addr) -> Option<String> {
+    nix::ifaddrs::getifaddrs()
+        .ok()?
+        .find(|interface| {
+            interface.address.and_then(|address| {
+                address
+                    .as_sockaddr_in()
+                    .map(nix::sys::socket::SockaddrIn::ip)
+            }) == Some(ip)
+        })
+        .map(|interface| interface.interface_name)
+}
+
+/// `ip`, of the interface `interface`, unless it is public: the page goes to a phone on the same
+/// network over plain HTTP (ADR 0003), and a server whose route to the internet has a public
+/// address, such as a herdr machine in a data centre, would serve it to the whole internet. A
+/// local network's addresses are private, link-local, or shared (100.64.0.0/10, which
+/// carrier-grade NAT and Tailscale use). The Interface setting names a public interface to serve
+/// the page there anyway.
+fn on_local_network(ip: Ipv4Addr, interface: Option<&str>) -> io::Result<Ipv4Addr> {
+    let [first, second, ..] = ip.octets();
+    let shared = first == 100 && second & 0b1100_0000 == 64;
+    if ip.is_private() || ip.is_link_local() || shared {
+        return Ok(ip);
+    }
+    let name = interface.unwrap_or("its interface");
+    Err(io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        format!(
+            "{ip} is a public address; name {name} in the Interface setting to serve the page to \
+             the internet"
+        ),
+    ))
 }
 
 /// The round the page beyond this machine shows, behind a token that changes with each round.

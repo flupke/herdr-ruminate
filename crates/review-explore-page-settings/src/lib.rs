@@ -87,7 +87,8 @@ pub struct NetworkAccess {
     /// The page is served to the network; otherwise it stays on this machine.
     pub enabled: bool,
     /// The interface whose address the page listens on, such as `wlan0`; `None` for the
-    /// interface of the route to the internet.
+    /// interface of the route to the internet, when its address is on a local network (the page
+    /// host's `on_local_network`).
     pub interface: Option<String>,
     /// The first port tried; when another reviewer holds it, the page tries the next ones. 0
     /// takes any free port, which only the tests use.

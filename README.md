@@ -77,7 +77,9 @@ in a checkout on that machine too, from its own build: the review pane of an age
 agent's machine, beside its repository, and shows in your window. There, it does not follow
 your window's focus: it stays on the agent it opened beside, unless a herdr-app runs on that
 machine too, whose focus it then follows. It opens the Explore page only in a browser of that
-machine.
+machine. On a machine whose route to the internet has a public address, the page stays off the
+network unless you name an interface in its Interface setting, such as your VPN's; or share a
+round over a tunnel with `O`.
 
 ## Get started
 

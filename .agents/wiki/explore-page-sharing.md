@@ -52,6 +52,14 @@ forwards (the public `Host`, an `https://` `Origin`).
   from a copied link. Only the page on this machine offers them.
 - A reviewer that cannot serve the page on the network (no network address, an unknown
   interface, all ten ports taken) keeps the page on this machine.
+- With no interface named, the page goes on the network only when the route to the internet
+  has an address of a local network: private, link-local or shared (100.64.0.0/10, Tailscale's).
+  A server whose route has a public address, such as a herdr machine in a data centre, keeps
+  the page on itself, and the pane says why, naming the interface; naming it in the Interface
+  setting serves the page there anyway. ADR 0003's accepted risk, someone reading the traffic,
+  assumed a local network. The check reads the address alone: a cloud machine with a private
+  address behind a one-to-one NAT, or with ports 8790 to 8799 open to the internet, still serves
+  the page there, and carrier-grade NAT shares 100.64.0.0/10 with other subscribers.
 - A firewall that drops incoming connections blocks the phone: the ten ports from the
   first port (8790 to 8799 by default) must be open to the local network.
 

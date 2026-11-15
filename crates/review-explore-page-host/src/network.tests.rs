@@ -288,3 +288,52 @@ fn the_port_of_the_page_taken_off_the_network_is_free_at_once() {
         .unwrap();
     assert_eq!(again.address(), shared.address);
 }
+
+#[test]
+fn the_route_to_the_internet_serves_the_page_on_a_local_network_only() {
+    let local = [
+        "192.168.1.105",
+        "10.202.52.18",
+        "172.16.0.1",
+        "169.254.3.4",
+        "100.64.0.1",
+        "100.127.255.254",
+    ];
+    for address in local {
+        let ip: Ipv4Addr = address.parse().unwrap();
+        assert_eq!(
+            on_local_network(ip, Some("wlan0")).unwrap(),
+            ip,
+            "{address}"
+        );
+    }
+    let public = [
+        "84.32.54.13",
+        "8.8.8.8",
+        "172.32.0.1",
+        "100.63.255.255",
+        "100.128.0.1",
+    ];
+    for address in public {
+        let error = on_local_network(address.parse().unwrap(), None).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied, "{address}");
+        assert!(error.to_string().contains(address), "{error}");
+    }
+}
+
+#[test]
+fn a_public_address_refused_names_its_interface_when_known() {
+    let ip = Ipv4Addr::new(84, 32, 54, 13);
+
+    let named = on_local_network(ip, Some("eth0")).unwrap_err().to_string();
+    let unnamed = on_local_network(ip, None).unwrap_err().to_string();
+
+    assert!(
+        named.contains("name eth0 in the Interface setting"),
+        "{named}"
+    );
+    assert!(
+        unnamed.contains("name its interface in the Interface setting"),
+        "{unnamed}"
+    );
+}
