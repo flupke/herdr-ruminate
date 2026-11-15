@@ -30,6 +30,12 @@ itself Herdr too, and labels its terminals `herdr.*`.
   `terminal.open` takes `folder`, and runs `argv` as given, with no shell: the terminal's
   `argv` is the program's. Its `name` does not reach the core terminal's `name`, and neither
   command sets labels of the caller's (herdr-app 0.1.13).
+- Another machine's spaces, tabs, panes and terminals carry a `<machine>/` prefix in the
+  window (`rs/t1`), which that machine's core and the labels of its terminals lack. A split,
+  `pane.split` or `terminal.open` right or down, starts its terminal on the machine of the pane
+  it splits, in that pane's folder when given none (herdr-app 0.1.15's `window.rs`, `split`; seen
+  with 0.1.13 in the app sandbox). A mod's `exec` with `on: <machine>` runs there, in its home,
+  with its core's environment.
 - A key reaches a mod's `nextCommand()` only while a copy of it shows. `mod.open:<mod>` opens
   the mod as the overlay its `mod.json` describes, so a mod with no panel can still act on a
   key: its `init` reads `focused()`, acts, and closes the overlay at once. `focused()` there is
@@ -225,7 +231,18 @@ both stay.
   `host.rs`. No check parses the mod; `herdr-app check herdr-app-mod` does. Never drive it in the
   user's window: `herdr-app do` acts on the space the user looks at now, which they may switch
   at any moment, and `space.new` switches their view. A copy of a mod lives only while it shows,
-  and the launcher's closes at once.
+  and the launcher's closes at once, but for an opening on another machine: a copy's tasks end
+  with it, so a promise of a copy whose overlay closed never resumes, and the launcher closes
+  its overlay once that machine's `exec` answered. A popup overlay takes the keyboard while it
+  shows, and a click, Esc or the key again closes it; a `window` overlay does neither, hence the
+  launcher's 2×2 window with no frame, which shows nothing meanwhile.
+- Beside an agent of another machine, the launcher runs the reviewer that `make install` linked
+  on that machine (`herdr-progressive-reviewer/reviewer` in its XDG data folder), beside the
+  agent's pane, which it splits by its ID, since the focus may move while the machine answers.
+  The pane gets the agent's terminal without its machine prefix and no `--herdr-app-home`: the
+  window's `view.json` is on this computer. So the pane follows the focus of a herdr-app on that
+  machine, when one runs there, through its default home; on a machine without one, such as a
+  herdr machine with no window, it stays on the agent it opened beside.
 
 The tests of the backend against a real herdr-core are opt-in (Checks, Opt-in tests), on a
 private core of `crates/hc-test-support`. Its `Person` types as the user does in a window:
@@ -255,6 +272,15 @@ pixels, `stop <name>` ends it. Use it to see the review pane as herdr-app draws 
   terminal without its pane: `herdr-app ls` lists both. `HERDR_APP_HOME=<app_home>
   scripts/herdr-app-mod install` installs the launcher itself, running this checkout's
   `bin/reviewer` (`make build`).
+- A second machine, for the launcher in another machine's space: write `via.sh` in the
+  sandbox's `/tmp`, which unsets every `HC_*` and `HERDR*` variable, points `HOME`,
+  `XDG_RUNTIME_DIR` and the other XDG folders into `/tmp/remote`, `cd`s there and ends with
+  `exec sh -c "<its last argument>"`; then `hc <name> machine add --via /tmp/via.sh --name rs
+  --install`. Link `/tmp/remote/data/herdr-progressive-reviewer/reviewer` to a built
+  `bin/reviewer`, and start a shell in the agent's place there, `hc <name> exec --on rs -- hc run --bg
+  --keep --cwd <repository there> --label herdr.space=<sp…> --label herdr.tab=<tb…> -- bash`: it
+  shows in the window as `rs/t1`. `do pane.focus '{"terminal": "rs/t1"}'`, then `do
+  mod.open:herdr-progressive-reviewer`, presses the launcher's key.
 - `hc keys` and `hc read` drive and read the review pane. The pane needs 40 columns:
   `app.zoom_out` in a narrow window.
 - `pane.split --direction down` and `pane.close` shrink and grow the pane; closing its

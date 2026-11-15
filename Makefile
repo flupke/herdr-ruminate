@@ -141,11 +141,16 @@ mutants:
 # The herdr-app mod (herdr-app-mod/) opens the review pane on its key, ctrl-b d unless
 # REVIEW_KEY names another (scripts/herdr-app-mod). The uninstall also unlinks the Herdr plugin
 # that installs before herdr-app linked, when Herdr is there.
+# REVIEWER_LINK points to this checkout's reviewer, so that a window on another computer can open
+# the review pane beside an agent of this machine (herdr-app-mod/main.js, LINKED_REVIEWER). It
+# comes first: a machine without Codex, whose plugin install then fails, still gets it.
 CLAUDE_MARKETPLACE = herdr-progressive-reviewer
 CLAUDE_PLUGIN = progressive-reviewer@$(CLAUDE_MARKETPLACE)
+REVIEWER_LINK = $${XDG_DATA_HOME:-$$HOME/.local/share}/herdr-progressive-reviewer/reviewer
 
 # Builds and installs without running the checks: run the gate (AGENTS.md, step 5) first.
 install: build
+	link="$(REVIEWER_LINK)"; mkdir -p "$$(dirname "$$link")" && ln -sfn "$(CURDIR)/bin/reviewer" "$$link"
 	bin/reviewer-control mcp-install
 	claude plugin marketplace add "$(CURDIR)/crates/claude-hooks"
 	claude plugin install $(CLAUDE_PLUGIN) --config control="$(CURDIR)/bin/reviewer-control"
@@ -154,6 +159,7 @@ install: build
 
 uninstall:
 	scripts/herdr-app-mod uninstall
+	link="$(REVIEWER_LINK)"; rm -f "$$link"; rmdir "$$(dirname "$$link")" 2>/dev/null || true
 	if command -v herdr >/dev/null; then herdr plugin unlink herdr.progressive-reviewer || true; fi
 	claude plugin uninstall $(CLAUDE_PLUGIN)
 	claude plugin marketplace remove $(CLAUDE_MARKETPLACE)

@@ -72,6 +72,13 @@ adds the reviewer's mod to herdr-app, and binds `ctrl-b d` to it in
 `~/.config/herdr-app/keys.json`; `make install REVIEW_KEY=<key>` binds another key. herdr-app
 then takes that file as yours, and stops adding its new default shortcuts to it.
 
+For agents on another machine that your herdr-app reaches (`hc machine ls`), run `make install`
+in a checkout on that machine too, from its own build: the review pane of an agent runs on the
+agent's machine, beside its repository, and shows in your window. There, it does not follow
+your window's focus: it stays on the agent it opened beside, unless a herdr-app runs on that
+machine too, whose focus it then follows. It opens the Explore page only in a browser of that
+machine.
+
 ## Get started
 
 Focus your agent's terminal in the repository and press `ctrl-b d`: the review pane opens
