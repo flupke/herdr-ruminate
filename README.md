@@ -60,6 +60,8 @@ the forks spent.
 
 On Linux or macOS, install herdr-app, Rust, a C compiler, Make, Git, jq, and Claude Code's
 `claude` command, which `make install` runs. For jj repositories, use jj 0.43.0 or later.
+Codex is optional: without `codex` on your `PATH`, `make install` skips the reviewer's Codex
+plugin and its MCP registration, and says so.
 
 ```sh
 git clone https://github.com/flupke/herdr-progressive-reviewer.git

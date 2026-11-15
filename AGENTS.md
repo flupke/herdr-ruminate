@@ -14,7 +14,8 @@ its tools (`.agents/wiki/visual-testing.md`); `make explore-page` and `make expl
 the Explore page, and `make explore-script` acts on it with a throwaway script
 (`.agents/wiki/explore-page-standalone.md`); herdr-common's `app-sandbox` command keeps a
 private herdr-app running across shell commands, where the launcher mod opens the pane and
-`app-sandbox shot` shows the render (`.agents/wiki/herdr-app.md`, A private herdr-app).
+`app-sandbox shot` shows the render (`.agents/wiki/herdr-app.md`, A private herdr-app);
+`make install` runs in a scratch home, with or without Codex (`.agents/wiki/install.md`).
 When a part of the product has no such tool, build one before you rely on tests alone.
 
 # Standards

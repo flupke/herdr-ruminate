@@ -84,3 +84,25 @@ fn the_trust_of_other_hooks_stays() {
         })
     );
 }
+
+#[test]
+fn codex_is_found_only_as_an_executable_file_in_a_directory_of_the_path() {
+    let root = tempfile::tempdir().unwrap();
+    let directory = |name: &str| {
+        let directory = root.path().join(name);
+        fs::create_dir(&directory).unwrap();
+        directory
+    };
+    let empty = directory("empty");
+    let plain = directory("plain");
+    fs::write(plain.join("codex"), "").unwrap();
+    let nested = directory("nested");
+    fs::create_dir(nested.join("codex")).unwrap();
+    let bin = directory("bin");
+    fs::write(bin.join("codex"), "#!/bin/sh\n").unwrap();
+    fs::set_permissions(bin.join("codex"), fs::Permissions::from_mode(0o755)).unwrap();
+    let path = |directories: &[&Path]| std::env::join_paths(directories).unwrap();
+
+    assert!(!finds(&path(&[&empty, &plain, &nested]), CODEX));
+    assert!(finds(&path(&[&empty, &plain, &bin]), CODEX));
+}

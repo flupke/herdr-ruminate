@@ -72,7 +72,7 @@ where the gate meets what the user's computer has and the machine lacks (2026-11
   23.10 and later forbid unprivileged user namespaces to programs AppArmor does not name.
 - `make e2e-tui`'s `a_prompt_typed_to_the_agent_moves_its_conversation_past_the_forks` waits 30 s
   for a turn and fails when the suite runs in parallel there, on main too; it passes alone, and
-  with `-j 1`.
+  with `-j 1`, most of the time: on key-drum it also failed alone, once in three runs.
 - Other agents' work loads the machine (a load average over 20 on 16 CPUs): `make e2e-tui`'s
   vision sessions may then fail at their start, `herdr-app ls failed ... the window did not
   answer`; run them again with `-j 1`.

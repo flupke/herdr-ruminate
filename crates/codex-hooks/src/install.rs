@@ -1,8 +1,10 @@
 //! Installs the plugin in the user's Codex home, and removes it, as `make install` and
 //! `make uninstall` do.
 
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::process::Command;
 
@@ -41,11 +43,30 @@ const FILES: [(&str, &str); 3] = [
     ),
 ];
 
+/// Whether the `codex` program is on `PATH`, where the installation runs it: without it,
+/// `make install` skips the plugin and Codex's MCP registration.
+pub fn codex_on_path() -> bool {
+    std::env::var_os("PATH").is_some_and(|path| finds(&path, CODEX))
+}
+
+/// Whether a directory of `path`, a `PATH` value, holds an executable file named `program`.
+fn finds(path: &OsStr, program: &str) -> bool {
+    std::env::split_paths(path).any(|directory| {
+        fs::metadata(directory.join(program))
+            .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+    })
+}
+
 /// Installs the plugin, whose hook runs `control`, in the Codex home of `codex`'s environment
 /// (`CODEX_HOME`, or `~/.codex`), and trusts its hook. The marketplace is written beside
 /// `control`, where Codex finds it again. Run again, from another checkout too, it installs the
-/// plugin of `control` in place of the earlier one.
+/// plugin of `control` in place of the earlier one. Without `codex` on `PATH`, it says so and
+/// installs nothing; a `codex` that fails is an error.
 pub fn install(control: &Path) -> eyre::Result<()> {
+    if !codex_on_path() {
+        eprintln!("Codex: no `{CODEX}` on PATH, skipped the plugin {PLUGIN}");
+        return Ok(());
+    }
     let marketplace = marketplace_of(control);
     write_marketplace(&marketplace, control)?;
     let source = marketplace.to_string_lossy();
@@ -62,12 +83,17 @@ pub fn install(control: &Path) -> eyre::Result<()> {
 }
 
 /// Removes the trust of the plugin's hooks, the plugin and its marketplace from the Codex home
-/// of `codex`'s environment, and the marketplace written beside `control`.
+/// of `codex`'s environment, and the marketplace written beside `control`. Without `codex` on
+/// `PATH`, it removes that marketplace alone, and leaves Codex's home as it is.
 pub fn uninstall(control: &Path) -> eyre::Result<()> {
-    let removed = untrust()?;
-    eprintln!("Codex: removed the trust of {removed} hook(s) of {PLUGIN}");
-    codex(&["plugin", "remove", PLUGIN])?;
-    codex(&["plugin", "marketplace", "remove", MARKETPLACE])?;
+    if codex_on_path() {
+        let removed = untrust()?;
+        eprintln!("Codex: removed the trust of {removed} hook(s) of {PLUGIN}");
+        codex(&["plugin", "remove", PLUGIN])?;
+        codex(&["plugin", "marketplace", "remove", MARKETPLACE])?;
+    } else {
+        eprintln!("Codex: no `{CODEX}` on PATH, left {PLUGIN} in Codex's home as it is");
+    }
     match fs::remove_dir_all(marketplace_of(control)) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
         _ => Ok(()),

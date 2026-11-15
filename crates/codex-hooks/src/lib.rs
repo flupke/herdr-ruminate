@@ -15,7 +15,8 @@
 //! home: [`install`] writes the plugin with the path of the checkout's `reviewer-control` in its
 //! command, installs it with the `codex` CLI, and trusts its hook through Codex's app server, as
 //! Codex's `/hooks` does, since Codex never runs an untrusted hook. [`uninstall`] removes the
-//! trust, the plugin and its marketplace.
+//! trust, the plugin and its marketplace. On a machine without `codex` on `PATH`, both skip
+//! Codex ([`codex_on_path`]).
 
 mod app_server;
 mod guard;
@@ -23,4 +24,4 @@ mod hook;
 mod install;
 
 pub use hook::{SUBCOMMAND, run_hook};
-pub use install::{PLUGIN, install, uninstall};
+pub use install::{PLUGIN, codex_on_path, install, uninstall};

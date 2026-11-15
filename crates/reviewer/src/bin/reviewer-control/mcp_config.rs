@@ -3,7 +3,14 @@ use review_mcp_config::{Client, UserConfig};
 pub(super) fn install() -> eyre::Result<()> {
     let arguments = std::env::args().skip(2).collect::<Vec<_>>();
     let clients = match arguments.as_slice() {
-        [] => Client::ALL.to_vec(),
+        [] => {
+            let mut clients = Client::ALL.to_vec();
+            if !codex_hooks::codex_on_path() {
+                clients.retain(|client| !matches!(client, Client::Codex));
+                eprintln!("Codex: no `codex` on PATH, skipped its MCP registration");
+            }
+            clients
+        }
         [client] => vec![client.parse::<Client>().map_err(eyre::Report::msg)?],
         _ => {
             eyre::bail!("usage: reviewer-control mcp-install [codex|claude]");

@@ -27,8 +27,10 @@ reviewer --agent.prompt--> Herdr's Unix socket --> agent's terminal
 
 - `make install` registers the stdio bridge once in the user configuration of both clients:
   Codex in `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`), Claude Code in
-  `$CLAUDE_CONFIG_DIR/.claude.json` (default `~/.claude.json`).
-  `reviewer-control mcp-install [codex|claude]` does the same from any directory.
+  `$CLAUDE_CONFIG_DIR/.claude.json` (default `~/.claude.json`). Without `codex` on `PATH`, it
+  skips Codex, so a machine without Codex gets no `~/.codex`.
+  `reviewer-control mcp-install` does the same from any directory; `mcp-install codex` writes
+  Codex's registration even without `codex` on `PATH`.
 - User-level registration lets a client find the bridge in every repository. It grants no
   access to a review: each call needs an access value for the selected review and native
   agent session. A client's approval of a tool call is a separate decision of that client.

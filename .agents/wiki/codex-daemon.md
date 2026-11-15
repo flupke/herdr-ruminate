@@ -85,7 +85,9 @@ run-ahead's forks in [ADR 0011](../adr/0011-keep-a-codex-fork-read-only-with-the
   `hooks.state`.
 - A plugin's hook gets no option of the user's: `make install` writes the marketplace into
   `bin/codex-plugin` with the checkout's `reviewer-control` in the hook's command, which Codex
-  runs as `$SHELL -lc <command>`, with `PLUGIN_ROOT` and `PLUGIN_DATA`.
+  runs as `$SHELL -lc <command>`, with `PLUGIN_ROOT` and `PLUGIN_DATA`. Without `codex` on
+  `PATH`, `make install` skips the plugin with a note, and `make uninstall` removes only the
+  marketplace; a `codex` there that fails stops them.
 - `codex plugin add` leaves the hooks untrusted, and an untrusted hook never runs. A trust key,
   such as `progressive-reviewer@herdr-progressive-reviewer:hooks/hooks.json:user_prompt_submit:0:0`
   (`pre_tool_use` for the fork guard), holds no version; its hash changes with the command. `config/batchWrite` with `upsert` on

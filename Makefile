@@ -144,8 +144,9 @@ mutants:
 # herdr-app linked, when Herdr is there.
 # REVIEWER_LINK points to this checkout's reviewer, so that a window on another computer can open
 # the review pane beside an agent of this machine, and its page (herdr-app-mod/common.js,
-# LINKED_REVIEWER). It comes first: a machine without Codex, whose plugin install then fails,
-# still gets it.
+# LINKED_REVIEWER).
+# On a machine without `codex` on PATH, reviewer-control skips Codex's MCP registration and
+# plugin, with a note (.agents/wiki/install.md).
 CLAUDE_MARKETPLACE = herdr-progressive-reviewer
 CLAUDE_PLUGIN = progressive-reviewer@$(CLAUDE_MARKETPLACE)
 REVIEWER_LINK = $${XDG_DATA_HOME:-$$HOME/.local/share}/herdr-progressive-reviewer/reviewer
