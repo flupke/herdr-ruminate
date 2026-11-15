@@ -75,21 +75,26 @@ impl PageAddress {
     /// Whether the page answers: the reviewer that recorded it may have died without
     /// removing its record.
     fn answers(&self) -> bool {
-        let address = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
-        let health = || -> io::Result<bool> {
-            let mut stream = TcpStream::connect_timeout(&address, ANSWER_TIMEOUT)?;
-            stream.set_read_timeout(Some(ANSWER_TIMEOUT))?;
-            stream.set_write_timeout(Some(ANSWER_TIMEOUT))?;
-            write!(
-                stream,
-                "GET /health HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
-            )?;
-            let mut status = [0; 12];
-            stream.read_exact(&mut status)?;
-            Ok(status.ends_with(b" 204"))
-        };
-        health().unwrap_or(false)
+        page_answers(self.port)
     }
+}
+
+/// Whether a reviewer's Explore page answers on `port` of this machine's loopback interface.
+pub fn page_answers(port: u16) -> bool {
+    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let health = || -> io::Result<bool> {
+        let mut stream = TcpStream::connect_timeout(&address, ANSWER_TIMEOUT)?;
+        stream.set_read_timeout(Some(ANSWER_TIMEOUT))?;
+        stream.set_write_timeout(Some(ANSWER_TIMEOUT))?;
+        write!(
+            stream,
+            "GET /health HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+        )?;
+        let mut status = [0; 12];
+        stream.read_exact(&mut status)?;
+        Ok(status.ends_with(b" 204"))
+    };
+    health().unwrap_or(false)
 }
 
 impl PageDirectory {

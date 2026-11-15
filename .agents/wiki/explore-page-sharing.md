@@ -1,6 +1,6 @@
 # Explore page: network and tunnel
 
-How the page is served beyond this machine, what the network listener and the Cloudflare quick tunnel expose, and how tests stand in for them.
+How the page is served beyond this machine, what the network listener and the Cloudflare quick tunnel expose, and how tests stand in for them. A third way, for a review pane on another machine than herdr-app's, is the page key's ssh forward of the loopback listener, which exposes nothing beyond the two ends ([herdr-app](herdr-app.md)).
 
 ## The network listener
 

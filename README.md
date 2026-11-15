@@ -68,18 +68,22 @@ make install
 ```
 
 Keep the checkout in place, and restart your agent to load the reviewer's tools. The install
-adds the reviewer's mod to herdr-app, and binds `ctrl-b d` to it in
-`~/.config/herdr-app/keys.json`; `make install REVIEW_KEY=<key>` binds another key. herdr-app
-then takes that file as yours, and stops adding its new default shortcuts to it.
+adds the reviewer's mods to herdr-app, and binds `ctrl-b d`, which opens the review pane, and
+`ctrl-b o`, which opens its Explore page, in `~/.config/herdr-app/keys.json`;
+`make install REVIEW_KEY=<key> REVIEW_PAGE_KEY=<key>` binds others. herdr-app then takes that
+file as yours, and stops adding its new default shortcuts to it.
 
 For agents on another machine that your herdr-app reaches (`hc machine ls`), run `make install`
 in a checkout on that machine too, from its own build: the review pane of an agent runs on the
 agent's machine, beside its repository, and shows in your window. There, it does not follow
 your window's focus: it stays on the agent it opened beside, unless a herdr-app runs on that
-machine too, whose focus it then follows. It opens the Explore page only in a browser of that
-machine. On a machine whose route to the internet has a public address, the page stays off the
-network unless you name an interface in its Interface setting, such as your VPN's; or share a
-round over a tunnel with `O`.
+machine too, whose focus it then follows. The pane itself opens the Explore page only in a
+browser of that machine: press `ctrl-b o` in its tab to open the page in your browser, through
+an ssh forward of its port that lasts as long as the pane and your herdr-app. That needs a
+machine you added over ssh (`hc machine add <host>`, or `--via 'ssh ...'`); for another, share a
+round over a tunnel with `O` in the pane. On a machine whose route to the internet has a public
+address, the page stays off the network unless you name an interface in its Interface setting,
+such as your VPN's.
 
 ## Get started
 

@@ -226,9 +226,12 @@ both stay.
   which cannot tell the terminal, so the Codex resume, which reports a session only when the
   host reports one, reports none there.
 - The pane-opening action (`reviewer-control`, `HerdrReader`, `HerdrWriter`) stays Herdr's;
-  under herdr-app, `herdr-app-mod/` opens the pane. It tells a review pane by its terminal's
-  argv, a program ending in `/bin/reviewer` and `--focused-terminal`: keep the two in step with
-  `host.rs`. No check parses the mod; `herdr-app check herdr-app-mod` does. Never drive it in the
+  under herdr-app, the launcher mod (`herdr-app-mod/launcher/`) opens the pane, and the page
+  key's mod (`herdr-app-mod/explore-page/`) its Explore page; `mod.open` passes a mod no props,
+  so each key needs a mod of its own, and both get a copy of `herdr-app-mod/common.js`. They
+  tell a review pane by its terminal's argv, a program ending in `/bin/reviewer` and
+  `--focused-terminal`: keep the two in step with `host.rs`. No check parses the mods;
+  `herdr-app check <installed mod folder>` does. Never drive them in the
   user's window: `herdr-app do` acts on the space the user looks at now, which they may switch
   at any moment, and `space.new` switches their view. A copy of a mod lives only while it shows,
   and the launcher's closes at once, but for an opening on another machine: a copy's tasks end
@@ -243,6 +246,21 @@ both stay.
   window's `view.json` is on this computer. So the pane follows the focus of a herdr-app on that
   machine, when one runs there, through its default home; on a machine without one, such as a
   herdr machine with no window, it stays on the agent it opened beside.
+- The page key opens the page of a review pane of another machine through `ssh -L
+  127.0.0.1:<port>:127.0.0.1:<port>`: the same port on both ends, as the page answers only
+  `127.0.0.1` or `localhost` with its own port as the request's host, and this computer's
+  loopback alone, as ssh's `GatewayPorts` would otherwise open it to the network. It takes ssh
+  from `hc machine ls --json`: a machine added over ssh has its `target` (`user@host:2222`
+  becomes `-p 2222 user@host`), one added `--via` the command in `target`, run whole as the sh
+  line hc runs, when its first word is ssh; OpenSSH reads the options that follow its
+  destination too. No other command can forward. The forward's remote command,
+  `reviewer-control explore-page-wait <url>`, polls the page itself, not its record, since an ssh
+  command may see another state folder than the reviewer, and ends after two misses or once
+  ssh is gone; a watcher ends the forward when the herdr-app that ran the key ends.
+- A mod's `exec` returns once its program exits and its standard streams close, and kills it at
+  its timeout, so what must outlive it (the forward, a browser that stays in the foreground)
+  runs in the background with its streams on `/dev/null` or a file. Its `$PPID` is herdr-app's
+  process, the window, which a watcher can follow. macOS has no `setsid`.
 
 The tests of the backend against a real herdr-core are opt-in (Checks, Opt-in tests), on a
 private core of `crates/hc-test-support`. Its `Person` types as the user does in a window:
@@ -270,7 +288,7 @@ pixels, `stop <name>` ends it. Use it to see the review pane as herdr-app draws 
   "--focused-terminal", "<agent's terminal>", "--herdr-app-home", "<inside>/config/herdr-app"],
   "folder": "<repository>", "place": "right"}'`. `terminal.open` in a new tab answers its
   terminal without its pane: `herdr-app ls` lists both. `HERDR_APP_HOME=<app_home>
-  scripts/herdr-app-mod install` installs the launcher itself, running this checkout's
+  scripts/herdr-app-mod install` installs the mods themselves, running this checkout's
   `bin/reviewer` (`make build`).
 - A second machine, for the launcher in another machine's space: write `via.sh` in the
   sandbox's `/tmp`, which unsets every `HC_*` and `HERDR*` variable, points `HOME`,
@@ -281,6 +299,18 @@ pixels, `stop <name>` ends it. Use it to see the review pane as herdr-app draws 
   --keep --cwd <repository there> --label herdr.space=<sp…> --label herdr.tab=<tb…> -- bash`: it
   shows in the window as `rs/t1`. `do pane.focus '{"terminal": "rs/t1"}'`, then `do
   mod.open:herdr-progressive-reviewer`, presses the launcher's key.
+- A machine over ssh, for the page key: such a machine shares the sandbox's loopback, where the
+  forward and the page would want one port, and the sandbox can make no namespace of its own
+  (Ubuntu's AppArmor forbids unprivileged user namespaces). So run the machine on the host: a
+  private `sshd -f <config>` on `127.0.0.1:2222` as the user, with a host key, an
+  `AuthorizedKeysFile` and `UsePAM no`, whose `ForceCommand` unsets every `HC_*` and `HERDR*`
+  variable, points `HOME` and `XDG_RUNTIME_DIR` at a short scratch folder, never the user's, and
+  runs `sh -c "$SSH_ORIGINAL_COMMAND"`; socat bridges a Unix socket in a folder the sandbox shares
+  (`<checkout>/target/...`) to that port, and an ssh config there (`ProxyCommand socat -
+  UNIX-CONNECT:<socket>`, its own key and `UserKnownHostsFile`) reaches it from the sandbox:
+  `hc <name> machine add --via 'ssh -F <config> <host>' --name rs --install`. The sandbox's
+  herdr-app has `BROWSER=true`; run `open-page.sh` with `env -u BROWSER` (`app-sandbox run`) to
+  see the address its `xdg-open` stand-in logs in the sandbox's `/tmp/opened.log`.
 - `hc keys` and `hc read` drive and read the review pane. The pane needs 40 columns:
   `app.zoom_out` in a narrow window.
 - `pane.split --direction down` and `pane.close` shrink and grow the pane; closing its

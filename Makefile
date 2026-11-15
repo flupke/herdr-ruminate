@@ -138,12 +138,14 @@ mutants:
 # The reviewer's Codex plugin (crates/codex-hooks) is written in bin/codex-plugin, its hook
 # trusted in the Codex home's config.toml; a Codex session loaded before the install runs
 # without it until Codex's daemon loads it again.
-# The herdr-app mod (herdr-app-mod/) opens the review pane on its key, ctrl-b d unless
-# REVIEW_KEY names another (scripts/herdr-app-mod). The uninstall also unlinks the Herdr plugin
-# that installs before herdr-app linked, when Herdr is there.
+# The herdr-app mods (herdr-app-mod/) open the review pane on its key, ctrl-b d unless
+# REVIEW_KEY names another, and its Explore page on ctrl-b o unless REVIEW_PAGE_KEY does
+# (scripts/herdr-app-mod). The uninstall also unlinks the Herdr plugin that installs before
+# herdr-app linked, when Herdr is there.
 # REVIEWER_LINK points to this checkout's reviewer, so that a window on another computer can open
-# the review pane beside an agent of this machine (herdr-app-mod/main.js, LINKED_REVIEWER). It
-# comes first: a machine without Codex, whose plugin install then fails, still gets it.
+# the review pane beside an agent of this machine, and its page (herdr-app-mod/common.js,
+# LINKED_REVIEWER). It comes first: a machine without Codex, whose plugin install then fails,
+# still gets it.
 CLAUDE_MARKETPLACE = herdr-progressive-reviewer
 CLAUDE_PLUGIN = progressive-reviewer@$(CLAUDE_MARKETPLACE)
 REVIEWER_LINK = $${XDG_DATA_HOME:-$$HOME/.local/share}/herdr-progressive-reviewer/reviewer

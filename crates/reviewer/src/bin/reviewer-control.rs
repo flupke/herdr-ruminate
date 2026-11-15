@@ -33,7 +33,7 @@ impl Control {
             Some("toggle") => PaneAction::Toggle,
             _ => {
                 eyre::bail!(
-                    "usage: reviewer-control <open|close|toggle|explore-page|mcp-install [codex|claude]|codex-plugin <install|uninstall>|stats>"
+                    "usage: reviewer-control <open|close|toggle|explore-page|explore-page-address|explore-page-wait|open-url|mcp-install [codex|claude]|codex-plugin <install|uninstall>|stats>"
                 );
             }
         };
@@ -84,6 +84,9 @@ fn main() -> eyre::Result<()> {
         Some("mcp-install") => mcp_config::install(),
         Some("stats") => stats::Stats::from_args(env::args().skip(2))?.run(),
         Some("explore-page") => explore_page::OpenExplorePage::from_env()?.run(),
+        Some(command @ ("explore-page-address" | "explore-page-wait" | "open-url")) => {
+            explore_page::run_page_key_command(command, env::args().skip(2))
+        }
         // A run-ahead fork starts through this, which ties its life to the reviewer's.
         Some("fork-exec") => Err(agent_fork::run_wrapper(env::args_os().skip(2)).into()),
         // The hook of every run-ahead fork, which keeps it read-only.
