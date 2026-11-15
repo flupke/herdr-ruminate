@@ -61,6 +61,20 @@ To change the pinned release:
    `crates/review-test-support/agent-detection`.
 3. Run `scripts/dev-shell make check-with-e2e`.
 
+## On a herdr machine
+
+A task's workspace may live on a herdr machine, such as rayon-scout (Ubuntu 26.04, no window),
+where the gate meets what the user's computer has and the machine lacks (2026-11-15):
+
+- The tests of Codex fail with "Codex is not installed" (11 of `make test`): they run the
+  `codex` of the `PATH`, installed with npm, which the dev shell does not provide.
+- `make e2e-explore` stops before its first test: Chromium finds "No usable sandbox", as Ubuntu
+  23.10 and later forbid unprivileged user namespaces to programs AppArmor does not name.
+- `make e2e-tui`'s `a_prompt_typed_to_the_agent_moves_its_conversation_past_the_forks` waits 30 s
+  for a turn and fails when the suite runs in parallel there, on main too; it passes alone, and
+  with `-j 1`.
+- rust-analyzer comes from the dev shell, so `review-lsp`'s tests pass there.
+
 ## Tests that call no model
 
 Explore's tests in `make check` use deterministic responses and call no model API; the

@@ -63,7 +63,9 @@
         {
           default = pkgs.mkShell ({
             packages = [
-              pkgs.rust-bin.stable."1.90.0".default
+              # rust-analyzer, which review-lsp's tests start, from the same toolchain: a machine
+              # whose user has none on PATH, such as a herdr machine, passes them too.
+              (pkgs.rust-bin.stable."1.90.0".default.override { extensions = [ "rust-analyzer" ]; })
               pkgs.cargo-nextest
               pkgs.cargo-mutants
               pkgs.jq
