@@ -109,11 +109,15 @@ impl ExploreSession {
                 .iter()
                 .any(|cancelled| cancelled.request.as_ref() == Some(request))
         {
-            // Withdraw the prompt; the agent's late answer is rejected.
+            // Withdraw the prompt; the saved round refuses the agent's late answer by its
+            // request.
             self.state.prompt = None;
             self.state.pending = None;
-            self.state.renew_access();
         }
+        // Cancel answer sends no prompt that could carry a new access: the agent revises the
+        // question the round went back to with the one it holds when it calls, which the turns
+        // after the answer renewed, whether they reached it or not.
+        self.state.grants_held = true;
         self.state.round = Some(round.clone());
         Ok(Arc::new(round))
     }

@@ -8,6 +8,7 @@ mod agent;
 mod cancel;
 mod diagram;
 mod dispatch;
+mod held_access;
 mod implementation;
 mod mark_tally;
 mod marks;
@@ -159,6 +160,11 @@ struct State {
     historical: bool,
     storage_error: Option<String>,
     access: String,
+    /// The access the pane's agent holds, which can be an earlier one than `access`.
+    held: held_access::HeldAccess,
+    /// Whether the round grants the held access in place of `access`: after Cancel answer, until
+    /// the access renews.
+    grants_held: bool,
     last_view: Option<ViewSave>,
     pending: Option<(String, String)>,
     /// The latest round when the reviewer reset another one; it stays out of view.
@@ -256,6 +262,13 @@ impl State {
     /// Revoke the MCP access of every earlier prompt.
     fn renew_access(&mut self) {
         self.access = uuid::Uuid::new_v4().to_string();
+        self.grants_held = false;
+    }
+
+    /// Whether `access` is the Explore access the round grants now.
+    fn grants(&self, access: &str) -> bool {
+        let held = self.grants_held.then(|| self.held.held()).flatten();
+        held.as_deref().unwrap_or(&self.access) == access
     }
 }
 
@@ -480,6 +493,8 @@ impl ExploreSession {
         self.state.historical = false;
         self.state.start.begin();
         self.state.renew_access();
+        // The agent's access to the earlier round grants nothing in this one.
+        self.state.held = held_access::HeldAccess::default();
     }
 
     /// Close the round and forget it: reopening shows the start screen. A later

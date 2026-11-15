@@ -104,6 +104,7 @@ impl ExploreSession {
             review_explore_runner::implementation_prompt(&request, round.exploration.author);
         let observer = DurableDispatch {
             began: std::sync::atomic::AtomicBool::default(),
+            grants: None,
             rounds: self.rounds.clone(),
             unit: round.exploration.comparison.checkpoint.review_unit.clone(),
             instance: request.instance.clone(),

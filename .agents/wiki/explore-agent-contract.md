@@ -85,7 +85,16 @@ question whose Door is not two-way.
   follows the same answer as the turn it revises, and carries that turn's reply and review
   marks, so the reviewer's answer applies those marks as it would have. Cancel answer drops
   it with that turn. It takes the Explore access of the latest Explore turn's `turn.md`, since the
-  comments wakeup that brings the message carries the review threads' access.
+  comments wakeup that brings the message carries the review threads' access. The round's
+  access renews when a turn is posted, before its prompt reaches the agent, and some prompts
+  never do (one withdrawn, blocked or not sent, an answer that continues as a fork), or the
+  reviewer stops waiting. So the session keeps the access the agent holds (`HeldAccess`): its
+  latest prompt's once the outcome shows it reached the agent, or may have, or its fork's once
+  it switched. Cancel answer sends no prompt; until the next prompt renews the access, the round
+  grants the held one, read at each call: the agent revises the question the round went back to,
+  and the saved round refuses the cancelled turn's late reply by its request. A reopen renews the
+  access with no prompt, and a new process holds none, so after one the agent revises nothing
+  until the reviewer's next answer.
 - Validation errors leave the request open for repair; transport retries must reuse the
   identical semantic payload (with current `review` access after reconnection). A response
   saved before a lost acknowledgement is restored locally; it is not regenerated. Accepted

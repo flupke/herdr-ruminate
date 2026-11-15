@@ -535,6 +535,21 @@ fn question(request: &TurnRequest, version: u32) -> Operation {
     Operation::SubmitQuestion(Box::new(update))
 }
 
+/// The agent's version 2 of the round's first question, naming a message of the reviewer's
+/// (`message-1`), which the session does not look up.
+fn revised_first_question(request: &TurnRequest) -> Operation {
+    let revision: review_explore::QuestionRevision = serde_json::from_value(serde_json::json!({
+        "instance": request.instance, "checkpoint": request.checkpoint,
+        "message": "message-1", "reason": "You asked to weigh another policy.",
+        "question": {"id": "q1", "version": 2, "topic": "topic1", "text": "Keep the policy, or the other one?",
+            "rationale": null, "visual": null,
+            "alternatives": [{"id": "keep", "text": "Keep it", "outcome": "accepted"}, {"id": "other", "text": "The other one", "outcome": "needs_follow_up"}],
+            "evidence": [{"path": "reviewed.rs", "side": "new", "lines": {"first_line": 1, "last_line": 1}, "notes": "Implements the policy"}]}
+    }))
+    .unwrap();
+    Operation::ReviseQuestion(Box::new(revision))
+}
+
 /// The design the first turn explains, as the agent sends it.
 fn design() -> serde_json::Value {
     serde_json::json!({

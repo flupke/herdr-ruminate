@@ -115,7 +115,8 @@ impl ExploreSession {
                 return;
             }
         };
-        let observer = self.dispatch_of(&request, &attempt, self.turns.clone().zip(sent));
+        let mut observer = self.dispatch_of(&request, &attempt, self.turns.clone().zip(sent));
+        observer.grants = Some((self.state.access.clone(), self.state.held.clone()));
         let (receipt, cancellation) =
             self.prompts
                 .send_observed(agent, prompt, Some(Arc::new(observer)));
@@ -145,6 +146,7 @@ impl ExploreSession {
     ) -> DurableDispatch {
         DurableDispatch {
             began: std::sync::atomic::AtomicBool::default(),
+            grants: None,
             rounds: self.rounds.clone(),
             unit: request.checkpoint.review_unit.clone(),
             instance: request.instance.clone(),

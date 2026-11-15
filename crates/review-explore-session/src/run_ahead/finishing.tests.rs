@@ -184,6 +184,22 @@ fn cancelling_the_answer_that_waits_discards_its_fork_and_forks_the_question_aga
 }
 
 #[test]
+fn after_cancelling_the_answer_that_waits_the_agent_revises_the_question_with_its_access() {
+    let mut harness = Harness::start();
+    let (first, access) = harness.ask(RunAhead::Every);
+    let request = harness.post_answer(Some("keep"), "");
+
+    // The answer renewed the access, but waits for its fork: no prompt brought the new one.
+    harness.session.handle(Input::Command(Command::CancelAnswer(
+        request.answer.unwrap().id,
+    )));
+
+    assert!(harness.no_prompt_sent());
+    let revised = harness.submit(&access, revised_first_question(&first));
+    assert_eq!(shown_as(revised).as_deref(), Some("Q1"));
+}
+
+#[test]
 fn stop_waiting_while_the_agent_switches_to_the_fork_gives_the_answer_to_the_agent_on_its_session()
 {
     let mut harness = Harness::start();

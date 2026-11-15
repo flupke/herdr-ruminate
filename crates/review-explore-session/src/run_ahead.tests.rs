@@ -2806,3 +2806,29 @@ fn a_reset_from_the_explore_page_while_the_agent_switches_puts_it_back() {
     assert!(harness.no_prompt_sent());
     assert!(harness.forks.discarded().contains(&fork));
 }
+
+#[test]
+fn after_cancelling_an_answer_the_agent_switched_for_it_revises_with_the_forks_access() {
+    let mut harness = Harness::start();
+    let (first, access) = harness.ask(RunAhead::Every);
+    let (fork, _) = harness.fork_submits("keep");
+    let request = harness.post_answer(Some("keep"), "");
+    harness.forks.finish_switch(Ok(harness.agent_on(&fork)));
+    harness.pump();
+
+    harness.session.handle(Input::Command(Command::CancelAnswer(
+        request.answer.unwrap().id,
+    )));
+
+    // The round the switch committed went out before the test read it.
+    while harness.events.try_recv().is_ok() {}
+    // The agent runs the fork's session, whose latest prompt is the fork's.
+    assert!(
+        harness
+            .submit(&access, revised_first_question(&first))
+            .is_err()
+    );
+    let fork_access = fork_line(&harness.fork_prompt(&fork), "Explore review access: ");
+    let revised = harness.submit(&fork_access, revised_first_question(&first));
+    assert_eq!(shown_as(revised).as_deref(), Some("Q1"));
+}

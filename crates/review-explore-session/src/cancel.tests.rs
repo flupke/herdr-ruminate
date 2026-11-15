@@ -242,3 +242,127 @@ fn cancelling_an_answer_gives_back_the_marks_of_the_question_it_answered() {
     let answer = replacement.answer.unwrap().id;
     assert_eq!(harness.author(), Some(MarkAuthor::Explore { answer }));
 }
+
+#[test]
+fn after_a_cancelled_answer_the_agent_revises_the_question_the_round_went_back_to() {
+    let mut harness = Harness::start();
+    let (request, access) = harness.answered();
+    assert!(applied(harness.submit(&access, question(&request, 2))));
+
+    // Cancel answer sends no prompt: the access of the agent's latest one still revises.
+    harness
+        .cancel(&request.answer.as_ref().unwrap().id)
+        .unwrap();
+
+    let revised = harness.submit(&access, revised_first_question(&request));
+    assert_eq!(shown_as(revised).as_deref(), Some("Q1"));
+}
+
+#[test]
+fn an_answer_cancelled_mid_turn_lets_the_agent_revise_the_question_the_round_went_back_to() {
+    let mut harness = Harness::start();
+    let (request, access) = harness.answered();
+
+    harness
+        .cancel(&request.answer.as_ref().unwrap().id)
+        .unwrap();
+
+    let revised = harness.submit(&access, revised_first_question(&request));
+    assert_eq!(shown_as(revised).as_deref(), Some("Q1"));
+}
+
+#[test]
+fn after_stop_waiting_and_a_cancelled_answer_the_agent_revises_the_question_the_round_went_back_to()
+{
+    let mut harness = Harness::start();
+    let (request, access) = harness.answered();
+    // Stop waiting renews the access and sends no prompt.
+    harness.session.handle(Input::Command(Command::Cancel));
+
+    harness
+        .cancel(&request.answer.as_ref().unwrap().id)
+        .unwrap();
+
+    let revised = harness.submit(&access, revised_first_question(&request));
+    assert_eq!(shown_as(revised).as_deref(), Some("Q1"));
+}
+
+#[test]
+fn after_cancelling_an_answer_whose_prompt_failed_the_agent_revises_with_its_earlier_access() {
+    let mut harness = Harness::start();
+    harness.capture();
+    let first = harness.request(None);
+    let access = harness.turn(&first);
+    assert!(applied(harness.submit(&access, question(&first, 1))));
+    harness.agents.refuse_prompts("it waits on its user");
+    let answer = harness.request(Some(AnswerInput {
+        option: Some("keep".into()),
+        ..AnswerInput::default()
+    }));
+    let posted = harness.post_turn(&answer);
+    harness.threads.prompt_sender().flush();
+    assert_eq!(
+        harness.agents.prompts().len(),
+        1,
+        "only the kickoff reached the agent"
+    );
+
+    harness.cancel(&posted.answer.unwrap().id).unwrap();
+
+    let revised = harness.submit(&access, revised_first_question(&first));
+    assert_eq!(shown_as(revised).as_deref(), Some("Q1"));
+}
+
+#[test]
+fn after_cancelling_an_answer_whose_prompt_was_withdrawn_the_agent_revises_with_its_earlier_access()
+{
+    let mut harness = Harness::start();
+    harness.capture();
+    let first = harness.request(None);
+    let access = harness.turn(&first);
+    assert!(applied(harness.submit(&access, question(&first, 1))));
+    // The courier holds the answer's prompt after its delivery began, as when it types a
+    // review thread's wakeup first.
+    let hold = harness.threads.prompt_sender().hold();
+    let answer = harness.request(Some(AnswerInput {
+        option: Some("keep".into()),
+        ..AnswerInput::default()
+    }));
+    let posted = harness.post_turn(&answer);
+    harness.threads.prompt_sender().flush();
+
+    harness.cancel(&posted.answer.unwrap().id).unwrap();
+    drop(hold);
+    harness.threads.prompt_sender().flush();
+
+    assert_eq!(
+        harness.agents.prompts().len(),
+        1,
+        "the answer's prompt was withdrawn"
+    );
+    let revised = harness.submit(&access, revised_first_question(&first));
+    assert_eq!(shown_as(revised).as_deref(), Some("Q1"));
+}
+
+#[test]
+fn the_next_answer_after_a_cancelled_one_takes_back_the_access_the_agent_held() {
+    let mut harness = Harness::start();
+    let (request, access) = harness.answered();
+    assert!(applied(harness.submit(&access, question(&request, 2))));
+    harness
+        .cancel(&request.answer.as_ref().unwrap().id)
+        .unwrap();
+    // The next answer's prompt has not reached the agent yet.
+    let hold = harness.threads.prompt_sender().hold();
+    let again = harness.request(Some(AnswerInput {
+        option: Some("keep".into()),
+        text: "Keep it after all.".into(),
+        ..AnswerInput::default()
+    }));
+    let posted = harness.post_turn(&again);
+
+    let stale = harness.submit(&access, question(&posted, 2)).unwrap_err();
+
+    assert!(stale.contains("Obsolete Explore access"), "{stale}");
+    drop(hold);
+}

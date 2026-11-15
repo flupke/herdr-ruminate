@@ -44,13 +44,13 @@ impl ExploreSession {
         let other_access = revising
             && self.state.storage_error.is_none()
             && !self.state.historical
-            && self.state.access != request.access;
+            && !self.state.grants(&request.access);
         request.respond(Err(if other_access {
             // Each answer the reviewer sends renews the access.
             "This is not the Explore review access of the round now. Use the one of your \
              latest Explore prompt, not the comments wakeup's. If you did, the round moved \
-             on since that prompt: the reviewer answered, cancelled an answer or reopened. \
-             Ask the new version in your next Explore turn"
+             on since that prompt: the reviewer answered, stopped waiting for your turn or \
+             reopened. Ask the new version in your next Explore turn"
                 .into()
         } else {
             error.to_string()
@@ -201,7 +201,7 @@ impl ExploreSession {
             self.state.storage_error.as_deref().unwrap_or_default()
         );
         eyre::ensure!(
-            !access.is_empty() && self.state.access == access && !self.state.historical,
+            !access.is_empty() && self.state.grants(access) && !self.state.historical,
             "Obsolete Explore access: the reviewer reopened, retried, cancelled or reset this turn. Its next prompt carries fresh access; do not resubmit until then"
         );
         let round = self

@@ -16,6 +16,9 @@ pub(crate) struct DurableDispatch {
     pub(crate) id: DispatchId,
     pub(crate) events: ApplicationEventSender,
     pub(crate) began: AtomicBool,
+    /// The access the prompt grants the pane's agent, and where the session keeps the one the
+    /// agent holds; none for a prompt that grants none.
+    pub(crate) grants: Option<(String, crate::held_access::HeldAccess)>,
     /// The prompt, for a vision session's record of what was sent.
     pub(crate) turn: Option<(TurnLog, SentTurn)>,
 }
@@ -34,6 +37,16 @@ impl DispatchObserver for DurableDispatch {
 
     fn finished(&self, result: &Result<(), PromptError>) -> Result<(), String> {
         let state = Self::outcome(result);
+        // A prompt withdrawn, blocked or not sent never reached the agent; one whose outcome is
+        // unknown, or that the agent did not start on, may have.
+        if let Some((access, held)) = &self.grants
+            && matches!(
+                state,
+                DispatchState::Delivered | DispatchState::Unknown | DispatchState::NotStarted
+            )
+        {
+            held.hold(access);
+        }
         let saved = self.rounds.finish_dispatch(
             &self.unit,
             &self.instance,
