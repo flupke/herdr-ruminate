@@ -56,11 +56,13 @@ enum Input {
     Stop,
 }
 
-/// What the worker hears about herdr-bus, where it publishes the new review comments.
+/// What the worker hears about herdr-bus, where it publishes what the user writes to agents.
 enum BusInput {
-    /// Publish each new review comment from now on, on the bus file at this path, or report
-    /// why there is none.
+    /// Publish each new review comment from now on, and the words handed to the worker, on the
+    /// bus file at this path, or report why there is none.
     Open(Result<std::path::PathBuf, String>),
+    /// Publish these words, which the user wrote to an agent outside a review thread.
+    Publish(review_words_bus::UserWords),
     /// Why the bus did not get a review comment, which the worker reports.
     Failed(String),
 }
@@ -175,8 +177,8 @@ impl Worker {
     }
 
     /// Publishes each new review comment on the herdr-bus file at `bus` from the next one, for
-    /// other programs; it declares the bus's output for them at once. A bus with no file is
-    /// reported.
+    /// other programs, and the words handed to [`PromptSender::publish_words`]; it declares the
+    /// bus's output for them at once. A bus with no file is reported.
     pub fn publish_on_bus(&self, bus: Result<std::path::PathBuf, String>) {
         let _ = self.sender.send(Input::Bus(BusInput::Open(bus)));
     }

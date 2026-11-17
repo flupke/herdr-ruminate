@@ -1,9 +1,13 @@
 [package]
-name = "review-comment-bus"
+name = "review-words-bus"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+
+[features]
+# What lets a test wait until the bus published what it was handed.
+flush = []
 
 [dependencies]
 herdr-bus.workspace = true

@@ -4197,20 +4197,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "review-comment-bus"
-version = "0.2.0"
-dependencies = [
- "herdr-bus",
- "herdr-client",
- "herdr-words",
- "review-threads",
- "review-types",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "review-drafts"
 version = "0.2.0"
 dependencies = [
@@ -4376,6 +4362,7 @@ dependencies = [
  "component-core",
  "crossbeam-channel",
  "eyre",
+ "herdr-bus",
  "herdr-client",
  "linear-issues",
  "review-explore",
@@ -4395,6 +4382,7 @@ dependencies = [
  "review-thread-service",
  "review-threads",
  "review-types",
+ "review-words-bus",
  "serde",
  "serde_json",
  "tempfile",
@@ -4648,12 +4636,12 @@ dependencies = [
  "agent-hooks",
  "herdr-bus",
  "herdr-client",
- "review-comment-bus",
  "review-mcp",
  "review-source",
  "review-store",
  "review-threads",
  "review-types",
+ "review-words-bus",
  "serde",
  "serde_json",
  "tempfile",
@@ -4743,6 +4731,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "review-words-bus"
+version = "0.2.0"
+dependencies = [
+ "herdr-bus",
+ "herdr-client",
+ "herdr-words",
+ "review-threads",
+ "review-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "reviewer"
 version = "0.2.0"
 dependencies = [
@@ -4770,7 +4772,6 @@ dependencies = [
  "process-environment",
  "ratatui 0.30.2",
  "reqwest",
- "review-comment-bus",
  "review-explore",
  "review-explore-page",
  "review-explore-page-host",
@@ -4796,6 +4797,7 @@ dependencies = [
  "review-threads",
  "review-types",
  "review-ui",
+ "review-words-bus",
  "reviewer-config",
  "reviewer-dirs",
  "reviewer-fake-agent",

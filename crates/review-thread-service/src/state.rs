@@ -5,7 +5,6 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use herdr_client::protocol::{Agent, AgentPort, AgentTarget, HerdrEvent, PaneId};
-use review_comment_bus::{CommentBus, PostedComment};
 use review_mcp::{Operation, Response};
 use review_store::ReviewStore;
 use review_threads::{
@@ -13,6 +12,7 @@ use review_threads::{
     ThreadId, WakeupFailure,
 };
 use review_types::ReviewUnit;
+use review_words_bus::{Place, UserWords, WordsBus};
 use serde::Serialize;
 use vision_turns::TurnLog;
 
@@ -47,11 +47,12 @@ pub(super) struct State {
     publish: Box<dyn Fn(Event) + Send>,
     /// A vision session's record of the wakeups sent, for its scripted agent.
     turns: Option<TurnLog>,
-    /// Where the new review comments are published for other programs; `None` publishes none.
-    bus: Option<CommentBus>,
+    /// Where the new review comments, and the words handed to the worker, are published for
+    /// other programs; `None` publishes none.
+    bus: Option<WordsBus>,
     /// The new review comments of each review that wait for the agent the next wakeup picks,
     /// whose pane they are published to.
-    unpublished: HashMap<ReviewUnit, Vec<PostedComment>>,
+    unpublished: HashMap<ReviewUnit, Vec<UserWords>>,
 }
 
 /// A comments wakeup as a vision session's turn log records it.
@@ -118,9 +119,7 @@ impl State {
             Input::Ui(command) => self.command(command),
             Input::Prompt(request) => self.prompts.push(request),
             #[cfg(any(test, feature = "flush"))]
-            Input::Flush(done) => {
-                let _ = done.send(());
-            }
+            Input::Flush(done) => self.flush(&done),
             Input::Mcp(request) => {
                 let result = self.request(
                     &request.access,
@@ -142,16 +141,31 @@ impl State {
         ControlFlow::Continue(())
     }
 
+    /// Answers `done` once every earlier input is handled, and the words handed to the bus
+    /// are published, or failed.
+    #[cfg(any(test, feature = "flush"))]
+    fn flush(&self, done: &std::sync::mpsc::Sender<()>) {
+        if let Some(bus) = &self.bus {
+            bus.flush();
+        }
+        let _ = done.send(());
+    }
+
     fn bus_input(&mut self, input: BusInput) {
         match input {
             BusInput::Open(Err(error)) => (self.publish)(Event::Error(format!(
-                "Review comments will not reach herdr-bus: {error}"
+                "What you write to agents will not reach herdr-bus: {error}"
             ))),
             BusInput::Open(Ok(path)) => {
                 let failures = self.inputs.clone();
-                self.bus = Some(CommentBus::start(path, move |error| {
+                self.bus = Some(WordsBus::start(path, move |error| {
                     let _ = failures.send(Input::Bus(BusInput::Failed(error)));
                 }));
+            }
+            BusInput::Publish(words) => {
+                if let Some(bus) = &self.bus {
+                    bus.publish(words);
+                }
             }
             BusInput::Failed(error) => (self.publish)(Event::Error(error)),
         }
@@ -361,12 +375,14 @@ impl State {
             self.unpublished
                 .entry(review_unit.clone())
                 .or_default()
-                .push(PostedComment {
-                    id: message_id.clone(),
+                .push(UserWords {
+                    id: message_id.as_str().to_owned(),
                     text,
                     review_unit: review_unit.clone(),
-                    thread: thread_id.clone(),
-                    round: round.clone(),
+                    place: Place::Thread {
+                        thread: thread_id.clone(),
+                        round: round.clone(),
+                    },
                     to: None,
                 });
         }
@@ -406,7 +422,7 @@ impl State {
             return;
         };
         for comment in comments {
-            bus.publish(PostedComment {
+            bus.publish(UserWords {
                 to: to.cloned(),
                 ..comment
             });

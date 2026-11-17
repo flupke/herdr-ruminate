@@ -416,11 +416,21 @@ impl PromptSender {
         self.send_observed(agent, text, None)
     }
 
+    /// Publishes `words`, which the user wrote to an agent outside a review thread, on the
+    /// herdr-bus file the worker publishes the review comments on, in the background; nothing
+    /// when it publishes none.
+    pub fn publish_words(&self, words: review_words_bus::UserWords) {
+        let _ = self
+            .sender
+            .send(Input::Bus(crate::BusInput::Publish(words)));
+    }
+
     /// Waits until the worker took every prompt sent before, and the courier sent, withdrew or
     /// failed each one it was handed, but those a [`PromptHold`] holds: a test learns that a
     /// prompt it did not see by then was not sent. A prompt whose pinned agent is not known yet
     /// stays with the worker, unsent. A prompt sent with a [`DispatchObserver`] has its outcome
-    /// reported to it once this returns.
+    /// reported to it once this returns, and the words handed to the worker's herdr-bus are
+    /// published, or failed.
     #[cfg(any(test, feature = "flush"))]
     pub fn flush(&self) {
         let (done, taken) = mpsc::channel();

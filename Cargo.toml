@@ -82,7 +82,7 @@ members = [
     "crates/review-mcp",
     "crates/review-mcp-config",
     "crates/review-thread-service",
-    "crates/review-comment-bus",
+    "crates/review-words-bus",
     "crates/comment-editor",
     "crates/review-ui",
     "crates/reviewer",

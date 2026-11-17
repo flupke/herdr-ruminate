@@ -553,7 +553,9 @@ impl ExploreRound {
             text: answer.text.clone(),
             in_reply_to: Some(answer.in_reply_to.clone()),
             first_pick: answer.first_pick.clone(),
-            drawing_board: answer.drawing_board,
+            // A reply to a conclusion reached at the drawing board stays there, which the
+            // request sets again: only an answer to a question sends the agent there.
+            drawing_board: answer.drawing_board && answer.question.is_some(),
         });
         let validated = candidate.request(
             input,

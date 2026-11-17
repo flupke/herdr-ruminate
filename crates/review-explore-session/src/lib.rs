@@ -27,6 +27,7 @@ mod turn_files;
 mod turn_log;
 mod unreviewed;
 mod unreviewed_diffs;
+mod words;
 
 pub use past::{PastRoundsRefresh, SavedRoundsReader};
 pub use run_ahead::{RunAheadInput, TALK_QUIET};

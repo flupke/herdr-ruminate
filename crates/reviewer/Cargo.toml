@@ -48,7 +48,7 @@ review-hunks = { path = "../review-hunks" }
 review-state = { path = "../review-state" }
 review-threads = { path = "../review-threads" }
 review-thread-service = { path = "../review-thread-service" }
-review-comment-bus = { path = "../review-comment-bus" }
+review-words-bus = { path = "../review-words-bus" }
 review-mcp = { path = "../review-mcp" }
 review-mcp-config = { path = "../review-mcp-config" }
 review-state-migration = { path = "../review-state-migration" }

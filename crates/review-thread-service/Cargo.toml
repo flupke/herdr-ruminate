@@ -7,14 +7,14 @@ license.workspace = true
 
 [features]
 # Lets a test wait until every prompt sent so far went out, was withdrawn or is held.
-flush = []
+flush = ["review-words-bus/flush"]
 
 [dependencies]
 agent-hooks = { path = "../agent-hooks" }
 serde.workspace = true
 vision-turns = { path = "../vision-turns" }
 herdr-client = { path = "../herdr-client" }
-review-comment-bus = { path = "../review-comment-bus" }
+review-words-bus = { path = "../review-words-bus" }
 review-mcp = { path = "../review-mcp" }
 review-store = { path = "../review-store" }
 review-threads = { path = "../review-threads" }
@@ -28,6 +28,7 @@ uuid.workspace = true
 herdr-bus.workspace = true
 herdr-client = { path = "../herdr-client", features = ["memory"] }
 review-source = { path = "../review-source" }
+review-words-bus = { path = "../review-words-bus", features = ["flush"] }
 tempfile.workspace = true
 test-case.workspace = true
 

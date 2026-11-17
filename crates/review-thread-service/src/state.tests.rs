@@ -1080,7 +1080,7 @@ fn words_on_bus(path: &std::path::Path) -> Vec<herdr_bus::Message> {
     let mut stored = herdr_bus::Bus::open(path)
         .unwrap()
         .messages(&herdr_bus::MessageQuery {
-            output: Some(review_comment_bus::OUTPUT.into()),
+            output: Some(review_words_bus::OUTPUT.into()),
             ..herdr_bus::MessageQuery::default()
         })
         .unwrap();

@@ -44,6 +44,8 @@ mod recovery;
 mod run_ahead;
 #[path = "start_block.tests.rs"]
 mod start_block;
+#[path = "words.tests.rs"]
+mod words;
 
 /// One session driven directly, as the reviewer's worker drives it.
 struct Harness {

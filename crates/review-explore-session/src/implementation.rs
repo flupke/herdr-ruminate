@@ -94,6 +94,7 @@ impl ExploreSession {
                 return Err(error);
             }
         };
+        self.publish_implementation(&request, &round);
         let _ = self
             .events
             .send(ui_events::ExploreImplementationSaved(progress(

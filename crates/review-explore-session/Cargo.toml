@@ -28,6 +28,7 @@ review-state = { path = "../review-state" }
 review-store = { path = "../review-store" }
 review-thread-service = { path = "../review-thread-service" }
 review-threads = { path = "../review-threads" }
+review-words-bus = { path = "../review-words-bus" }
 review-types = { path = "../review-types" }
 serde.workspace = true
 serde_json.workspace = true
@@ -37,6 +38,7 @@ ui-events = { path = "../ui-events" }
 uuid.workspace = true
 
 [dev-dependencies]
+herdr-bus.workspace = true
 crossbeam-channel.workspace = true
 herdr-client = { path = "../herdr-client", features = ["memory"] }
 review-test-support = { path = "../review-test-support" }

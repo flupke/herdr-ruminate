@@ -74,8 +74,9 @@ impl ExploreSession {
         }
         // Before the prompt, so its unreviewed diffs leave out what the answer marked.
         let round = self.apply_answered_marks(&request, &round).unwrap_or(round);
-        if let Some((_, pinned)) = retry_agent {
-            self.state.agent = Some(pinned);
+        match retry_agent {
+            Some((_, pinned)) => self.state.agent = Some(pinned),
+            None => self.publish_turn(&request),
         }
         // Each prompt has its own MCP access, so an earlier recipient cannot answer a Retry.
         self.state.renew_access();
