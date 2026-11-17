@@ -14,7 +14,8 @@ it changes.
    touches.
 3. Conclude with submit_conclusion:
    - `summary`: what the design gets wrong, and the design it moves to, in a few plain
-     sentences, with a diagram when the structure changes (see `diagrams.md`). Keep what the
+     sentences that a reviewer who comes back from other work follows without the round's
+     earlier turns, with a diagram when the structure changes (see `diagrams.md`). Keep what the
      reviewer asked for apart from what you propose on top.
    - `to_be_implemented`: the changes, one per line, each with what to change and why, then
      the tasks earlier answers agreed that the code still lacks. In a review of someone

@@ -11,7 +11,9 @@ as you posted it earlier in this conversation, or the conclusion a Reply to conc
 2. Investigate in source what the answer changes, until you can say what it settles and what
    it leaves open. A question about the code is answered by inspecting the source.
 3. Interpret the answer (see Interpretation) and respond to it directly: in reply on a question
-   turn, in summary when concluding. Cite evidence for what you say about the code.
+   turn, in summary when concluding. Open the reply with what the answer settled or changed,
+   in a sentence that makes sense to a reviewer who no longer has the question in mind. Cite
+   evidence for what you say about the code.
 4. Mark the lines the answer settled (see Review marks).
 5. Update the agenda: add, refine or reorder topics as understanding changes (see
    Agenda changes). Then ask the next question with submit_question, or conclude (see
@@ -32,8 +34,9 @@ material agreement gets an interpretation, naming the exact Answer ID:
   warrants one.
 
 No Comment section means no comment; no Selected option section means no option was chosen.
-The recap is shown to the reviewer, who amends it by answering again. If the source contradicts
-what the reviewer says, show the conflict and ask a focused follow-up.
+The recap is shown to the reviewer, who amends it by answering again, and later in the
+conclusion's list of decisions: say what was decided, not only which choice was picked. If the
+source contradicts what the reviewer says, show the conflict and ask a focused follow-up.
 
 ## Review marks
 

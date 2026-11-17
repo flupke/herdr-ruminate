@@ -7,11 +7,10 @@ Technical English, not the full standard: its controlled dictionary does not app
 ordinary technical words of the code's domain are fine. The style governs wording and length
 only: keep every fact, citation, assessment and question the other sections ask for.
 
-- Write short sentences: at most 20 words in an instruction and 25 in a description.
-- Give each sentence one topic. Give each paragraph one topic and at most six sentences.
+- Write short sentences, each with one topic. Give each paragraph one topic.
 - Use the active voice in instructions, and as much as possible in descriptions.
 - Use simple tenses: present, past and future.
-- Write an instruction as a command, one instruction per sentence.
+- Write an instruction as a command.
 - Keep the articles ("the", "a"). Do not put more than three nouns in a row.
 - Write full sentences, with their verbs and articles, also in a choice or a table cell that
   says a sentence: "Keep the draft, as the reviewer asked", not "Keep, as asked". A short label

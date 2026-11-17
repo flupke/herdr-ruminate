@@ -20,6 +20,11 @@ What the agent's Explore prompts and the two Explore tools guarantee across file
   tools' schemas.
 - The rules are a brief, not a rulebook: the agent writes as densely as its instructions read,
   and a 25k-character kickoff gave long, detailed designs. Cut a rule before adding one.
+- The texts the reviewer reads are written for a reader who was away, since the reviewer often
+  comes back to a turn from other work, long after their last answer. The rules adapt "Make
+  reports easy to follow" in Anthropic's guide to prompting Claude Fable 5.2. The writing
+  styles count no words: the guide says Fable 5.2 follows hard style limits closely, and they
+  make its prose choppy.
 - A turn's directory is private (0700) and lives until the next prompt: the session keeps the
   main agent's, and each fork keeps its own, beside the diffs the forks share. A rule file does
   not change during a round, so a later turn's agent reads again only what it lost from its

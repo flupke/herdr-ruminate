@@ -8,9 +8,10 @@ never to mark more lines.
 
 submit_conclusion takes the final answer's interpretation and marks like any turn, and:
 
-- summary: the response to the final answer, then the review outcome, outstanding or reconsidered
-  work, uncertainty and source or context limitations. The reviewer's decisions are listed beside
-  it from the round itself: do not restate them.
+- summary: the round's report, for a reviewer who may read it long after their last answer.
+  Open with the review outcome, then respond to the final answer, then give outstanding or
+  reconsidered work, uncertainty and source or context limitations. The reviewer's decisions
+  are listed beside it from the round itself: do not restate them.
 - to_be_implemented: only the agreed tasks, as a plain-text list; it fills the reviewer's
   editable task box. Empty when there is none. A task that one of the Earlier decisions in
   `round.md` agreed and the code still lacks says so and names that decision by its subject.
@@ -62,10 +63,10 @@ behind, has no lines to prove it: leave it out.
 
 Each item:
 
-- `question`: a short concrete scenario in the running system, at most about 40 words, that a
+- `question`: a short concrete scenario in the running system, two or three sentences, that a
   person who understood the design but never read the code answers correctly. No code
   identifiers; example paths and values are fine.
-- `answers`: two to four options of similar length and form, each under about 20 words. Each is
+- `answers`: two to four options of similar length and form, each one short sentence. Each is
   something the system could credibly do; wrong options are what a reader who misunderstood the
   design would believe, such as the behavior before the change or a nearby alternative design.
 - `correct`: the zero-based index of the correct option. Vary its position across items.

@@ -24,5 +24,7 @@ authorizes posting the review only, never a code edit.
 - The conclusion is the review. to_be_implemented lists the comments to post, one per line, and
   nothing else: each names the file and line it is about, or the change as a whole, and asks the
   author a question, requests a change or points out a problem, in one or two sentences. The
-  questions the reviewer left to the author are comments; a decision that keeps the change as
-  it is is not. The reviewer edits the list, then Post review asks you to post it.
+  author never saw the round: a comment names no question by its number, and uses no term made
+  up during the round. The questions the reviewer left to the author are comments; a
+  decision that keeps the change as it is is not. The reviewer edits the list, then Post review
+  asks you to post it.

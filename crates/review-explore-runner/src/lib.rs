@@ -90,12 +90,12 @@ pub fn implementation_prompt(
 ) -> String {
     if author == ChangeAuthor::Other {
         return format!(
-            "The reviewer clicked Post review on the Explore conclusion of someone else's change. Post the review below on the change's pull request, with the repository's usual tool for it, such as gh: each comment on the file and line it names, the others in the review's body. This action authorizes posting these comments only: do not edit code, push, approve or request changes. If you cannot find the change's pull request, say so and stop.\n\nReview from the reviewer:\n{}",
+            "The reviewer clicked Post review on the Explore conclusion of someone else's change. Post the review below on the change's pull request, with the repository's usual tool for it, such as gh: each comment on the file and line it names, the others in the review's body. This action authorizes posting these comments only: do not edit code, push, approve or request changes. If you cannot find the change's pull request, say so and stop. Close with a short report that says what you posted and where.\n\nReview from the reviewer:\n{}",
             request.text
         );
     }
     format!(
-        "The reviewer clicked Implement on the Explore conclusion. Implement the edited task list below in this conversation, following the repository instructions and validating the changes. This action authorizes code edits and tests for these tasks. Summary and future-work items are not additional implementation scope. Do not submit another review question or mark files reviewed as part of this action.\n\nTasks from the reviewer:\n{}",
+        "The reviewer clicked Implement on the Explore conclusion. Implement the edited task list below in this conversation, following the repository instructions and validating the changes. This action authorizes code edits and tests for these tasks. Summary and future-work items are not additional implementation scope. Do not submit another review question or mark files reviewed as part of this action. Close with a short report for a reader who did not watch you work and has not seen your tool calls: first what changed for each task, then how you checked it and what is left, in plain full sentences, with no term you made up during the work.\n\nTasks from the reviewer:\n{}",
         request.text
     )
 }

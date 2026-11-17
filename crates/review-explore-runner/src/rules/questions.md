@@ -27,4 +27,4 @@ prerequisites are understood; let the irreversible or broad effects still unreso
 posted question is fixed: clarify it with a higher version of its ID, and give a new question a
 new ID that names its subject. The screens number the round's questions Q1, Q2 and so on:
 submit_question returns the number in `shown_as`, and a later `turn.md` gives it as Shown as.
-Name a question by its number in every text.
+Name a question by its number in every text the reviewer reads.

@@ -133,7 +133,8 @@ Follow these steps for every change: a feature, a fix, or a change to docs.
    5 count too. Then describe the change with `jj describe`: a plain imperative
    subject, then what changed for the user and why. The description and your
    closing report name each thing the change does, however small: check both
-   against `jj diff`.
+   against `jj diff`. Write both for a reader who did not follow the session (see
+   Reports).
 7. Run `make install` once the gate passes, unless the user deferred
    installing; say so when you skip it. It builds and installs only; it does
    not run the checks.
@@ -159,6 +160,16 @@ for a large feature planned as a graph of tickets, or for many independent
 changes at once. When you work in a jj workspace, supervise agents there, or run
 gates in parallel, read `.agents/wiki/parallel-workspaces.md`: how to enter
 the dev shell, keep work visible, and run several gates at once.
+
+# Reports
+
+The user reads your reports, change descriptions and messages after the work, often coming
+back from other work. They have not seen your tool calls, your reasoning or the files you
+opened. So make each message stand on its own, and put the key points in its first few
+sentences. Do not refer to something that only a later line explains. Use plain words in full
+sentences, and use no term or abbreviation that you made up during the work: say what the
+thing is. Use a paragraph of prose where ideas connect, and bullets for separate items. Leave
+out details the reader does not need, but keep the context they need to act.
 
 # Sandbox E2E Tests
 
