@@ -346,6 +346,36 @@ impl JjFixture {
         String::from_utf8(output.stdout).unwrap().trim().to_owned()
     }
 
+    /// Add a workspace beside the fixture, whose working copy is a new change on top of
+    /// `parent`, and return its root.
+    pub fn add_workspace_on(&self, name: &str, parent: &str) -> PathBuf {
+        let root = self.root.with_file_name(name);
+        self.jj([
+            "workspace",
+            "add",
+            "--name",
+            name,
+            "-r",
+            parent,
+            root.to_str().unwrap(),
+        ]);
+        root
+    }
+
+    /// Get the full stable change ID of the working copy of the workspace named `workspace`.
+    pub fn working_copy(&self, workspace: &str) -> String {
+        let revset = format!("{workspace}@");
+        let output = self.jj([
+            "log",
+            "--no-graph",
+            "-r",
+            &revset,
+            "-T",
+            r#"change_id ++ "\n""#,
+        ]);
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+
     /// Run a jj command in the fixture and require success.
     pub fn jj<'a>(&self, arguments: impl IntoIterator<Item = &'a str>) -> Output {
         let output = Command::new("jj")

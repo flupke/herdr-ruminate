@@ -14,7 +14,7 @@ use super::watch::{MetadataScope, resolve_directory_or_link_file};
 use super::{
     BaselineComparison, BaselineComparisonPlan, BaselineComparisonResults, Cancellation,
     ChangeEvolution, ChangeId, ChangedFile, Interdiff, RepoPath, RepoType, Repository,
-    RepositoryBackend, RepositoryProcess, RevisionCandidate, RevisionDirection,
+    RepositoryBackend, RepositoryProcess, RevisionCandidate, RevisionDirection, RevisionEdit,
     RevisionHistoryLine, Snapshot, SnapshotIdentity, WatchPlan, path_from_output, trim_line_ending,
 };
 use crate::{Error, Result};
@@ -470,8 +470,12 @@ impl RepositoryBackend for GitBackend {
         Ok(None)
     }
 
-    fn edit_revision(&self, _repository: &Repository, _change_id: &ChangeId) -> Result<bool> {
-        Ok(false)
+    fn edit_revision(
+        &self,
+        _repository: &Repository,
+        _change_id: &ChangeId,
+    ) -> Result<RevisionEdit> {
+        Ok(RevisionEdit::Unavailable)
     }
 
     fn evolution(

@@ -137,6 +137,30 @@ fn a_failed_revision_edit_reports_why_and_keeps_the_comparison(change_id: &str, 
 }
 
 #[test]
+fn a_revision_edit_onto_another_workspace_s_working_copy_names_that_workspace() {
+    let files = repository_fixture(RepoType::Jj);
+    files.write("src/lib.rs", b"pub fn current() {}\n");
+    let other_working_copy = files.revision_id();
+    files.add_workspace("other-task");
+    files.new_change("reviewed change");
+    let mut fixture = EffectsFixture::start(files, |_| {});
+    let checkpoint = fixture.refreshed_checkpoint();
+
+    fixture.perform([Action::Repository(RepositoryAction::EditRevision {
+        change_id: ChangeId::from(other_working_copy),
+    })]);
+
+    let events = fixture.events_until::<RevisionEditFailed>();
+    let failure = events.last().unwrap().downcast_ref::<RevisionEditFailed>();
+    assert_eq!(
+        failure.unwrap().message.as_deref(),
+        Some("selected revision belongs to another workspace: other-task")
+    );
+    assert!(event_names(&events).is_empty(), "no refresh on refusal");
+    assert_eq!(fixture.refreshed_checkpoint(), checkpoint);
+}
+
+#[test]
 fn documents_and_threads_do_not_wait_for_repository_work() {
     let files = repository_fixture(RepoType::Git);
     files.write("changed.rs", b"fn original() {}\n");

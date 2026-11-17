@@ -597,7 +597,7 @@ trait RepositoryBackend: std::fmt::Debug + Send + Sync {
         direction: RevisionDirection,
     ) -> Result<Vec<RevisionCandidate>>;
     fn revision_history(&self, repository: &Repository) -> Result<Vec<RevisionHistoryLine>>;
-    fn edit_revision(&self, repository: &Repository, change_id: &ChangeId) -> Result<bool>;
+    fn edit_revision(&self, repository: &Repository, change_id: &ChangeId) -> Result<RevisionEdit>;
     fn evolution(
         &self,
         repository: &Repository,
@@ -623,6 +623,19 @@ pub enum RevisionDirection {
     Parents,
     /// Direct child commits.
     Children,
+}
+
+/// What came of a request to make a change the working-copy commit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RevisionEdit {
+    /// The change is now the working-copy commit.
+    Edited,
+    /// The change is immutable or unknown, or the backend has no revisions.
+    Unavailable,
+    /// The change belongs to other workspaces, named here: it is their working-copy commit,
+    /// or only their working copies reach it. Editing it would move this workspace's working
+    /// copy onto their work.
+    OtherWorkspace { workspaces: Vec<String> },
 }
 
 /// One mutable jj commit that the reviewer can open.
@@ -757,10 +770,8 @@ impl Repository {
         self.backend.revision_history(self)
     }
 
-    /// Make one mutable change the working-copy commit.
-    ///
-    /// Returns `false` when the change cannot be edited or the backend has no revisions.
-    pub fn edit_revision(&self, change_id: &ChangeId) -> Result<bool> {
+    /// Make one mutable change of this workspace the working-copy commit.
+    pub fn edit_revision(&self, change_id: &ChangeId) -> Result<RevisionEdit> {
         self.backend.edit_revision(self, change_id)
     }
 

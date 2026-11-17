@@ -10,7 +10,7 @@ use review_explore_page::{PageCommand, Recovery};
 use review_explore_session::{self as explore_session, ExploreSession};
 use review_hunks::HunkMark;
 use review_repository::repository::{
-    ChangeId, ChangedFile, PollResult, Repository, Snapshot, SnapshotIdentity,
+    ChangeId, ChangedFile, PollResult, Repository, RevisionEdit, Snapshot, SnapshotIdentity,
 };
 use review_significance::JevClassifier;
 use review_source::ReviewCheckpoint;
@@ -278,11 +278,17 @@ impl Worker {
 
     fn edit_revision(&mut self, messages: &ApplicationEventSender, change_id: &ChangeId) {
         let failure = match self.repository.edit_revision(change_id) {
-            Ok(true) if !self.poll(messages) => {
+            Ok(RevisionEdit::Edited) if !self.poll(messages) => {
                 Some("could not load the selected revision".to_owned())
             }
-            Ok(true) => return,
-            Ok(false) => Some("selected revision is immutable or unavailable".to_owned()),
+            Ok(RevisionEdit::Edited) => return,
+            Ok(RevisionEdit::Unavailable) => {
+                Some("selected revision is immutable or unavailable".to_owned())
+            }
+            Ok(RevisionEdit::OtherWorkspace { workspaces }) => Some(format!(
+                "selected revision belongs to another workspace: {}",
+                workspaces.join(", ")
+            )),
             Err(error) => Some(error.to_string()),
         };
         let _ = messages.send(RevisionEditFailed { message: failure });

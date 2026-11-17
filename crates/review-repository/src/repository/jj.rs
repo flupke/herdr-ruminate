@@ -11,7 +11,7 @@ use super::watch::{MetadataScope, resolve_directory_or_link_file};
 use super::{
     BaselineComparison, BaselineComparisonPlan, BaselineComparisonResults, Cancellation,
     ChangeEvolution, ChangeId, ChangedFile, Interdiff, RepoPath, RepoType, Repository,
-    RepositoryBackend, RepositoryProcess, RevisionCandidate, RevisionDirection,
+    RepositoryBackend, RepositoryProcess, RevisionCandidate, RevisionDirection, RevisionEdit,
     RevisionHistoryLine, RevisionRef, RevisionRefKind, Snapshot, SnapshotId, SnapshotIdentity,
     WatchPlan, path_from_output,
 };
@@ -51,9 +51,28 @@ const REVISION_CANDIDATE_TEMPLATE: &str = concat!(
     r#"change_id ++ "\0" ++ change_id.shortest(8) ++ "\0" ++ "#,
     r#"description.first_line() ++ "\0""#,
 );
-const REVISION_HISTORY_REVSET: &str = "(descendants(heads(ancestors(@) & immutable())) & mutable())
+/// The changes that belong to the other workspaces: their working-copy commits, and the
+/// changes only their working copies reach. The reviewer neither offers nor edits one: `jj
+/// edit` would move this workspace's working copy onto another workspace's work. The changes
+/// this workspace's working copy also reaches, such as a shared base, stay this workspace's.
+macro_rules! other_workspaces_revset {
+    () => {
+        "((working_copies() ~ @) | (::(working_copies() ~ @) ~ ::@))"
+    };
+}
+/// The mutable changes the reviewer can make this workspace's working-copy commit.
+macro_rules! editable_revset {
+    () => {
+        concat!("(mutable() ~ ", other_workspaces_revset!(), ")")
+    };
+}
+const REVISION_HISTORY_REVSET: &str = concat!(
+    "(descendants(heads(ancestors(@) & immutable())) & ",
+    editable_revset!(),
+    ")
     | heads(ancestors(@) & immutable())
-    | (children(heads(ancestors(@) & immutable())) & immutable())";
+    | (children(heads(ancestors(@) & immutable())) & immutable())",
+);
 const REVISION_HISTORY_TEMPLATE: &str = concat!(
     r#""\x1e" ++ change_id ++ ":" ++ commit_id ++ ":" ++ change_id.shortest(8) ++ ":" ++ if(current_working_copy, "1", "0") ++ ":" ++ if(immutable, "1", "0") ++ "\x1f" ++ "#,
     // The bookmarks and tags, each a kind letter, its name and a separator, without the colours
@@ -320,8 +339,8 @@ impl RepositoryBackend for JjBackend {
         direction: RevisionDirection,
     ) -> Result<Vec<RevisionCandidate>> {
         let revset = match direction {
-            RevisionDirection::Parents => "parents(@) & mutable()",
-            RevisionDirection::Children => "children(@) & mutable()",
+            RevisionDirection::Parents => concat!("parents(@) & ", editable_revset!()),
+            RevisionDirection::Children => concat!("children(@) & ", editable_revset!()),
         };
         let output = repository.run_jj([
             "--ignore-working-copy",
@@ -348,25 +367,25 @@ impl RepositoryBackend for JjBackend {
         parse_revision_history(&output.stdout)
     }
 
-    fn edit_revision(&self, repository: &Repository, change_id: &ChangeId) -> Result<bool> {
-        let revset = format!("{} & mutable()", change_id.as_str());
-        let editable = repository
-            .run_jj([
-                "--ignore-working-copy",
-                "log",
-                "--no-graph",
-                "-r",
-                &revset,
-                "-T",
-                r#"change_id ++ "\n""#,
-            ])?
-            .stdout;
-        if editable.is_empty() {
-            return Ok(false);
+    fn edit_revision(&self, repository: &Repository, change_id: &ChangeId) -> Result<RevisionEdit> {
+        let change = change_id.as_str();
+        if log_lines(repository, &format!("{change} & mutable()"), "change_id")?.is_empty() {
+            return Ok(RevisionEdit::Unavailable);
+        }
+        let in_other_workspace = format!("{change} & {}", other_workspaces_revset!());
+        if !log_lines(repository, &in_other_workspace, "change_id")?.is_empty() {
+            let mut workspaces = log_lines(
+                repository,
+                &format!("({change}:: & working_copies()) ~ @"),
+                r#"working_copies.map(|workspace| workspace.name()).join("\n")"#,
+            )?;
+            workspaces.sort();
+            workspaces.dedup();
+            return Ok(RevisionEdit::OtherWorkspace { workspaces });
         }
         repository
-            .run_jj(["edit", change_id.as_str()])
-            .map(|_| true)
+            .run_jj(["edit", change])
+            .map(|_| RevisionEdit::Edited)
     }
 
     fn evolution(
@@ -402,6 +421,24 @@ impl Repository {
         RepositoryProcess::new("jj", &self.root, "read jj repository", &self.cancellation)
             .output(arguments)
     }
+}
+
+/// The lines `template` renders for each commit of `revset`, without reading the working copy.
+fn log_lines(repository: &Repository, revset: &str, template: &str) -> Result<Vec<String>> {
+    let output = repository.run_jj([
+        "--ignore-working-copy",
+        "log",
+        "--no-graph",
+        "-r",
+        revset,
+        "-T",
+        &format!(r#"{template} ++ "\n""#),
+    ])?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect())
 }
 
 fn baseline_exists(repository: &Repository, baseline: &str) -> Result<bool> {

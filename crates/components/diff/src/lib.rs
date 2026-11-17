@@ -1689,10 +1689,18 @@ impl SourceViewer {
             .record(event.origin.clone(), &event.target);
     }
 
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    fn revision_edit_failed(&mut self, _event: &RevisionEditFailed) {
-        if let Some(pending) = self.pending_history_navigation.take() {
-            self.location_history = pending.previous_history;
+    /// Restores the location history a refused jump back or forward changed, and says why
+    /// the jump failed: the revision selector only reports the edits it started.
+    fn revision_edit_failed(&mut self, event: &RevisionEditFailed) {
+        let Some(pending) = self.pending_history_navigation.take() else {
+            return;
+        };
+        self.location_history = pending.previous_history;
+        if let Some(message) = &event.message {
+            self.events.publish(ToastRequested {
+                text: message.clone(),
+                kind: toasts::ToastKind::Error,
+            });
         }
     }
 

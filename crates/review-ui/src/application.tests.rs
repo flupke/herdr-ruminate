@@ -874,6 +874,43 @@ fn failed_history_revision_edit_keeps_the_previous_location_available() {
     );
 }
 
+#[test]
+fn refused_history_revision_edit_shows_why_in_the_pane() {
+    let mut application = application();
+    publish_repository(
+        &mut application,
+        ReviewCheckpoint::new("old", "old-snapshot"),
+        String::new(),
+        vec![FileSummary::new("src/lib.rs", ReviewStatus::Unreviewed)],
+    );
+    application.update(UserInput::Key(Key::Char('[')));
+    application.update(UserInput::Key(Key::Char('v')));
+    application.publish(RevisionCandidatesLoaded {
+        direction: RevisionDirection::Parents,
+        result: Ok(vec![RevisionCandidate {
+            change_id: ChangeId::from("new".to_owned()),
+            short_change_id: "new".to_owned(),
+            description: String::new(),
+        }]),
+    });
+    publish_repository(
+        &mut application,
+        ReviewCheckpoint::new("new", "new-snapshot"),
+        String::new(),
+        vec![FileSummary::new("src/lib.rs", ReviewStatus::Unreviewed)],
+    );
+    application.update(UserInput::Key(Key::Tab));
+    application.update(UserInput::Key(Key::PreviousLocation));
+
+    let message = "belongs to another workspace: other-task";
+    assert_eq!(rendered_text_position(&application, message, 120, 40), None);
+    application.publish(RevisionEditFailed {
+        message: Some(format!("selected revision {message}")),
+    });
+
+    assert!(rendered_text_position(&application, message, 120, 40).is_some());
+}
+
 fn rendered_text_position(
     application: &ReviewApplication,
     text: &str,

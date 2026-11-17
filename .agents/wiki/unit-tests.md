@@ -75,6 +75,14 @@ ask for references again until Expert finds them, since it reports no event when
 indexed a file. Every Rust test runs
 in `make test`; the Explore page's browser tests are the one suite apart.
 
+## Commands that move a jj working copy
+
+A test of a reviewer path that runs `jj edit`, or another command that moves a working copy,
+sets up real jj workspaces: a `JjFixture`, then `add_workspace_on(name, parent)` for each
+other workspace. It runs the path in the review's workspace, then reads each workspace's
+working copy with `working_copy(name)`, and asserts that the others did not move, and that the
+review's own moved only where the path was asked to go.
+
 ## Auditing a crate
 
 Read each test next to the production code it calls, since the bug that turns it red
