@@ -92,6 +92,8 @@ impl PrivateCore {
             ("XDG_CONFIG_HOME", folder("config")),
             ("XDG_DATA_HOME", folder("data")),
             ("XDG_CACHE_HOME", folder("cache")),
+            // Over a bus file the test's own environment names: the user's, maybe.
+            ("HERDR_BUS_DB", folder("bus.db")),
         ]
     }
 

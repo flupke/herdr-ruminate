@@ -205,6 +205,7 @@ impl Runtime {
                 jev: self.jev.clone(),
                 linear: self.linear.clone(),
                 turns: vision_turns_from_env(),
+                bus: Some(review_comment_bus::CommentBus::default_path()),
                 source_watches: Some(watcher.source_requests()),
                 page: page_round,
                 page_threads: Arc::clone(&page_threads),

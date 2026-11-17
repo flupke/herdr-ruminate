@@ -82,6 +82,7 @@ members = [
     "crates/review-mcp",
     "crates/review-mcp-config",
     "crates/review-thread-service",
+    "crates/review-comment-bus",
     "crates/comment-editor",
     "crates/review-ui",
     "crates/reviewer",
@@ -109,6 +110,13 @@ eyre = "0.6"
 # ADR 0001 said path; its ADR 0004 (herdr-common#10) supersedes it with git. Cargo.lock pins the
 # revision: `cargo update -p fake-agent` moves it.
 fake-agent = { git = "https://github.com/flupke/herdr-common" }
+# The message bus the reviewer publishes its review comments on, and the `herdr.words` type they
+# go as. From git, as fake-agent, so that a clone of this repository alone builds; Cargo.lock pins
+# the revision: `cargo update -p herdr-bus` moves both. Every program that opens the bus file of a
+# machine must stand on a revision with the same schema: a newer one migrates the file, and an
+# older one then refuses it.
+herdr-bus = { git = "https://github.com/flupke/herdr-bus" }
+herdr-words = { git = "https://github.com/flupke/herdr-bus" }
 flate2 = "1.1"
 edtui = { version = "=0.11.7", default-features = false }
 fs2 = "0.4"

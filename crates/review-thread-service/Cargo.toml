@@ -14,6 +14,7 @@ agent-hooks = { path = "../agent-hooks" }
 serde.workspace = true
 vision-turns = { path = "../vision-turns" }
 herdr-client = { path = "../herdr-client" }
+review-comment-bus = { path = "../review-comment-bus" }
 review-mcp = { path = "../review-mcp" }
 review-store = { path = "../review-store" }
 review-threads = { path = "../review-threads" }
@@ -24,6 +25,7 @@ ui-events = { path = "../ui-events" }
 uuid.workspace = true
 
 [dev-dependencies]
+herdr-bus.workspace = true
 herdr-client = { path = "../herdr-client", features = ["memory"] }
 review-source = { path = "../review-source" }
 tempfile.workspace = true

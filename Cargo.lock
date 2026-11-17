@@ -1165,6 +1165,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
 name = "fancy-regex"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2314,6 +2326,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashlink"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "824e001ac4f3012dd16a264bec811403a67ca9deb6c102fc5049b32c4574b35f"
+dependencies = [
+ "hashbrown 0.16.1",
+]
+
+[[package]]
 name = "hc-client"
 version = "0.2.0"
 dependencies = [
@@ -2364,6 +2385,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "herdr-bus"
+version = "0.1.0"
+source = "git+https://github.com/flupke/herdr-bus#a5d7accc9ad021d4f89a9b5eadc23604d89229df"
+dependencies = [
+ "jiff",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "uuid",
+]
+
+[[package]]
 name = "herdr-client"
 version = "0.2.0"
 dependencies = [
@@ -2372,6 +2406,14 @@ dependencies = [
  "tempfile",
  "test-case",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "herdr-words"
+version = "0.1.0"
+source = "git+https://github.com/flupke/herdr-bus#a5d7accc9ad021d4f89a9b5eadc23604d89229df"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -2995,6 +3037,17 @@ name = "libm"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+
+[[package]]
+name = "libsqlite3-sys"
+version = "0.36.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95b4103cffefa72eb8428cb6b47d6627161e51c2739fc5e3b734584157bc642a"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
 
 [[package]]
 name = "line-clipping"
@@ -4144,6 +4197,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "review-comment-bus"
+version = "0.2.0"
+dependencies = [
+ "herdr-bus",
+ "herdr-client",
+ "herdr-words",
+ "review-threads",
+ "review-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "review-drafts"
 version = "0.2.0"
 dependencies = [
@@ -4579,7 +4646,9 @@ name = "review-thread-service"
 version = "0.2.0"
 dependencies = [
  "agent-hooks",
+ "herdr-bus",
  "herdr-client",
+ "review-comment-bus",
  "review-mcp",
  "review-source",
  "review-store",
@@ -4701,6 +4770,7 @@ dependencies = [
  "process-environment",
  "ratatui 0.30.2",
  "reqwest",
+ "review-comment-bus",
  "review-explore",
  "review-explore-page",
  "review-explore-page-host",
@@ -4854,6 +4924,31 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 3.0.3",
+]
+
+[[package]]
+name = "rsqlite-vfs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
+dependencies = [
+ "hashbrown 0.16.1",
+ "thiserror 2.0.19",
+]
+
+[[package]]
+name = "rusqlite"
+version = "0.38.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1c93dd1c9683b438c392c492109cb702b8090b2bfc8fed6f6e4eb4523f17af3"
+dependencies = [
+ "bitflags 2.13.1",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsqlite3-sys",
+ "smallvec",
+ "sqlite-wasm-rs",
 ]
 
 [[package]]
@@ -5182,6 +5277,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5297,6 +5398,18 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "sqlite-wasm-rs"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc3efc0da82635d7e1ced0053bbbfa8c7ab9645d0bf36ceb4f7127bb85315d75"
+dependencies = [
+ "cc",
+ "js-sys",
+ "rsqlite-vfs",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6308,8 +6421,16 @@ dependencies = [
  "atomic",
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
+ "sha1_smol",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version_check"

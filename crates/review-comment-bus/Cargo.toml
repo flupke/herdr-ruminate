@@ -1,0 +1,21 @@
+[package]
+name = "review-comment-bus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+herdr-bus.workspace = true
+herdr-client = { path = "../herdr-client" }
+herdr-words.workspace = true
+review-threads = { path = "../review-threads" }
+review-types = { path = "../review-types" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

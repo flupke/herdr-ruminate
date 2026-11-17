@@ -52,7 +52,17 @@ enum Input {
     LogTurns(vision_turns::TurnLog),
     /// A prompt was cancelled: the poll that follows withdraws it if it still waits.
     Withdrawn,
+    Bus(BusInput),
     Stop,
+}
+
+/// What the worker hears about herdr-bus, where it publishes the new review comments.
+enum BusInput {
+    /// Publish each new review comment from now on, on the bus file at this path, or report
+    /// why there is none.
+    Open(Result<std::path::PathBuf, String>),
+    /// Why the bus did not get a review comment, which the worker reports.
+    Failed(String),
 }
 
 /// Conversation updates emitted after the authoritative state changes.
@@ -162,6 +172,13 @@ impl Worker {
     /// Records each comments wakeup in `turns`, a vision session's turn log, from the next one.
     pub fn log_turns(&self, turns: vision_turns::TurnLog) {
         let _ = self.sender.send(Input::LogTurns(turns));
+    }
+
+    /// Publishes each new review comment on the herdr-bus file at `bus` from the next one, for
+    /// other programs; it declares the bus's output for them at once. A bus with no file is
+    /// reported.
+    pub fn publish_on_bus(&self, bus: Result<std::path::PathBuf, String>) {
+        let _ = self.sender.send(Input::Bus(BusInput::Open(bus)));
     }
 
     /// Where another thread sends thread commands, as the pane's actions do: the Explore page

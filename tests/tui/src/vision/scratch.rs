@@ -156,6 +156,11 @@ impl Scratch {
         self.directory.join("state")
     }
 
+    /// The session's herdr-bus file, where the reviewer publishes its review comments.
+    fn bus(&self) -> PathBuf {
+        self.directory.join("bus.db")
+    }
+
     /// Where run-ahead says what the forks do.
     pub(crate) fn run_ahead_log(&self) -> PathBuf {
         self.state().join("run-ahead.log")
@@ -281,6 +286,8 @@ impl Scratch {
         [
             ("HERDR_REVIEWER_VISION", OsString::from("1")),
             ("HERDR_PLUGIN_STATE_DIR", self.state().into()),
+            // The bus the reviewer publishes its review comments on, the session's own.
+            ("HERDR_BUS_DB", self.bus().into()),
             (
                 "HERDR_REVIEWER_MCP_PORT",
                 self.mcp_port().to_string().into(),

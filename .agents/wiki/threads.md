@@ -86,6 +86,32 @@ records it for the tab it is in.
   does not inspect the agent's terminal or its focus; it protects a prompt from the text left
   in the input box only through the hooks.
 
+## On herdr-bus
+
+Each new review comment, in a review thread or a round conversation, also goes on herdr-bus
+(flupke/herdr-bus), the machine's message bus, so that herdr-bowtie routes the @mentions in it:
+a `herdr.words` message on the output `words`, which the reviewer declares when it starts. Its
+`id` is the thread message's ID (a `UUIDv5` of it when it is no UUID, as in a message saved by an
+older reviewer), so a retried post publishes once; `to` is the pane of the agent
+that the next delivery pass picks for the wakeup (`State::prepare_notification`), or `null` when
+none takes it. A thread of its own writes the bus file, so a bus that fails never holds up the
+post or the wakeup: the failure shows as a toast, and the next comment opens the bus again.
+A comment posted while the bus failed stays off it. Quitting waits at most a second for the
+comments not yet published (`EXIT_WAIT`), since herdr-bus waits up to 5 seconds on a locked file.
+Agent replies, and the other texts the reviewer sends the agent, do not go on the bus
+([ADR 0019](../adr/0019-publish-review-comments-on-herdr-bus.md)).
+
+- The bus file is `$HERDR_BUS_DB`, else `$XDG_DATA_HOME/herdr-bus/bus.db`
+  (`~/.local/share` by default). Every test harness
+  sets `HERDR_BUS_DB` to a file of its own (the private Herdr, the private herdr-core, the vision
+  session's `bus.db`), and the unit tests give the worker a bus file in a temporary folder, or
+  none: no test writes the user's.
+  `herdr-bus messages --output words --db <file>` lists what a session published, with a
+  `herdr-bus` built at the pinned revision.
+- `Cargo.lock` pins herdr-bus. A revision that changes its schema migrates the bus file the first
+  time it opens it, and older builds then refuse the file: move the pin with herdr-bowtie's, and
+  install both together on every machine.
+
 ## Access values
 
 - The wakeup gives a review access value tied to the selected agent and the review. When

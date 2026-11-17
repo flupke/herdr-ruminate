@@ -5,18 +5,21 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use herdr_client::protocol::{Agent, AgentPort, AgentTarget, HerdrEvent, PaneId};
+use review_comment_bus::{CommentBus, PostedComment};
 use review_mcp::{Operation, Response};
 use review_store::ReviewStore;
 use review_threads::{
-    Message, Post, Recipient, Resolution, ReviewThreads, SavedDrafts, ThreadCommand, ThreadId,
-    WakeupFailure,
+    Author, Message, Post, Recipient, Resolution, ReviewThreads, SavedDrafts, ThreadCommand,
+    ThreadId, WakeupFailure,
 };
 use review_types::ReviewUnit;
 use serde::Serialize;
 use vision_turns::TurnLog;
 
 use crate::delivery::{Courier, PromptError, PromptQueue};
-use crate::{Command, Event, Input, access::Access, notification::Notification, wakeup::Wakeup};
+use crate::{
+    BusInput, Command, Event, Input, access::Access, notification::Notification, wakeup::Wakeup,
+};
 
 /// How often the worker checks the host again while a prompt or wakeup waits. A prompt bound to
 /// a native session waits while the pane reports none, and Herdr publishes no event when an
@@ -44,6 +47,11 @@ pub(super) struct State {
     publish: Box<dyn Fn(Event) + Send>,
     /// A vision session's record of the wakeups sent, for its scripted agent.
     turns: Option<TurnLog>,
+    /// Where the new review comments are published for other programs; `None` publishes none.
+    bus: Option<CommentBus>,
+    /// The new review comments of each review that wait for the agent the next wakeup picks,
+    /// whose pane they are published to.
+    unpublished: HashMap<ReviewUnit, Vec<PostedComment>>,
 }
 
 /// A comments wakeup as a vision session's turn log records it.
@@ -79,6 +87,8 @@ impl State {
             prompts: PromptQueue::default(),
             publish,
             turns: None,
+            bus: None,
+            unpublished: HashMap::new(),
         }
     }
 
@@ -126,9 +136,25 @@ impl State {
             } => self.notified(&token, through, result),
             Input::LogTurns(turns) => self.turns = Some(turns),
             Input::Withdrawn => {}
+            Input::Bus(input) => self.bus_input(input),
             Input::Stop => return ControlFlow::Break(()),
         }
         ControlFlow::Continue(())
+    }
+
+    fn bus_input(&mut self, input: BusInput) {
+        match input {
+            BusInput::Open(Err(error)) => (self.publish)(Event::Error(format!(
+                "Review comments will not reach herdr-bus: {error}"
+            ))),
+            BusInput::Open(Ok(path)) => {
+                let failures = self.inputs.clone();
+                self.bus = Some(CommentBus::start(path, move |error| {
+                    let _ = failures.send(Input::Bus(BusInput::Failed(error)));
+                }));
+            }
+            BusInput::Failed(error) => (self.publish)(Event::Error(error)),
+        }
     }
 
     /// The notification sent for access `token`, for the comments `through` a sequence, has
@@ -316,6 +342,9 @@ impl State {
         let post = post.from_tab(self.target.tab_id().0.clone());
         let message_id = post.message().id.clone();
         let thread_id = post.thread_id().clone();
+        // What the bus gets of a review comment, an agent's reply aside.
+        let words =
+            (post.message().author == Author::Reviewer).then(|| post.message().text.clone());
         let result = self.update(review_unit, |book| {
             let new = book.message(&post.message().id).is_none();
             book.post(post)?;
@@ -328,6 +357,19 @@ impl State {
                 .map(str::to_owned),
             _ => None,
         };
+        if let (Ok(true), Some(text)) = (&result, words) {
+            self.unpublished
+                .entry(review_unit.clone())
+                .or_default()
+                .push(PostedComment {
+                    id: message_id.clone(),
+                    text,
+                    review_unit: review_unit.clone(),
+                    thread: thread_id.clone(),
+                    round: round.clone(),
+                    to: None,
+                });
+        }
         let result = result.map(|_| ());
         let posted = result.is_ok();
         if posted {
@@ -350,6 +392,24 @@ impl State {
         }
         if posted && let Err(error) = self.schedule(review_unit, false) {
             self.undelivered(Some(review_unit), error);
+        }
+        // A comment that wakes an agent waits for the next poll, which picks it.
+        if !self.notifications.contains_key(review_unit) {
+            self.publish_comments(review_unit, None);
+        }
+    }
+
+    /// Publishes the new review comments of `unit` on the bus, to the agent in the pane `to`.
+    fn publish_comments(&mut self, unit: &ReviewUnit, to: Option<&PaneId>) {
+        let comments = self.unpublished.remove(unit).unwrap_or_default();
+        let Some(bus) = &self.bus else {
+            return;
+        };
+        for comment in comments {
+            bus.publish(PostedComment {
+                to: to.cloned(),
+                ..comment
+            });
         }
     }
 
@@ -596,9 +656,13 @@ impl State {
     fn poll(&mut self) {
         self.prompts.poll(&*self.port, &self.courier);
         for unit in self.notifications.keys().cloned().collect::<Vec<_>>() {
-            if let Err(error) = self.prepare_notification(&unit) {
-                self.notifications.remove(&unit);
-                self.undelivered(Some(&unit), error);
+            match self.prepare_notification(&unit) {
+                Ok(woken) => self.publish_comments(&unit, woken.as_ref()),
+                Err(error) => {
+                    self.publish_comments(&unit, None);
+                    self.notifications.remove(&unit);
+                    self.undelivered(Some(&unit), error);
+                }
             }
         }
         let tokens = self
@@ -619,7 +683,9 @@ impl State {
         }
     }
 
-    fn prepare_notification(&mut self, unit: &ReviewUnit) -> Result<(), String> {
+    /// Grants the agent the reviewer wakes for the pending comments of `unit` its access, and
+    /// requests its wakeup; returns its pane, or `None` when no comment waits for it.
+    fn prepare_notification(&mut self, unit: &ReviewUnit) -> Result<Option<PaneId>, String> {
         let retry = self
             .notifications
             .get(unit)
@@ -627,17 +693,18 @@ impl State {
             .retry;
         if !self.waits_for_agent(unit) {
             self.cancel_wakeups(unit);
-            return Ok(());
+            return Ok(None);
         }
         let agent = self
             .target
             .resolve(&*self.port)
             .map_err(|error| error.to_string())?
             .ok_or("Focus an implementation agent to receive the saved comments")?;
+        let pane = agent.pane_id.clone();
         let access = self.grant(unit, agent)?;
         self.notifications.remove(unit);
         self.request_wakeup(&access, retry);
-        Ok(())
+        Ok(Some(pane))
     }
 
     fn notify(&mut self, token: &str) -> Result<(), String> {

@@ -80,6 +80,11 @@ impl PrivateHerdrServer {
                 state_directory.clone().into_os_string(),
             ),
             ("SHELL".into(), "/bin/sh".into()),
+            // The reviewer publishes its review comments on this bus, never on the user's.
+            (
+                "HERDR_BUS_DB".into(),
+                directory.path().join("bus.db").into_os_string(),
+            ),
         ]);
         // A test reviewer serves its Explore page on this machine only.
         let mut settings = ExplorePageSettings::default();

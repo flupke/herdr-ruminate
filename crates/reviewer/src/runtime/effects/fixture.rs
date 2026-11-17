@@ -60,6 +60,7 @@ impl EffectsFixture {
             jev: JevClassifier::disabled(),
             linear: None,
             turns: None,
+            bus: None,
             source_watches: None,
             page: review_explore_page::RoundPublisher::default(),
             page_threads: std::sync::Arc::default(),

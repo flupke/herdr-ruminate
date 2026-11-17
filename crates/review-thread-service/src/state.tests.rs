@@ -35,9 +35,22 @@ impl Service {
         Self::start_with(None, |agents| Arc::new(agents))
     }
 
+    /// A service that publishes its new review comments on the herdr-bus file at `bus`.
+    fn start_on_bus(bus: &std::path::Path) -> Self {
+        Self::start_on(Some(bus), None, |agents| Arc::new(agents))
+    }
+
     /// A service that confirms its prompts through `hooks`, if any, and reaches the agents
     /// through the port that `port` makes of them.
     fn start_with(
+        hooks: Option<Arc<agent_hooks::AgentHooks>>,
+        port: impl FnOnce(InMemoryAgents) -> Arc<dyn AgentPort>,
+    ) -> Self {
+        Self::start_on(None, hooks, port)
+    }
+
+    fn start_on(
+        bus: Option<&std::path::Path>,
         hooks: Option<Arc<agent_hooks::AgentHooks>>,
         port: impl FnOnce(InMemoryAgents) -> Arc<dyn AgentPort>,
     ) -> Self {
@@ -74,6 +87,9 @@ impl Service {
             sender,
             crate::delivery::Courier::start(port, Arc::default(), hooks),
         );
+        if let Some(bus) = bus {
+            let _ = state.input(Input::Bus(BusInput::Open(Ok(bus.to_owned()))));
+        }
         state.command(Command::Thread(ThreadCommand::Load(UNIT.into())));
         Self {
             state,
@@ -179,6 +195,18 @@ impl Service {
                 released,
                 final_status: None,
             }));
+    }
+
+    /// Stops the service once the comments it handed to its bus are published, and returns the
+    /// errors it reported, those of the bus with them.
+    fn stop(mut self) -> Vec<String> {
+        if let Some(bus) = self.state.bus.take() {
+            bus.close();
+        }
+        while let Ok(input) = self.inputs.try_recv() {
+            let _ = self.state.input(input);
+        }
+        self.errors()
     }
 
     /// Whether any notification or wakeup is still armed for delivery.
@@ -1045,4 +1073,128 @@ fn a_cancelled_prompt_that_waits_for_its_agents_session_is_withdrawn_under_a_hos
     // The worker, which waits for an input, withdraws it at once.
     assert!(matches!(receipt.wait(), Err(crate::PromptError::Cancelled)));
     assert_eq!(agents.prompts(), []);
+}
+
+/// The messages of the `words` output of the bus file at `path`, oldest first.
+fn words_on_bus(path: &std::path::Path) -> Vec<herdr_bus::Message> {
+    let mut stored = herdr_bus::Bus::open(path)
+        .unwrap()
+        .messages(&herdr_bus::MessageQuery {
+            output: Some(review_comment_bus::OUTPUT.into()),
+            ..herdr_bus::MessageQuery::default()
+        })
+        .unwrap();
+    stored.reverse();
+    stored.into_iter().map(|stored| stored.message).collect()
+}
+
+#[test]
+fn each_new_review_comment_goes_on_the_bus_once_to_the_pane_of_the_agent_it_wakes() {
+    let directory = tempfile::tempdir().unwrap();
+    let bus = directory.path().join("bus.db");
+    let mut service = Service::start_on_bus(&bus);
+    let thread = service.start_thread("Rename this");
+    only_wakeup(&service.poll());
+    let id = service.talk("round-7", "Why a lock here?", None);
+    // A repeat of a post the threads hold is no new comment.
+    let conversation = service.state.books[&ReviewUnit::from(UNIT)]
+        .round_conversation("round-7")
+        .unwrap()
+        .id
+        .clone();
+    let reply = Post::reply(conversation, "And the timeout?".into());
+    for _ in 0..2 {
+        service.thread(ThreadCommand::Post {
+            review_unit: UNIT.into(),
+            post: reply.clone(),
+        });
+    }
+    only_wakeup(&service.poll());
+
+    assert_eq!(service.stop(), Vec::<String>::new());
+    let words = words_on_bus(&bus);
+    let summary = words
+        .iter()
+        .map(|message| {
+            (
+                message.data["text"].as_str().unwrap(),
+                message.data["to"].as_str(),
+                message.data["thread"].as_str().unwrap() == thread.as_str(),
+                message.data["round"].as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        summary,
+        [
+            ("Rename this", Some("pane:first"), true, None),
+            (
+                "Why a lock here?",
+                Some("pane:first"),
+                false,
+                Some("round-7")
+            ),
+            (
+                "And the timeout?",
+                Some("pane:first"),
+                false,
+                Some("round-7")
+            ),
+        ]
+    );
+    assert_eq!(words[1].id.to_string(), id.as_str());
+}
+
+#[test]
+fn a_review_comment_that_wakes_no_agent_goes_on_the_bus_to_no_one() {
+    let directory = tempfile::tempdir().unwrap();
+    let bus = directory.path().join("bus.db");
+    let mut service = Service::start_on_bus(&bus);
+    service.agents.remove_agent(&pane("first"));
+    service.start_thread("Rename this");
+    assert!(service.poll().is_empty());
+
+    assert_eq!(
+        service.stop(),
+        ["Focus an implementation agent to receive the saved comments"]
+    );
+    let words = words_on_bus(&bus);
+    assert_eq!(words.len(), 1);
+    assert_eq!(words[0].data["to"], serde_json::Value::Null);
+}
+
+#[test]
+fn a_bus_that_cannot_be_written_is_reported_and_the_comment_still_wakes_the_agent() {
+    let directory = tempfile::tempdir().unwrap();
+    // The bus file's folder is a plain file: the bus can never be opened.
+    let blocker = directory.path().join("not-a-folder");
+    std::fs::write(&blocker, "").unwrap();
+    let mut service = Service::start_on_bus(&blocker.join("bus.db"));
+    service.start_thread("Rename this");
+
+    let (pane, _) = only_wakeup(&service.poll());
+    assert_eq!(pane, "first");
+    let thread = &service.state.books[&ReviewUnit::from(UNIT)].threads()[0];
+    assert_eq!(thread.messages[0].text, "Rename this");
+    let errors = service.stop();
+    assert!(!errors.is_empty());
+    assert!(
+        errors.iter().all(|error| error.contains("herdr-bus")),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn a_machine_without_a_bus_file_is_reported_and_the_comment_still_wakes_the_agent() {
+    let mut service = Service::start();
+    let _ = service.state.input(Input::Bus(BusInput::Open(Err(
+        "no bus file: set HERDR_BUS_DB, XDG_DATA_HOME or HOME".into(),
+    ))));
+    service.start_thread("Rename this");
+
+    only_wakeup(&service.poll());
+    let errors = service.stop();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("herdr-bus"), "{errors:?}");
+    assert!(errors[0].contains("set HERDR_BUS_DB"), "{errors:?}");
 }

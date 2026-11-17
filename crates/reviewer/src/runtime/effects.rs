@@ -53,6 +53,9 @@ pub(super) struct Setup {
     pub(super) linear: Option<LinearSettings>,
     /// Where a vision session reads the Explore prompts sent.
     pub(super) turns: Option<vision_turns::TurnLog>,
+    /// The herdr-bus file the new review comments are published on, or why there is none, which
+    /// the reviewer reports; `None` publishes none.
+    pub(super) bus: Option<Result<PathBuf, String>>,
     pub(super) source_watches: Option<SourceWatchRequests>,
     /// Where the Explore session publishes its round for the Explore page.
     pub(super) page: RoundPublisher,
@@ -168,6 +171,7 @@ impl Effects {
             jev,
             linear,
             turns,
+            bus,
             source_watches,
             page,
             page_threads,
@@ -190,9 +194,7 @@ impl Effects {
             &commands,
             thread_events(&commands, messages.clone(), Arc::clone(&page_threads)),
         );
-        if let Some(turns) = &turns {
-            comments.log_turns(turns.clone());
-        }
+        share_comments(&comments, turns.as_ref(), bus);
         let talk_quiet = run_ahead.talk_quiet;
         let explore_hooks = hooks.as_ref().ok().cloned();
         let forks = run_ahead.forks(&agents, hooks);
@@ -517,6 +519,21 @@ fn start_comments(
         },
         events,
     )
+}
+
+/// Records each comments wakeup in a vision session's turn log `turns`, and publishes each new
+/// review comment on the herdr-bus file `bus`, when given.
+fn share_comments(
+    comments: &comments::Worker,
+    turns: Option<&vision_turns::TurnLog>,
+    bus: Option<Result<PathBuf, String>>,
+) {
+    if let Some(turns) = turns {
+        comments.log_turns(turns.clone());
+    }
+    if let Some(bus) = bus {
+        comments.publish_on_bus(bus);
+    }
 }
 
 /// Where the thread worker's events go: the Explore page, the Explore session for a message of
