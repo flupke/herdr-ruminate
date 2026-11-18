@@ -29,10 +29,11 @@ use crate::terminal::{SESSION_LABEL, Terminal, place_of, session_label};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long `terminal.send` may take: it waits until nobody typed in the terminal for about
-/// 3 seconds, however long someone types there (herdr-core 0.1.18), then a few seconds more to
-/// tell whether the program went working. A send given up on still types later, after the
-/// reviewer stopped waiting for its hook: so the bound is one that nobody types up to without a
-/// pause.
+/// 3 seconds, however long someone types there, and from herdr-core 0.1.20 while their typing
+/// there is unsent, up to 60 s past their last key, then a few seconds more to tell whether the
+/// program went working. herdr-core 0.1.18 still types a send given up on, after the reviewer
+/// stopped waiting for its hook, while 0.1.20 cancels it: so the bound is one that nobody types
+/// up to without a pause.
 const SEND_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -46,6 +47,8 @@ pub struct HcClient {
     socket_path: PathBuf,
     /// The home of the herdr-app screen whose focus the client follows.
     focus_home: Option<AppHome>,
+    /// How often a send to an agent looks whether unsent typing holds it.
+    look_every: Duration,
 }
 
 /// A refusal of herdr-core: `{code, message, data: {kind, hint}}`.
@@ -158,6 +161,7 @@ impl HcClient {
         Self {
             socket_path,
             focus_home: None,
+            look_every: unsent_typing::LOOK_EVERY,
         }
     }
 
@@ -170,6 +174,13 @@ impl HcClient {
             focus_home: Some(home),
             ..self
         }
+    }
+
+    /// The client, whose sends to an agent look every `look_every` whether unsent typing holds
+    /// them, in place of every few seconds: for a test, which waits on no production interval.
+    #[must_use]
+    pub fn looking_for_unsent_typing_every(self, look_every: Duration) -> Self {
+        Self { look_every, ..self }
     }
 
     /// A client of the core of the terminal this process runs in: herdr-core gives each of its
@@ -291,9 +302,11 @@ impl HcClient {
     /// Pastes `text` into the terminal of `pane_id` and presses Enter. Sent without a caller,
     /// so herdr-core types the text as it is, without the `<hc from="...">` tags it puts around
     /// what one of its terminals sends another. The refusals `hc schema` lists typed
-    /// nothing ([`untyped`]).
+    /// nothing ([`untyped`]). A client that follows a window's focus ends meanwhile the unsent
+    /// typing that herdr-core may hold the send behind, once nobody may be typing there
+    /// ([`unsent_typing`]): without a window, nobody types in a terminal through it.
     fn send(&self, pane_id: &PaneId, text: &str) -> Result<Sent> {
-        match self.response(
+        let send = || match self.response(
             "terminal.send",
             &json!({"terminal": pane_id.0, "text": text}),
             SEND_TIMEOUT,
@@ -303,7 +316,11 @@ impl HcClient {
                 Some(reason) => Err(Error::NotTyped { reason }),
                 None => Err(refusal("terminal.send", error)),
             },
+        };
+        if self.focus_home.is_none() {
+            return send();
         }
+        self.send_past_unsent_typing(pane_id, send)
     }
 
     /// Calls `method` with `params`, and parses its result; herdr-core's refusal is an error.
@@ -686,6 +703,9 @@ impl AgentHost for HcClient {
         self.report_session(pane_id, report.agent, report.session)
     }
 }
+
+#[path = "unsent_typing.rs"]
+mod unsent_typing;
 
 #[cfg(test)]
 #[path = "client.tests.rs"]

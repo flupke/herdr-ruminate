@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use hc_client::HcClient;
 use hc_test_support::PrivateCore;
+use herdr_app_focus::AppHome;
 use herdr_client::client::EventCanceller;
 use herdr_client::protocol::{AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, TabId};
 
@@ -144,7 +145,9 @@ fn a_prompt_to_an_agent_that_waits_on_its_user_types_nothing() {
 #[test]
 #[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn a_prompt_to_an_agent_that_blocked_while_the_person_typed_types_nothing() {
-    let core = PrivateCore::start();
+    // The send waits only for the quiet pause after the person's last key, not for their unsent
+    // typing, `cd`, which they never send.
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
     // The agent works until the person types `!`, then waits on them.
@@ -221,6 +224,135 @@ fn a_prompt_waits_until_the_person_typing_in_the_agent_s_terminal_stops() {
     assert_eq!(
         std::fs::read_to_string(folder.path().join("lines")).unwrap(),
         "my own words\nReview crates/hc-client\n"
+    );
+}
+
+/// A shell line that draws Claude Code's input line between its two rules, showing `shown`, and
+/// echoes no key typed in the terminal: as Claude Code shows an empty line after its user erased
+/// what they typed with a key herdr-core does not count as erasing.
+fn input_line(shown: &str) -> String {
+    format!(r"stty -echo; printf '\n──── worker ─\n❯ {shown}\n────────────\n';")
+}
+
+/// Where the keyboard is of the herdr-app window that a test's client follows.
+#[derive(Clone, Copy, Debug)]
+enum Keyboard {
+    /// In a pane that shows no terminal of the core.
+    Elsewhere,
+    /// In the agent's terminal.
+    InAgent,
+    /// herdr-app wrote no view: it may be in any terminal.
+    Unknown,
+}
+
+/// A client of `core` that follows the herdr-app window whose home is `home`, its keyboard
+/// where `keyboard` says, `agent` showing in the pane `p1`; it looks for unsent typing every
+/// 100 ms.
+fn following_a_window(
+    core: &PrivateCore,
+    home: &std::path::Path,
+    agent: &PaneId,
+    keyboard: Keyboard,
+) -> HcClient {
+    let view = |pane: &str| {
+        serde_json::json!({"active": "sp1", "spaces": {"sp1": "tb1"}, "tabs": {"tb1": {"focused": pane}}})
+            .to_string()
+    };
+    match keyboard {
+        Keyboard::Elsewhere => std::fs::write(home.join("view.json"), view("p2")).unwrap(),
+        Keyboard::InAgent => {
+            std::fs::write(home.join("view.json"), view("p1")).unwrap();
+            core.set_document(
+                "herdr-app",
+                &serde_json::json!({"spaces": [{"tabs": [
+                    {"root": {"id": "p1", "content": {"terminal": agent.0}}}
+                ]}]}),
+            );
+        }
+        Keyboard::Unknown => {}
+    }
+    core.client()
+        .following_focus(AppHome::new(home.to_owned()))
+        .looking_for_unsent_typing_every(Duration::from_millis(100))
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_prompt_held_behind_typing_an_idle_agent_s_empty_input_line_does_not_show_goes_once_nobody_types()
+ {
+    // herdr-core holds the send for 10 minutes past the person's last key, in place of 60 s: a
+    // client that waits for it never gets its answer before nextest ends the test.
+    let core = PrivateCore::holding_unsent_typing_for(Duration::from_secs(600));
+    let folder = tempfile::tempdir().unwrap();
+    let window = tempfile::tempdir().unwrap();
+    let agent = core.run(
+        folder.path(),
+        &format!(
+            "{} {} read -r line; printf '%s\\n' \"$line\" >> lines; {} read -r line; printf \
+             '%s\\n' \"$line\" >> lines; {} exec sleep 600",
+            input_line(""),
+            report("idle"),
+            report("working"),
+            report("done")
+        ),
+    );
+    let client = following_a_window(&core, window.path(), &agent, Keyboard::Elsewhere);
+    wait_for(&client, &agent, AgentStatus::Idle);
+    let mut person = core.person_at(&agent);
+    person.types("xyz", PACE);
+    person.erases_word();
+
+    client
+        .prompt_agent(&agent, "Review crates/hc-client")
+        .unwrap();
+    // A marker after the prompt: what the agent read before it is all herdr-core typed.
+    core.hc(&["keys", &agent.0, "m", "enter"]);
+    wait_for(&client, &agent, AgentStatus::Done);
+
+    // The Ctrl+U that ended the person's unsent typing erased nothing the agent reads, and
+    // herdr-core typed the prompt once.
+    assert_eq!(
+        std::fs::read_to_string(folder.path().join("lines")).unwrap(),
+        "Review crates/hc-client\nm\n"
+    );
+}
+
+#[test_case::test_case("xyz", Keyboard::Elsewhere; "the input line shows the person's text")]
+#[test_case::test_case("", Keyboard::InAgent; "the window's keyboard is in the agent's terminal")]
+#[test_case::test_case("", Keyboard::Unknown; "the window's focus cannot be read")]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_prompt_held_behind_typing_waits_for_it_while_someone_may_be_typing(
+    shown: &str,
+    keyboard: Keyboard,
+) {
+    // herdr-core gives the hold up 6 s past the person's last key, some 3 s after its quiet
+    // pause: the client looks some 30 times meanwhile.
+    let core = PrivateCore::holding_unsent_typing_for(Duration::from_secs(6));
+    let folder = tempfile::tempdir().unwrap();
+    let window = tempfile::tempdir().unwrap();
+    let agent = core.run(
+        folder.path(),
+        &format!(
+            "{} {} read -r line; printf '%s\\n' \"$line\" >> lines; {} exec sleep 600",
+            input_line(shown),
+            report("idle"),
+            report("working")
+        ),
+    );
+    let client = following_a_window(&core, window.path(), &agent, keyboard);
+    wait_for(&client, &agent, AgentStatus::Idle);
+    let mut person = core.person_at(&agent);
+    // Left in the terminal's line, which the agent reads with the prompt.
+    person.types("xyz", PACE);
+
+    client
+        .prompt_agent(&agent, "Review crates/hc-client")
+        .unwrap();
+
+    // No Ctrl+U erased the person's typing: herdr-core typed the prompt after it.
+    assert_eq!(
+        std::fs::read_to_string(folder.path().join("lines")).unwrap(),
+        "xyzReview crates/hc-client\n"
     );
 }
 

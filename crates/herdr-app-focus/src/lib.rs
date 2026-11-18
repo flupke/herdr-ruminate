@@ -86,15 +86,29 @@ impl AppHome {
     /// space. `None` when herdr-app wrote no view, or one that names no focused pane: an unread
     /// view leaves the focus unknown, which the reviewer can do without.
     fn focused_pane(&self) -> Option<String> {
-        let text = std::fs::read(self.0.join(VIEW_FILE)).ok()?;
-        let view: View = serde_json::from_slice(&text).ok()?;
-        view.focused_pane().map(str::to_owned)
+        self.read_focused_pane().ok().flatten()
+    }
+
+    /// The herdr-app pane the user focuses, as [`Self::focused_pane`]; an error when herdr-app's
+    /// view cannot be read.
+    fn read_focused_pane(&self) -> io::Result<Option<String>> {
+        let text = std::fs::read(self.0.join(VIEW_FILE))?;
+        let view: View = serde_json::from_slice(&text).map_err(io::Error::other)?;
+        Ok(view.focused_pane().map(str::to_owned))
     }
 
     /// The terminal the user focuses: the one the focused pane shows in `layout`; `None` when
     /// that pane shows a mod.
     pub fn focused_terminal(&self, layout: &Layout) -> Option<String> {
         layout.terminal_of(&self.focused_pane()?).map(str::to_owned)
+    }
+
+    /// The terminal the user focuses, as [`Self::focused_terminal`]; an error when herdr-app's
+    /// view cannot be read, for a caller that must not take an unknown focus for none.
+    pub fn read_focused_terminal(&self, layout: &Layout) -> io::Result<Option<String>> {
+        Ok(self
+            .read_focused_pane()?
+            .and_then(|pane| layout.terminal_of(&pane).map(str::to_owned)))
     }
 
     /// Calls `changed` each time herdr-app writes its view, until the watch drops. herdr-app

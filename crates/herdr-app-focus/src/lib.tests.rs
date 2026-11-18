@@ -78,6 +78,34 @@ fn a_view_with_no_focused_terminal_focuses_none(view: &str) {
     assert_eq!(home.focused_terminal(&layout()), None);
 }
 
+#[test_case::test_case(None; "no view")]
+#[test_case::test_case(Some("{"); "a torn view")]
+fn a_view_that_cannot_be_read_is_an_error_to_a_strict_read(view: Option<&str>) {
+    let folder = tempfile::tempdir().unwrap();
+    if let Some(view) = view {
+        std::fs::write(folder.path().join("view.json"), view).unwrap();
+    }
+    let home = AppHome::new(folder.path().to_owned());
+
+    assert!(home.read_focused_terminal(&layout()).is_err());
+}
+
+#[test]
+fn a_strict_read_tells_the_focused_terminal_and_none_for_a_mod() {
+    let view = |pane: &str| {
+        format!(
+            r#"{{"active": "sp1", "spaces": {{"sp1": "tb1"}}, "tabs": {{"tb1": {{"focused": "{pane}"}}}}}}"#
+        )
+    };
+    let (_folder, home) = home_with_view(&view("p2"));
+    assert_eq!(
+        home.read_focused_terminal(&layout()).unwrap().as_deref(),
+        Some("t2")
+    );
+    let (_folder, home) = home_with_view(&view("p3"));
+    assert_eq!(home.read_focused_terminal(&layout()).unwrap(), None);
+}
+
 #[test]
 fn a_home_without_a_view_focuses_nothing() {
     let folder = tempfile::tempdir().unwrap();

@@ -82,9 +82,14 @@ records it for the tab it is in.
   instead of Herdr reading its screen, that integration must report the turns the agent
   starts, or every prompt to an agent without the hooks counts as not started.
 - Herdr owns the terminal submission and rejects a prompt to a blocked agent; so does
-  herdr-core, whose refusal says nothing reached the agent. The reviewer
-  does not inspect the agent's terminal or its focus; it protects a prompt from the text left
-  in the input box only through the hooks.
+  herdr-core, whose refusal says nothing reached the agent. The reviewer protects a prompt from
+  the text left in the input box only through the hooks.
+- herdr-core also holds a prompt behind typing the agent's input line no longer shows, up to
+  60 s past the person's last key there ([herdr-app](herdr-app.md#the-reviewers-hc-backend)).
+  While a prompt to an idle Claude Code waits, the reviewer ends that hold with Ctrl+U once
+  nobody may be typing in its terminal: the only place it reads the agent's screen or presses a
+  key in its terminal
+  ([ADR 0022](../adr/0022-end-unsent-typing-that-holds-a-wakeup-with-ctrl-u.md)).
 
 ## On herdr-bus
 

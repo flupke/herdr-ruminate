@@ -82,9 +82,11 @@ fn the_user_s_prompt_goes_on_while_the_reviewer_s_waits(agent: &RealAgent, hooke
          it queues it while it works. Its terminal shows:\n{}",
         agent.screen()
     );
+    // herdr-core 0.1.20 and later type a send held behind the person's typing 0.2 s after their
+    // Enter, where 0.1.18 waited its quiet pause of about 3 s.
     assert!(
-        at >= entered + Duration::from_secs(2),
-        "Assumption: herdr-core waits until the person stops typing before it types"
+        at >= entered,
+        "Assumption: herdr-core waits until the person sends their typing before it types"
     );
     assert_eq!(
         status,

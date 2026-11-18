@@ -32,6 +32,17 @@ pub struct PrivateCore {
 
 impl PrivateCore {
     pub fn start() -> Self {
+        Self::start_with(&[])
+    }
+
+    /// A core that holds a send behind a person's unsent typing in a terminal for up to `hold`
+    /// after their last key, in place of its 60 s (`HC_DRAFT_MS`, hc 0.1.20 and later).
+    pub fn holding_unsent_typing_for(hold: Duration) -> Self {
+        Self::start_with(&[("HC_DRAFT_MS", hold.as_millis().to_string())])
+    }
+
+    /// A core started with the variables `settings` beside its own.
+    fn start_with(settings: &[(&str, String)]) -> Self {
         let core = Self {
             runtime: tempfile::Builder::new()
                 .prefix("hc")
@@ -39,7 +50,12 @@ impl PrivateCore {
                 .unwrap(),
             home: tempfile::tempdir().unwrap(),
         };
-        core.hc(&["server", "start", "--json"]);
+        let output = core
+            .command(&["server", "start", "--json"])
+            .envs(settings.iter().map(|(name, value)| (name, value)))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "hc server start: {output:?}");
         core
     }
 
@@ -106,6 +122,23 @@ impl PrivateCore {
 
     pub fn client(&self) -> HcClient {
         HcClient::new(self.socket())
+    }
+
+    /// Writes `value` as herdr-core's document `name`, never written before, as herdr-app writes
+    /// its layout in the `herdr-app` document.
+    pub fn set_document(&self, name: &str, value: &Value) {
+        let mut socket = UnixStream::connect(self.socket()).unwrap();
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "doc.set",
+            "params": {"name": name, "value": value, "version": 0},
+        });
+        writeln!(socket, "{request}").unwrap();
+        let mut answer = String::new();
+        BufReader::new(socket).read_line(&mut answer).unwrap();
+        let answer: Value = serde_json::from_str(&answer).unwrap();
+        assert!(answer["error"].is_null(), "doc.set {name}: {answer}");
     }
 
     /// Runs `script` in a new terminal of the tab `tb1`, in `folder`; returns its address.
@@ -223,6 +256,12 @@ impl Person {
     /// Presses Enter.
     pub fn presses_enter(&mut self) {
         self.press(b"\r");
+    }
+
+    /// Presses Ctrl-W, which erases the word before the cursor in a terminal's line, and in
+    /// Claude Code's input line: herdr-core still counts the word's characters as unsent typing.
+    pub fn erases_word(&mut self) {
+        self.press(b"\x17");
     }
 
     fn press(&mut self, key: &[u8]) {

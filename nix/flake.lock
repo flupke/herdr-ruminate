@@ -30,11 +30,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793897300,
-        "narHash": "sha256-36VXheJ7qV3P+NP5y2We0OxLQfszaO7XXbqqXmSTyPY=",
+        "lastModified": 1794435106,
+        "narHash": "sha256-XWLss/Yz2xM/OuDRGs9nAchsikKEsghbqSlvFAGuujI=",
         "owner": "flupke",
         "repo": "herdr-common",
-        "rev": "4ea252d993b97cabb6314eed166c0ba0024cba06",
+        "rev": "3a688f715b01e9fecb6b3035d9432a6c88376ce7",
         "type": "github"
       },
       "original": {

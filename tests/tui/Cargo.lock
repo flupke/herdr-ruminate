@@ -234,6 +234,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-input-line"
+version = "0.2.0"
+
+[[package]]
 name = "clru"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1479,6 +1483,7 @@ dependencies = [
 name = "hc-client"
 version = "0.2.0"
 dependencies = [
+ "claude-input-line",
  "herdr-app-focus",
  "herdr-client",
  "serde",
