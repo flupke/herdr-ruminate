@@ -15,7 +15,7 @@ use review_repository::repository::RepoType;
 use rmcp::{
     ErrorData, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig},
     schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
@@ -651,8 +651,8 @@ impl Server {
 
 #[tool_handler(router = self.router)]
 impl ServerHandler for Server {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             format!(
                 "{INSTRUCTIONS}\n\nThe vision core: {}",
                 vision_mcp::INSTRUCTIONS

@@ -243,6 +243,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-oid"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be95d4a884358a21a199689323c29e9256b4a1b315e22f183d155422041d3a9a"
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -431,6 +437,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer 0.12.1",
+ "const-oid",
  "crypto-common 0.2.2",
 ]
 
@@ -2341,31 +2348,36 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "3.3.0"
+version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88db56b8ae316560e9e868b6b978ea940f27cb883323fc90e07435e44158f5c"
+checksum = "391f153431ab68664d946513ea0cb3edbca78eaf99c5a983036cacab6220d85b"
 dependencies = [
  "chrono",
  "futures",
  "indexmap",
+ "libc",
  "pastey",
+ "percent-encoding",
  "pin-project-lite",
  "rmcp-macros",
  "schemars",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
+ "unicode-general-category",
+ "unicode-normalization",
  "uuid",
 ]
 
 [[package]]
 name = "rmcp-macros"
-version = "3.3.0"
+version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "873b730df6f0a9b74b13eb514e0dca4c2db0d8b68b74af98a2e9bf3f9d436585"
+checksum = "3598e3f36f4af2b5219b133baf7d97a2197039225adc3d4acf3dd8805b5a2aef"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2599,6 +2611,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "socket2"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2743,6 +2765,7 @@ dependencies = [
  "mio",
  "pin-project-lite",
  "signal-hook-registry",
+ "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
 ]
@@ -2890,6 +2913,12 @@ name = "unicode-bom"
 version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7eec5d1121208364f6793f7d2e222bf75a915c19557537745b195b253dd64217"
+
+[[package]]
+name = "unicode-general-category"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f"
 
 [[package]]
 name = "unicode-ident"

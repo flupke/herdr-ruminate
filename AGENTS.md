@@ -9,9 +9,10 @@ features behave, unless the task asks for a new behaviour or it fixes a bug.
 Give yourself eyes and hands on what you build: run it, look at it, act on it as its user
 would, and fix what you see. Tests prove what you thought of; eyes show what you did not.
 The vision MCP server runs the review pane in herdr-common's app sandbox, a private herdr-app
-on a headless display that never shows on the user's screen: run `make vision` once, then use
-its tools (`.agents/wiki/visual-testing.md`); `make explore-page` and `make explore-gallery` show
-the Explore page, and `make explore-script` acts on it with a throwaway script
+on a headless display that never shows on the user's screen: use its tools, whose server
+`.mcp.json` registers and `scripts/vision-mcp` builds when an agent session connects
+(`.agents/wiki/visual-testing.md`); `make explore-page` and `make explore-gallery` show the
+Explore page, and `make explore-script` acts on it with a throwaway script
 (`.agents/wiki/explore-page-standalone.md`); herdr-common's `app-sandbox` command keeps a
 private herdr-app running across shell commands, where the launcher mod opens the pane and
 `app-sandbox shot` shows the render (`.agents/wiki/herdr-app.md`, A private herdr-app);

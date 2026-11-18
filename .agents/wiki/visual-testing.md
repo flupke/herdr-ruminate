@@ -7,24 +7,35 @@ schemas say what each one takes and returns; this page holds what they cannot sa
 
 ## Setup
 
-Run `make vision` first: it builds the server and the reviewer, and prints how to use them.
 `.mcp.json` registers the server as `reviewer-vision` through `scripts/vision-mcp`, which
 runs the built server, or builds it first when it is missing or older than the sources
 (slower, and it says so on standard error), with the dev shell's pinned herdr-app, hc, Weston
 and Vulkan driver, which the sandbox runs, and the dev shell's `PATH`, where it finds
-bubblewrap, nsenter and socat. Claude Code asks once to approve a project's
-server. A session whose server was missing or stale when Claude Code connected may get its
-instructions but no tools: run `make vision`, then drive the server over stdio with a small
-MCP client (`initialize`, then `tools/call`), from one process, since a client that leaves
-ends the session.
+bubblewrap, nsenter and socat. An agent that herdr-bowtie starts needs no setup step: its
+settings approve the project's servers (`enableAllProjectMcpServers`) and wait 300 s for one
+to connect (`MCP_TIMEOUT`), longer than a build. In any other session, Claude Code asks once to
+approve the project's server and waits 30 s for it, which a build in a new workspace can
+outlast: run `make vision` before starting the session, which builds the server and the
+reviewer and prints how to use them, or, once the session has lost the server, run it and ask
+the user to reconnect the server with `/mcp`.
+
+Claude Code opens a connection with a `server/discover` probe and, when no answer comes within
+3 s, as while the server builds, falls back to `initialize`. The server's rmcp must be 3.5.1 or
+later: an older one serves the protocol of the first request it reads, so a server that reads
+the stale probe refuses the fallback's `tools/list`, and the agent session gets the server's
+instructions but none of its tools. Claude Code's log of the server says so, in
+`~/.cache/claude-cli-nodejs/<project>/mcp-logs-reviewer-vision/`: `Failed to fetch tools:
+request _meta is missing`.
 
 The server lives in [`tests/tui`](../../tests/tui), a Cargo workspace of its own: it takes
 herdr-common's app sandbox, vision core and fake agent by path from the checkout beside this
 one (`../herdr-common`), which a clone of this repository alone lacks, and patches the
 herdr-common git dependencies of the workspace's crates to that checkout. `start` builds the
 reviewer and the fake agent of the checkout in the dev shell, so each session runs the
-current code. The server itself does not rebuild: an MCP client keeps the process it started,
-so after a change under `tests/tui` the client must start the server again to get it.
+current code. A change to `tests/tui`'s sources, manifest or lock, or under `crates`, makes the
+next connection build the server again; a change in herdr-common does not, so run `make vision`
+after pulling it. A running server never rebuilds: an MCP client keeps the process it started,
+so the client must start the server again to get a change.
 
 ## The session's sandbox
 
