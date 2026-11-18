@@ -399,7 +399,10 @@ impl ExploreSession {
                 .as_ref()
                 .and_then(ConversationBinding::from_agent);
             self.state.loaded_unit = Some(request.checkpoint.review_unit.clone());
-            return Ok(self.rounds.create(round)?);
+            let round = self.rounds.create(round)?;
+            // The thread saves what it finds; the round never waits for it.
+            drop(self.rounds.find_references(&round));
+            return Ok(round);
         }
         Ok(self
             .rounds

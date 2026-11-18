@@ -111,6 +111,9 @@ pub struct Collaborators {
     /// The reviewer's end of the agents' hooks, which learns the session a Codex agent names in
     /// its calls; `None` when the reviewer does not listen to them.
     pub hooks: Option<Arc<agent_hooks::AgentHooks>>,
+    /// Finds the pull request and the tickets of the change each new round reviews, which name
+    /// it among the past rounds; `None` when nothing looks for them.
+    pub references: Option<change_references_finder::ReferencesFinder>,
 }
 
 /// The Explore session of one reviewer process.
@@ -304,6 +307,7 @@ impl ExploreSession {
             forks,
             talk_quiet,
             hooks,
+            references,
         } = collaborators;
         Self {
             repository,
@@ -313,7 +317,7 @@ impl ExploreSession {
             markable: mark_tally::MarkableCache::default(),
             prompt_diverged: Vec::new(),
             prompted_diverged: std::collections::BTreeMap::new(),
-            rounds: records::SavedRounds::new(store),
+            rounds: records::SavedRounds::new(store).with_references(references),
             agents,
             target,
             prompts,

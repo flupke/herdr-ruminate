@@ -443,7 +443,9 @@ pub struct ReviewName {
     pub repository: String,
     /// The abbreviated revision identifier, with the prefix jj highlights.
     pub revision: ShortRevision,
-    /// The first line of the change's description; empty when it has none.
+    /// The first line of the change's description; empty when it has none. A past round's is
+    /// the name the past-rounds list gives its change: its pull request's title, else its
+    /// ticket's.
     pub title: String,
     /// The Linear issues the change names, which the masthead links to; none for a past round.
     pub issues: Vec<LinearIssue>,

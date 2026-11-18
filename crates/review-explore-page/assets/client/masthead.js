@@ -26,6 +26,7 @@
 import { requestChat } from './chat.js';
 import { DESK } from './desk.js';
 import { h, keyOf, markdown, Region } from './dom.js';
+import { issueLink } from './issue-link.js';
 import { drawingBoardConfirmation } from './drawing-board.js';
 import { backLink, requestPastList } from './past.js';
 import { revisionCode, revisionText } from './revision.js';
@@ -370,9 +371,7 @@ function reviewParts(review) {
 /** Each Linear issue the change names, a link to its page in a new tab.
  * @param {ReviewName} review */
 function issueLinks(review) {
-  return review.issues.map((issue) =>
-    h('a', { class: 'issue', href: issue.url, target: '_blank', rel: 'noopener noreferrer' }, issue.id),
-  );
+  return review.issues.map((issue) => issueLink(issue.url, issue.id));
 }
 
 /**

@@ -56,7 +56,7 @@
   margin: 0;
   white-space: nowrap;
 }
-.masthead .issue, .menu-review .issue {
+.masthead .issue, .menu-review .issue, .past-references .issue {
   color: var(--accent);
   font-family: var(--mono);
   font-size: 13px;
@@ -64,7 +64,8 @@
   white-space: nowrap;
 }
 .masthead .issue:hover, .masthead .issue:focus-visible,
-.menu-review .issue:hover, .menu-review .issue:focus-visible { text-decoration: underline; }
+.menu-review .issue:hover, .menu-review .issue:focus-visible,
+.past-references .issue:hover, .past-references .issue:focus-visible { text-decoration: underline; }
 .menu-review .issue + .issue { margin-left: 8px; }
 /* A wider gap after the revision than between words, as the pane's header leaves before the
    title. */

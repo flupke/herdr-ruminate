@@ -11,6 +11,7 @@ use std::sync::mpsc::{self, Sender};
 use std::thread::{self, JoinHandle};
 
 use agent_hooks::AgentHooks;
+use change_references_finder::ReferencesFinder;
 use component_core::{ApplicationEventSender, EventEnvelope};
 use crossbeam_channel::{Receiver as EventReceiver, Sender as EventSender};
 use herdr_client::protocol::{AgentHost, AgentTarget, HerdrEvent, PaneId};
@@ -212,6 +213,7 @@ impl Effects {
             forks,
             talk_quiet,
             hooks: explore_hooks,
+            references: Some(ReferencesFinder::new(linear.clone())),
         });
         let mut worker = Worker {
             repository: repository.clone(),

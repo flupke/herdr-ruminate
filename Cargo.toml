@@ -13,6 +13,8 @@ members = [
     "crates/hc-test-support",
     "crates/reviewer-dirs",
     "crates/reviewer-config",
+    "crates/change-references",
+    "crates/change-references-finder",
     "crates/linear-issues",
     "crates/quick-tunnel",
     "crates/claude-fork",

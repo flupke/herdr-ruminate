@@ -112,4 +112,13 @@ workspace = "acme"
 teams = ["ENG", "OPS"]
 ```
 
+The Explore page's past rounds are named by the pull request of the change they reviewed, or
+its ticket, with their numbers as links, when the reviewer finds them as a round starts: the
+pull request whose branch is one of the change's bookmarks or jj workspaces, through `gh`, on
+the GitHub repository of the jj repository's `upstream` remote, else its `origin`, else the
+first on GitHub; the GitHub issues that the description or the pull request's body names
+(`Fixes #12`, an issue's link) or a `t12-slug` bookmark or workspace names; and the Linear
+issues of the teams above, or linked to. Without `gh`, logged out or offline, the tickets keep their links, and a
+round keeps its description's first line as its name.
+
 Contributor instructions are in [AGENTS.md](AGENTS.md).

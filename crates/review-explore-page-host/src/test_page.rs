@@ -125,6 +125,7 @@ fn past_rounds() -> PastRounds {
     let publisher = PastRoundsPublisher::default();
     publisher.publish(vec![PastChange {
         title: "An earlier change".into(),
+        references: change_references::ChangeReferences::default(),
         revision: review_repository::repository::ShortRevision::default(),
         rounds: vec![PastRoundEntry {
             id: PAST.into(),
@@ -137,6 +138,7 @@ fn past_rounds() -> PastRounds {
                 published(PAST),
                 working(),
                 ReviewName::default(),
+                change_references::ChangeReferences::default(),
                 None,
                 1_000,
             )

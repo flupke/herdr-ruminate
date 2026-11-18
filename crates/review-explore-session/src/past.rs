@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use change_references::ChangeReferences;
 use review_explore::{EvidenceRef, ExploreRound, RoundHeading, RoundOverview};
 use review_explore_page::{
     PastChange, PastRound, PastRoundEntry, PastRounds, PastRoundsPublisher, PublishedRound,
@@ -65,10 +66,12 @@ impl SavedRoundsReader {
         let mut changes: Vec<(SystemTime, PastChange)> = by_review
             .into_values()
             .filter_map(|mut rounds| {
-                rounds.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.instance.cmp(&b.1.instance)));
+                newest_first(&mut rounds);
                 let (newest, heading) = rounds.first()?;
+                let references = self.change_references(rounds.iter().map(|(_, heading)| heading));
                 let change = PastChange {
-                    title: title(heading),
+                    title: title(heading, &references),
+                    references,
                     revision: heading
                         .base
                         .as_ref()
@@ -92,19 +95,24 @@ impl SavedRoundsReader {
     /// The saved round `id`, as the page shows a past round; `None` when no saved round has
     /// that identity, or when it cannot be read.
     pub(crate) fn open(&self, id: &str) -> Option<PastRound> {
-        let (saved_at, heading) = self.find(id).or_else(|| {
-            // A round saved since the list was last read.
-            self.headings();
-            self.find(id)
-        })?;
+        // Read again: a round may have been saved since the list was last read.
+        let mut rounds = self.headings();
+        let (saved_at, heading) = rounds
+            .iter()
+            .find(|(_, heading)| heading.instance == id)
+            .cloned()?;
         let round = self
             .store
             .load_explore(&heading.review_unit, &heading.instance)
             .ok()
             .flatten()?;
         let threads = self.store.load_threads(&heading.review_unit).ok();
+        // The change's, as the list names it.
+        rounds.retain(|(_, round)| round.review_unit == heading.review_unit);
+        newest_first(&mut rounds);
+        let references = self.change_references(rounds.iter().map(|(_, round)| round));
         let review = ReviewName {
-            title: title(&heading),
+            title: title(&heading, &references),
             ..heading.base.as_ref().map_or_else(
                 || ReviewName::unnamed(self.repository.root()),
                 |base| ReviewName::of(self.repository.root(), base),
@@ -114,23 +122,29 @@ impl SavedRoundsReader {
             &round,
             &self.repository,
             review,
+            references,
             threads,
             millis(saved_at),
         ))
     }
 
-    /// The heading of the round `id`, as the files were last read, with when it was saved.
-    fn find(&self, id: &str) -> Option<(SystemTime, RoundHeading)> {
-        self.headings
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .values()
-            .find_map(|(saved_at, heading)| {
-                heading
-                    .as_ref()
-                    .filter(|heading| heading.instance == id)
-                    .map(|heading| (*saved_at, heading.clone()))
+    /// The pull request and the tickets of the change whose rounds are `rounds`, newest first,
+    /// as its rounds saved them ([`ChangeReferences::of_rounds`]). A round saved before they
+    /// were looked for, or while they are, saved none.
+    fn change_references<'a>(
+        &self,
+        rounds: impl IntoIterator<Item = &'a RoundHeading>,
+    ) -> ChangeReferences {
+        let saved: Vec<ChangeReferences> = rounds
+            .into_iter()
+            .filter_map(|heading| {
+                self.store
+                    .load_change_references(&heading.review_unit, &heading.instance)
+                    .ok()
+                    .flatten()
             })
+            .collect();
+        ChangeReferences::of_rounds(&saved)
     }
 
     /// The heading of every saved round that can be read, with when it was saved, reading only
@@ -194,6 +208,7 @@ fn past_round(
     round: &ExploreRound,
     repository: &Repository,
     review: ReviewName,
+    references: ChangeReferences,
     threads: Option<review_threads::ReviewThreads>,
     saved_at_ms: u64,
 ) -> PastRound {
@@ -221,7 +236,7 @@ fn past_round(
         overview: &overview,
         earlier_citations: &earlier_citations,
     };
-    PastRound::new(published, stage, review, threads, saved_at_ms)
+    PastRound::new(published, stage, review, references, threads, saved_at_ms)
 }
 
 /// Where `round` stopped, as the page shows the session's round once nothing in this process
@@ -252,16 +267,26 @@ fn saved_stage(
     )
 }
 
-/// What the list calls the change `heading` reviewed: the first line of its description as the
-/// round saved it, "Git working tree" for a Git working tree.
-fn title(heading: &RoundHeading) -> String {
-    heading
-        .base
-        .as_ref()
-        .map(|base| base.title().trim())
-        .filter(|title| !title.is_empty())
+/// What the list calls the change `heading` reviewed, whose pull request and tickets are
+/// `references`: the title of its pull request, else of its ticket; else the first line of its
+/// description as the round saved it, "Git working tree" for a Git working tree.
+fn title(heading: &RoundHeading, references: &ChangeReferences) -> String {
+    references
+        .title()
+        .or_else(|| {
+            heading
+                .base
+                .as_ref()
+                .map(|base| base.title().trim())
+                .filter(|title| !title.is_empty())
+        })
         .unwrap_or(NO_DESCRIPTION)
         .to_owned()
+}
+
+/// Sorts the rounds of a change, each with when it was saved, newest first.
+fn newest_first(rounds: &mut [(SystemTime, RoundHeading)]) {
+    rounds.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.instance.cmp(&b.1.instance)));
 }
 
 /// `time` in milliseconds since the epoch.

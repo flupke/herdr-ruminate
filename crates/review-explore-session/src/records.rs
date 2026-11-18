@@ -2,12 +2,17 @@
 //! is final, how delivery outcomes are recorded and how damaged records are repaired.
 //!
 //! The store owns the record format and the per-review lock; every rule here runs
-//! while that lock is held.
+//! while that lock is held, apart from the search for a new round's change references, which
+//! takes it only to save them.
 
+use std::thread::JoinHandle;
+
+use change_references_finder::ReferencesFinder;
 use review_explore::{
     DispatchResult, ExploreHistory, ExploreRound, InterviewUpdate, ReviewCompletion, ViewSave,
 };
 use review_explore_round_settings::{RunAhead, WritingStyle};
+use review_repository::repository::SnapshotIdentity;
 use review_run_ahead::RoundForks;
 use review_store::{Error, Result, ReviewStore};
 use review_threads::{AskedUnder, Author, MessageId};
@@ -40,11 +45,54 @@ pub(crate) struct Submitted {
 #[derive(Clone)]
 pub(crate) struct SavedRounds {
     store: ReviewStore,
+    /// Finds the pull request and the tickets of the change a new round reviews; `None` when
+    /// nothing looks for them.
+    references: Option<ReferencesFinder>,
 }
 
 impl SavedRounds {
     pub(crate) fn new(store: ReviewStore) -> Self {
-        Self { store }
+        Self {
+            store,
+            references: None,
+        }
+    }
+
+    /// The rounds of `store`, which look for the pull request and the tickets of the change
+    /// each new round reviews with `references`.
+    pub(crate) fn with_references(self, references: Option<ReferencesFinder>) -> Self {
+        Self { references, ..self }
+    }
+
+    /// Looks for the pull request and the tickets of the change that the new round `round`
+    /// reviews, on a thread of its own, and saves them beside the round: jj and gh may be slow,
+    /// missing or offline, and the round starts without waiting for them. A round whose change
+    /// names none keeps its description's name. `None` when nothing looks for them, or for a
+    /// round that kept no jj change. It runs jj and gh without the review's lock, which it
+    /// takes only to save.
+    pub(crate) fn find_references(&self, round: &ExploreRound) -> Option<JoinHandle<()>> {
+        let finder = self.references.clone()?;
+        let comparison = &round.exploration.comparison;
+        // A Git working tree has none.
+        let base = comparison
+            .base
+            .clone()
+            .filter(|base| matches!(base, SnapshotIdentity::Jj { .. }))?;
+        let root = comparison.repository_root.clone();
+        let unit = comparison.checkpoint.review_unit.clone();
+        let instance = round.exploration.instance.clone();
+        let store = self.store.clone();
+        std::thread::Builder::new()
+            .name("change-references".into())
+            .spawn(move || {
+                let references = finder.find(&root, &base);
+                // Unsaved, the past round keeps its description's name.
+                // The round may have been removed meanwhile: no record outlives it.
+                if let Ok(records) = store.lock_explore(&unit) {
+                    let _ = records.save_change_references(&instance, &references);
+                }
+            })
+            .ok()
     }
 
     /// The writing style the reviewer's settings give the next round.

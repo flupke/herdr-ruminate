@@ -2,6 +2,8 @@
 //! only on a socket of their own, which refuses every action.
 
 use super::*;
+use change_references::ChangeReferences;
+
 use crate::{PastChange, PastRound, PastRoundEntry, PastRounds, PastRoundsPublisher, ReviewName};
 
 const PAST: &str = "past-1";
@@ -37,13 +39,14 @@ fn past_round_at(stage: RoundStage) -> PastRound {
         title: "Name the queue's flush policy".into(),
         ..ReviewName::default()
     };
-    PastRound::new(round, stage, name, None, 1_000)
+    PastRound::new(round, stage, name, ChangeReferences::default(), None, 1_000)
 }
 
 /// The change of the saved rounds `rounds`, saved in that order, newest first.
 fn change(rounds: &[&str]) -> PastChange {
     PastChange {
         title: "Name the queue's flush policy".into(),
+        references: ChangeReferences::default(),
         revision: review_repository::repository::ShortRevision::default(),
         rounds: rounds
             .iter()

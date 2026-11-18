@@ -684,3 +684,81 @@ fn editor_sequence_conflict_and_wrong_review_keep_original_bytes() {
         view
     );
 }
+
+/// A repository on GitHub whose bookmark `t7-slug` has the pull request 12.
+struct GitHubTools {
+    root: std::path::PathBuf,
+}
+
+impl change_references_finder::Tools for GitHubTools {
+    fn remotes(&self, root: &std::path::Path) -> Option<String> {
+        (root == self.root).then(|| "origin https://github.com/acme/shop.git\n".to_owned())
+    }
+
+    fn pull_request(
+        &self,
+        repository: &str,
+        branch: &str,
+        _fork_owner: Option<&str>,
+    ) -> Option<change_references_finder::FoundPullRequest> {
+        (repository == "acme/shop" && branch == "t7-slug").then(|| {
+            change_references_finder::FoundPullRequest {
+                pull_request: change_references::PullRequest {
+                    number: 12,
+                    title: "Fix the login page".into(),
+                    url: "https://github.com/acme/shop/pull/12".into(),
+                },
+                body: String::new(),
+            }
+        })
+    }
+
+    fn issue_title(&self, _repository: &str, _number: u64) -> Option<String> {
+        None
+    }
+}
+
+#[test]
+fn a_new_round_saves_the_pull_request_and_tickets_of_its_change_beside_it() {
+    let fixture = Investigation::new();
+    let mut comparison = (*fixture.round.exploration.comparison).clone();
+    comparison.base = Some(review_repository::repository::SnapshotIdentity::Jj {
+        change_id: "review".to_owned().into(),
+        snapshot_id: "checkpoint".to_owned().into(),
+        description: "Fix login".into(),
+        display_id: "re".into(),
+        names: vec!["t7-slug".into()],
+    });
+    let round = ExploreRound::new(Exploration::new(Arc::new(comparison.clone())));
+    let finder = change_references_finder::ReferencesFinder::with_tools(
+        None,
+        Arc::new(GitHubTools {
+            root: comparison.repository_root.clone(),
+        }),
+    );
+    let rounds = SavedRounds::new(fixture.store.clone()).with_references(Some(finder));
+    let round = rounds.create(round).unwrap();
+
+    rounds
+        .find_references(&round)
+        .expect("a round with a change looks")
+        .join()
+        .unwrap();
+
+    let saved = fixture
+        .store
+        .load_change_references(&"review".into(), &round.exploration.instance)
+        .unwrap()
+        .expect("saved beside the round");
+    assert_eq!(saved.title(), Some("Fix the login page"));
+    let ids: Vec<_> = saved
+        .tickets
+        .iter()
+        .map(|ticket| ticket.id.as_str())
+        .collect();
+    assert_eq!(ids, ["#7"]);
+    assert!(
+        rounds.find_references(&fixture.round).is_none(),
+        "a round that kept no change looks for nothing"
+    );
+}

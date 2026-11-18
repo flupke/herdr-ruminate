@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+change-references = { path = "../change-references" }
 review-explore = { path = "../review-explore" }
 review-explore-page-settings = { path = "../review-explore-page-settings" }
 review-explore-round-settings = { path = "../review-explore-round-settings" }

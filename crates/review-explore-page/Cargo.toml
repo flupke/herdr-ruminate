@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+change-references = { path = "../change-references" }
 linear-issues = { path = "../linear-issues" }
 axum = { workspace = true, features = ["ws"] }
 markdown-html = { path = "../markdown-html" }

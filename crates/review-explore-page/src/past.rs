@@ -11,6 +11,7 @@
 
 use std::sync::Arc;
 
+use change_references::ChangeReferences;
 use review_repository::repository::ShortRevision;
 use review_threads::ReviewThreads;
 use serde::Serialize;
@@ -23,9 +24,13 @@ use crate::round::{PublishedRound, ReviewName, RoundSnapshot, RoundStage};
 /// One change of the repository with its saved rounds, as the list of past rounds shows them.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, TS)]
 pub struct PastChange {
-    /// The first line of the change's description as its newest round saved it; for a Git
-    /// working tree, which has no description, "Git working tree".
+    /// What names the change: the title of its pull request, else of its ticket, as its newest
+    /// round that found them saved them; else the first line of its description as its newest
+    /// round saved it; for a Git working tree, which has no description, "Git working tree".
     pub title: String,
+    /// The pull request and the tickets of the change, which the list links to, as its newest
+    /// round that found any saved them.
+    pub references: ChangeReferences,
     /// The change's abbreviated revision: a jj change, or the `HEAD` of a Git working tree.
     pub revision: ShortRevision,
     /// Its rounds, newest first.
@@ -158,6 +163,8 @@ pub struct PastRound {
     pub(crate) snapshot: RoundSnapshot,
     /// The change the round reviewed.
     review: ReviewName,
+    /// The pull request and the tickets of the change, as its rounds saved them.
+    pub(crate) references: ChangeReferences,
     /// The threads of the round's review, which hold its conversation.
     pub(crate) threads: ThreadsSnapshot,
     /// When the round was last saved, in milliseconds since the epoch.
@@ -165,13 +172,14 @@ pub struct PastRound {
 }
 
 impl PastRound {
-    /// The round `round` at `stage`, of the change `review`, whose conversation the threads
-    /// `threads` of its review hold, last saved at `saved_at_ms`. The page offers no action on
-    /// it, whatever `round` says.
+    /// The round `round` at `stage`, of the change `review`, whose pull request and tickets are
+    /// `references`, whose conversation the threads `threads` of its review hold, last saved at
+    /// `saved_at_ms`. The page offers no action on it, whatever `round` says.
     pub fn new(
         round: PublishedRound<'_>,
         stage: RoundStage,
         review: ReviewName,
+        references: ChangeReferences,
         threads: Option<ReviewThreads>,
         saved_at_ms: u64,
     ) -> Self {
@@ -183,6 +191,7 @@ impl PastRound {
         Self {
             snapshot: RoundSnapshot::past(round, stage, review.clone()),
             review,
+            references,
             threads: ThreadsSnapshot::of(threads),
             saved_at_ms,
         }
@@ -206,5 +215,10 @@ impl PastRound {
     /// When the round was last saved, in milliseconds since the epoch.
     pub fn saved_at_ms(&self) -> u64 {
         self.saved_at_ms
+    }
+
+    /// The pull request and the tickets of the change the round reviewed.
+    pub fn references(&self) -> &ChangeReferences {
+        &self.references
     }
 }

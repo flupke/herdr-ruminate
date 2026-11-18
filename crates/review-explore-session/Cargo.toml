@@ -6,6 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+change-references = { path = "../change-references" }
+change-references-finder = { path = "../change-references-finder" }
 linear-issues = { path = "../linear-issues" }
 agent-hooks = { path = "../agent-hooks" }
 vision-turns = { path = "../vision-turns" }

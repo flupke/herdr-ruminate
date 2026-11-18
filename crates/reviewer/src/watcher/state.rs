@@ -37,8 +37,10 @@ impl StateWatch {
     }
 }
 
-/// Whether `event` changes a round: a JSON record other than an editor view or run-ahead's
-/// forks, or a new directory.
+/// Whether `event` changes a round or what the page shows of it: a JSON record other than an
+/// editor view or run-ahead's forks, or a new directory. The record of a round's change
+/// references changes no round, but names it in the list of past rounds, which refreshes on
+/// these events.
 fn changes_a_round(event: &notify::Event) -> bool {
     !matches!(event.kind, notify::EventKind::Access(_))
         && event.paths.iter().any(|path| {
@@ -97,6 +99,12 @@ mod tests {
             renamed(root, "round.json.new", "round.json")
                 .iter()
                 .any(changes_a_round)
+        );
+        assert!(
+            renamed(root, "round.references.json.new", "round.references.json")
+                .iter()
+                .any(changes_a_round),
+            "the list of past rounds reads the change references"
         );
         for record in ["round.view.json", "round.forks.json"] {
             assert!(

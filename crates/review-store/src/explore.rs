@@ -1,10 +1,12 @@
 //! The Explore record format and exclusive, locked access to one review's records.
 //!
-//! Each review keeps a history index, one file per round, one editor view per round, and the
-//! record of the run-ahead forks of each round that had some.
+//! Each review keeps a history index, one file per round, one editor view per round, the
+//! record of the run-ahead forks of each round that had some, and the record of the change
+//! references each round found.
 //! The store only reads, writes and removes them; what a change means belongs to the
 //! Explore session.
 use super::{Error, Result, ReviewStore, StateKey};
+use change_references::ChangeReferences;
 use fs2::FileExt;
 use review_explore::{ExploreHistory, ExploreRound, RoundHeading, ViewSave};
 use review_run_ahead::RoundForks;
@@ -28,6 +30,11 @@ pub(super) const MAX_VIEW: u64 = 16 * 1024 * 1024;
 const MAX_FORKS: u64 = 16 * 1024 * 1024;
 /// What the name of a round's run-ahead record adds to the round's identity.
 const FORKS_SUFFIX: &str = ".forks.json";
+/// What the name of the record of the pull request and tickets a round's change names adds to
+/// the round's identity.
+const REFERENCES_SUFFIX: &str = ".references.json";
+// A pull request's title and a few tickets.
+const MAX_REFERENCES: u64 = 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
 struct Stored<T> {
@@ -150,9 +157,29 @@ impl ExploreRecords<'_> {
         Ok((result, forks))
     }
 
-    /// Remove a round file; a missing file is already removed.
+    /// Save the pull request and the tickets of the change that the round `instance` reviewed,
+    /// beside the round: finding them never changes the round's record, which the session owns,
+    /// nor when it was saved. Refused once the round is removed, so that no record outlives it.
+    pub fn save_change_references(
+        &self,
+        instance: &str,
+        references: &ChangeReferences,
+    ) -> Result<()> {
+        if !self.store.explore_path(&self.unit, instance)?.exists() {
+            return Err(Error::Explore("saved round is missing".into()));
+        }
+        self.store.write_explore(
+            &self.store.change_references_path(&self.unit, instance)?,
+            references,
+            MAX_REFERENCES,
+        )
+    }
+
+    /// Remove a round file and the record of its change's pull request and tickets; a missing
+    /// file is already removed.
     pub fn remove_round(&self, instance: &str) -> Result<()> {
-        ReviewStore::remove_explore_file(&self.store.explore_path(&self.unit, instance)?)
+        ReviewStore::remove_explore_file(&self.store.explore_path(&self.unit, instance)?)?;
+        ReviewStore::remove_explore_file(&self.store.change_references_path(&self.unit, instance)?)
     }
 
     /// Remove the record of a round's run-ahead forks; a missing file is already removed.
@@ -484,6 +511,27 @@ impl ReviewStore {
         Ok(self
             .explore_review(unit)?
             .join(format!("{instance}{FORKS_SUFFIX}")))
+    }
+
+    fn change_references_path(&self, unit: &ReviewUnit, instance: &str) -> Result<PathBuf> {
+        Self::explore_id(instance)?;
+        Ok(self
+            .explore_review(unit)?
+            .join(format!("{instance}{REFERENCES_SUFFIX}")))
+    }
+
+    /// The pull request and the tickets of the change that the round `instance` of `unit`
+    /// reviewed; `None` for a round saved before they were looked for, or still being looked
+    /// for.
+    pub fn load_change_references(
+        &self,
+        unit: &ReviewUnit,
+        instance: &str,
+    ) -> Result<Option<ChangeReferences>> {
+        Self::read_explore(
+            &self.change_references_path(unit, instance)?,
+            MAX_REFERENCES,
+        )
     }
 
     /// The run-ahead forks of the round `instance`; none when it never had any.

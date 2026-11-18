@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use change_references::ChangeReferences;
 use review_explore_page::{Interruption, RoundStage};
 use review_repository::diff::DiffRow;
 
@@ -175,4 +176,46 @@ fn a_round_saved_in_an_earlier_format_is_neither_listed_nor_opened() {
 
     assert_eq!(reader.list(), []);
     assert!(reader.open(&instance).is_none());
+}
+
+#[test]
+fn a_change_is_named_by_the_pull_request_that_its_newest_round_to_find_one_saved() {
+    let harness = asking();
+    let first = harness.exploration().instance.clone();
+    // A later round of the same change, which found the change's pull request.
+    let mut later = review_explore::ExploreRound::new(review_explore::Exploration::new(
+        harness.saved().exploration.comparison.clone(),
+    ));
+    later.exploration.instance = "later-1".into();
+    let records = harness.store.lock_explore(&harness.unit).unwrap();
+    records.create_round(&later).unwrap();
+    drop(records);
+    let references = ChangeReferences {
+        pull_request: Some(change_references::PullRequest {
+            number: 12,
+            title: "Fix the login page".into(),
+            url: "https://github.com/acme/shop/pull/12".into(),
+        }),
+        tickets: Vec::new(),
+    };
+    // The newest round found nothing, gh being offline: an older round's find still names it.
+    let records = harness.store.lock_explore(&harness.unit).unwrap();
+    records.save_change_references(&first, &references).unwrap();
+    records
+        .save_change_references("later-1", &ChangeReferences::default())
+        .unwrap();
+    drop(records);
+    let reader = reader(&harness);
+
+    let changes = reader.list();
+
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].title, "Fix the login page");
+    assert_eq!(changes[0].references, references);
+    // Each round of the change opens under the name the list gives it.
+    for round in [first.as_str(), "later-1"] {
+        let opened = reader.open(round).unwrap();
+        assert_eq!(opened.review().title, "Fix the login page", "{round}");
+        assert_eq!(*opened.references(), references, "{round}");
+    }
 }

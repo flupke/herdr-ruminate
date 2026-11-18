@@ -1,0 +1,22 @@
+[package]
+name = "change-references-finder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Finds the pull request and the tickets of a reviewed change with jj and gh."
+
+[dependencies]
+change-references = { path = "../change-references" }
+linear-issues = { path = "../linear-issues" }
+review-repository = { path = "../review-repository" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+reviewer-config = { path = "../reviewer-config" }
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -3,6 +3,7 @@
 //! takes the answers, the starts, the implementation requests and the quiz answers the reviewer
 //! sends from the page.
 
+use change_references::ChangeReferences;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use review_explore::{
@@ -333,14 +334,23 @@ impl Session {
 
     /// Keeps the latest round, at the stage it stands at, as a past round, saved now.
     fn save_past(&mut self) {
-        let past = self.past_at(self.data.review(), self.clock.now_ms());
+        let past = self.past_at(
+            self.data.review(),
+            ChangeReferences::default(),
+            self.clock.now_ms(),
+        );
         self.past.insert(0, past);
         self.list_past();
     }
 
     /// The latest round, at the stage it stands at, as a past round of the change `review`,
-    /// saved at `saved_at_ms`.
-    fn past_at(&self, review: ReviewName, saved_at_ms: u64) -> PastRound {
+    /// whose pull request and tickets are `references`, saved at `saved_at_ms`.
+    fn past_at(
+        &self,
+        review: ReviewName,
+        references: ChangeReferences,
+        saved_at_ms: u64,
+    ) -> PastRound {
         let mut stage = self.stage();
         // A past round asks nothing of its quiz, as the review tool shows a saved round.
         if let RoundStage::Conclusion { quiz, .. } = &mut stage {
@@ -351,6 +361,7 @@ impl Session {
             parts.round(self),
             stage,
             review,
+            references,
             Some(self.threads.stamped()),
             saved_at_ms,
         )
@@ -373,6 +384,7 @@ impl Session {
                 Some(change) => change.rounds.push(entry),
                 None => changes.push(PastChange {
                     title: review.title.clone(),
+                    references: past.references().clone(),
                     revision: review.revision.clone(),
                     rounds: vec![entry],
                 }),
@@ -1529,11 +1541,16 @@ fn past_rounds(session: &str, clock: Clock, data: &'static dyn RoundData) -> Vec
                     prefix: saved.revision.0.to_owned(),
                     rest: saved.revision.1.to_owned(),
                 },
-                // A past round links to no issue.
+                // A past round's masthead links to no Linear issue: its references link its
+                // tickets.
                 issues: Vec::new(),
                 ..data.review()
             };
-            past.past_at(review, clock.now_ms() - saved.minutes_ago * MINUTE_MS)
+            past.past_at(
+                review,
+                saved.references(),
+                clock.now_ms() - saved.minutes_ago * MINUTE_MS,
+            )
         })
         .collect()
 }

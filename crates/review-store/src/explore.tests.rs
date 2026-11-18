@@ -558,3 +558,75 @@ fn the_forks_of_a_round_are_saved_beside_it_even_once_it_is_closed_and_are_no_ro
             .is_empty()
     );
 }
+
+#[test]
+fn a_rounds_change_references_are_saved_beside_it_and_go_with_it() {
+    let fixture = Investigation::new();
+    let unit: ReviewUnit = "review".into();
+    let instance = fixture.round.exploration.instance.clone();
+    let round_path = fixture.store.explore_path(&unit, &instance).unwrap();
+    let round_before = std::fs::read(&round_path).unwrap();
+    assert_eq!(
+        fixture
+            .store
+            .load_change_references(&unit, &instance)
+            .unwrap(),
+        None,
+        "a round saved before them has none"
+    );
+    let references = change_references::ChangeReferences {
+        pull_request: Some(change_references::PullRequest {
+            number: 12,
+            title: "Fix the login page".into(),
+            url: "https://github.com/acme/shop/pull/12".into(),
+        }),
+        tickets: Vec::new(),
+    };
+
+    let records = fixture.store.lock_explore(&unit).unwrap();
+    records
+        .save_change_references(&instance, &references)
+        .unwrap();
+
+    let saved = std::fs::read_to_string(round_path.with_extension("references.json")).unwrap();
+    assert_eq!(
+        saved,
+        r#"{"version":2,"value":{"pull_request":{"number":12,"title":"Fix the login page","url":"https://github.com/acme/shop/pull/12"},"tickets":[]}}"#
+    );
+    assert_eq!(
+        fixture
+            .store
+            .load_change_references(&unit, &instance)
+            .unwrap(),
+        Some(references.clone())
+    );
+    assert_eq!(std::fs::read(&round_path).unwrap(), round_before);
+    let listed: Vec<_> = records
+        .round_files()
+        .unwrap()
+        .into_iter()
+        .map(|(listed, _)| listed)
+        .collect();
+    assert_eq!(
+        listed,
+        std::slice::from_ref(&instance),
+        "the record is no round"
+    );
+
+    records.remove_round(&instance).unwrap();
+
+    assert_eq!(
+        fixture
+            .store
+            .load_change_references(&unit, &instance)
+            .unwrap(),
+        None
+    );
+    assert!(
+        records
+            .save_change_references(&instance, &references)
+            .is_err(),
+        "a removed round gets no record back"
+    );
+    assert!(!round_path.with_extension("references.json").exists());
+}

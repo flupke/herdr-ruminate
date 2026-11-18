@@ -5,13 +5,17 @@
 // or round only where it lies over the page. It groups the rounds by change, the change with the
 // newest round first, each change named by its title and its revision, each round by when it was
 // saved: the day once for the rounds of the same day, the time of each in a column of its own.
+// A change's title is its pull request's, else its ticket's, else its description's first line;
+// the number of its pull request and of each of its tickets follow it, as links to their pages in
+// a new tab.
 // The line above the screens says that the page shows a past round, of which change and when,
 // says when the round the page follows waits for the reviewer meanwhile, and leads back to it.
 
-/** @import { PageView, PastChange, PastRoundEntry, PastView, ReviewName } from "./types.ts" */
+/** @import { ChangeReferences, PageView, PastChange, PastRoundEntry, PastView, ReviewName } from "./types.ts" */
 
 import { BESIDE } from './desk.js';
 import { h, keyOf, Region } from './dom.js';
+import { issueLink } from './issue-link.js';
 import { LeftColumn } from './left-column.js';
 import { revisionCode } from './revision.js';
 import { PAST_ROUNDS, pastAddress, STAGE } from './route.js';
@@ -60,6 +64,8 @@ export function pastBanner(past, review) {
       h('span', { class: 'eyebrow' }, 'Past round · read only'),
       ' ',
       h('span', { class: 'past-title' }, review?.title),
+      ' ',
+      referenceLinks(past.references),
       ' ',
       h('time', { class: 'past-date', datetime: new Date(past.saved_at_ms).toISOString() }, savedAt(past.saved_at_ms)),
     ),
@@ -171,6 +177,22 @@ export class PastList {
 }
 
 /**
+ * The pull request's number, then each ticket's, as links to their pages in a new tab; `null`
+ * when the change has neither.
+ * @param {ChangeReferences} references
+ */
+function referenceLinks(references) {
+  const pullRequest = references.pull_request;
+  if (!pullRequest && references.tickets.length === 0) return null;
+  return h(
+    'span',
+    { class: 'past-references' },
+    pullRequest ? issueLink(pullRequest.url, `PR #${pullRequest.number}`, `Pull request ${pullRequest.number}`) : null,
+    references.tickets.map((ticket) => issueLink(ticket.url, ticket.id, `Ticket ${ticket.id}`)),
+  );
+}
+
+/**
  * The past rounds, by change, or a line that says there is none yet, for the pane's way to the
  * list.
  * @param {PastChange[]} changes
@@ -187,6 +209,7 @@ function pastChanges(changes, shown) {
         { class: 'past-change-head' },
         h('h3', { class: 'past-change-title', title: change.title }, change.title),
         revisionCode(change.revision),
+        referenceLinks(change.references),
       ),
       h(
         'ul',

@@ -63,6 +63,20 @@ words: string,
  */
 ms: number, };
 /**
+ * The pull request and the tickets of the change a round reviewed, as the reviewer found them
+ * when the round started.
+ */
+export type ChangeReferences = { 
+/**
+ * The pull request whose head branch is one of the change's names.
+ */
+pull_request: PullRequest | null, 
+/**
+ * The tickets the change names: herdr-bowtie's ticket of its names first, then those of
+ * its names, its description and its pull request's body, in that order.
+ */
+tickets: Array<Ticket>, };
+/**
  * One message of the conversation.
  */
 export type ChatMessageView = { id: string, author: Author, 
@@ -700,10 +714,16 @@ past_rounds: Array<PastChange> | null, };
  */
 export type PastChange = { 
 /**
- * The first line of the change's description as its newest round saved it; for a Git
- * working tree, which has no description, "Git working tree".
+ * What names the change: the title of its pull request, else of its ticket, as its newest
+ * round that found them saved them; else the first line of its description as its newest
+ * round saved it; for a Git working tree, which has no description, "Git working tree".
  */
 title: string, 
+/**
+ * The pull request and the tickets of the change, which the list links to, as its newest
+ * round that found any saved them.
+ */
+references: ChangeReferences, 
 /**
  * The change's abbreviated revision: a jj change, or the `HEAD` of a Git working tree.
  */
@@ -739,7 +759,12 @@ saved_at_ms: number,
 /**
  * Whether the round the page follows waits for the reviewer meanwhile.
  */
-current_waits: boolean, };
+current_waits: boolean, 
+/**
+ * The pull request and the tickets of the change the past round reviewed, which the line
+ * above the screens links to.
+ */
+references: ChangeReferences, };
 /**
  * The open lines that answering the question the round waits for marks.
  */
@@ -757,6 +782,14 @@ export type PickParams = { round: string | null, question: string, version: numb
  * The question's number on the rail, as the page showed it, which a refusal names.
  */
 number: number | null, };
+/**
+ * A GitHub pull request.
+ */
+export type PullRequest = { number: number, title: string, 
+/**
+ * The address of its page.
+ */
+url: string, };
 export type QuestionView = { 
 /**
  * The identity of the round that asks the question, which the answer carries back: a
@@ -924,7 +957,9 @@ repository: string,
  */
 revision: ShortRevision, 
 /**
- * The first line of the change's description; empty when it has none.
+ * The first line of the change's description; empty when it has none. A past round's is
+ * the name the past-rounds list gives its change: its pull request's title, else its
+ * ticket's.
  */
 title: string, 
 /**
@@ -1181,6 +1216,23 @@ left: number,
  * The marked share of the changed lines.
  */
 share: Share, };
+/**
+ * The issue of a tracker that a change is for: a GitHub issue or a Linear issue.
+ */
+export type Ticket = { 
+/**
+ * Its number, as its tracker writes it: `#157`, `flupke/herdr#3` in another repository,
+ * `ENG-1871`.
+ */
+id: string, 
+/**
+ * The address of its page.
+ */
+url: string, 
+/**
+ * Its title, when the reviewer read it: a GitHub issue's, without a pull request.
+ */
+title: string | null, };
 export type TokenView = { text: string, 
 /**
  * The palette role of the token's color, or `None` for the page's text color.

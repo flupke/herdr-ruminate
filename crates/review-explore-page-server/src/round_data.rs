@@ -3,6 +3,7 @@
 //! as rich as a real round, for the screenshot gallery (`make explore-gallery`). The server's
 //! `--data` option picks one.
 
+use change_references::{ChangeReferences, PullRequest, Ticket};
 use review_explore::{Conclusion, Design, Question, QuizAnswers, QuizItem};
 use review_explore_page::{
     PageImplementation, PageQuiz, QuestionMarks, ReviewName, RoundStage, TurnResponse,
@@ -145,6 +146,38 @@ pub(crate) struct SavedRound {
     pub(crate) minutes_ago: u64,
     /// The steps the round took before it was saved.
     pub(crate) steps: &'static [Step],
+    /// The number of the change's pull request, whose title is `title`; `None` without one.
+    pub(crate) pull_request: Option<u64>,
+    /// The tickets the change names: `#N`, an issue of the repository on GitHub, else a Linear
+    /// issue's identifier.
+    pub(crate) tickets: &'static [&'static str],
+}
+
+impl SavedRound {
+    /// The pull request and the tickets of its change, as the review tool saves them: in the
+    /// repository `flupke/drafts-demo` on GitHub, and the Linear workspace `drafts`.
+    pub(crate) fn references(&self) -> ChangeReferences {
+        let github = "https://github.com/flupke/drafts-demo";
+        ChangeReferences {
+            pull_request: self.pull_request.map(|number| PullRequest {
+                number,
+                title: self.title.to_owned(),
+                url: format!("{github}/pull/{number}"),
+            }),
+            tickets: self
+                .tickets
+                .iter()
+                .map(|id| Ticket {
+                    id: (*id).to_owned(),
+                    url: id.strip_prefix('#').map_or_else(
+                        || format!("https://linear.app/drafts/issue/{id}"),
+                        |number| format!("{github}/issues/{number}"),
+                    ),
+                    title: None,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// A minute, in minutes.
@@ -180,12 +213,16 @@ const SAVED_ROUNDS: &[SavedRound] = &[
         revision: ("kq", "vmtsxy"),
         minutes_ago: DAY,
         steps: CONCLUDED,
+        pull_request: None,
+        tickets: &[],
     },
     SavedRound {
         title: "Name the queue's flush policy",
         revision: ("pw", "nlzrot"),
         minutes_ago: 3 * DAY,
         steps: AT_SECOND_QUESTION,
+        pull_request: None,
+        tickets: &[],
     },
 ];
 

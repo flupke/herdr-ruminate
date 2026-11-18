@@ -84,8 +84,22 @@ still matches. The diff folds it into one row.
 An issue of the Linear tracker that the reviewed change names, by its identifier (a team's
 key, a dash and a number) in the change's description, its bookmarks or the name of its jj
 workspace. The pane's header and the Explore page's masthead link to its page, for the
-teams that the reviewer's `config.toml` lists.
-_Avoid_: ticket, task
+teams that the reviewer's `config.toml` lists. It is one kind of ticket, which a past
+round also finds by a link to linear.app, whatever its team.
+_Avoid_: task
+
+**Ticket**:
+The issue of a tracker that a reviewed change is for: a GitHub issue, which the change's
+description or its pull request's body names after a word such as "Fixes" or by its link,
+or herdr-bowtie's `t<N>-<slug>` bookmark or workspace; or a Linear issue. A past round
+links to it by its number.
+_Avoid_: task, issue (alone, which also names a GitHub issue that is no ticket)
+
+**Change references**:
+The pull request and the tickets of the change an Explore round reviewed, which the
+reviewer looks for with jj and `gh` once the round starts, without making the start wait,
+and saves beside the round. They name the round among the past rounds.
+_Avoid_: links, metadata
 
 ## Explore
 
@@ -256,9 +270,11 @@ the review replaced), past round (a whole round other than the current one)
 **Past round**:
 A saved Explore round of the repository other than the one the Explore page follows:
 of any change, from any workspace, reset, replaced or still running elsewhere. The
-page on this machine lists them, grouped by change and named by the change's title,
-each by when it was saved, in a column at the window's left that its ⋯ menu opens, and
-opens one read only, as it was last saved, at an address of its own: its design, each
+page on this machine lists them, grouped by change and named by the title of the
+change's pull request, else of its ticket, else of its description, with the numbers of
+its pull request and tickets as links, each by when it was saved, in a column at the
+window's left that its ⋯ menu opens, and opens one read only, as it was last saved, at an
+address of its own: its design, each
 question with the answer kept, the quiz, the conclusion and its round conversation, with
 the code it cited as the round saw it.
 Nothing on it acts. The pane's start screen opens the page on that list, without a

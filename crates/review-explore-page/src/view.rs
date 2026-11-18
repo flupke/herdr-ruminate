@@ -10,6 +10,7 @@ mod earlier;
 mod question;
 mod sent;
 
+use change_references::ChangeReferences;
 use markdown_html::HtmlRenderer;
 use review_explore::{AgentRecord, Design, QuestionSection, RailStep, TabTitle};
 use review_explore_tally::MarkTally;
@@ -89,6 +90,9 @@ struct PastView {
     saved_at_ms: u64,
     /// Whether the round the page follows waits for the reviewer meanwhile.
     current_waits: bool,
+    /// The pull request and the tickets of the change the past round reviewed, which the line
+    /// above the screens links to.
+    references: ChangeReferences,
 }
 
 /// The start cover, when no round is running.
@@ -254,6 +258,7 @@ impl PageView {
                 round: past.id().to_owned(),
                 saved_at_ms: past.saved_at_ms,
                 current_waits: followed.waits_for_reviewer(),
+                references: past.references.clone(),
             }),
             ..Self::new(&past.snapshot, &FirstPicks::default(), Some(threads))
         }

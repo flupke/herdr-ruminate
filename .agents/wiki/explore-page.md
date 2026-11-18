@@ -120,6 +120,18 @@ round's saved diff, which holds only the changed lines and their context. A past
 a socket of its own (`/ws?past=<id>`), so the client opens a new socket when the address names
 another round.
 
+A past round's change references (CONTEXT.md) are saved in `<round>.references.json` beside
+the round, never in the round's record (ADR 0021); the thread that finds them writes the file
+under the review's lock, and only while the round's record exists. The repository comes from
+`jj git remote list`, not from `gh`: `gh` reads the repository from a Git checkout, which a
+non-colocated jj workspace lacks, and needs `--repo` there. jj 0.45 lists a remote as
+`<name> <fetch address>`, followed by ` (push: <address>)` when it pushes elsewhere.
+`gh pr list --head` matches the branch's name alone, forks' branches of that name included
+(`isCrossRepository`, `headRepositoryOwner`), and takes no `owner:branch`; `gh issue view`
+also answers for a pull request's number. The file's write reaches the list because the
+watcher's filter (`changes_a_round`) lets it through, unlike the editor's views and the forks'
+records, and a test there pins it.
+
 The list of past rounds stands where the chat does, in the column at the window's left
 (`left-column.js`, `left-column.css`), and the two take turns there: the window has room for one
 column at its left, and the reviewer reads one round after another with the list beside it. The

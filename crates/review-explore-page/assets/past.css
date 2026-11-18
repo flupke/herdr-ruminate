@@ -61,6 +61,12 @@
   line-height: 1.5;
   white-space: nowrap;
 }
+/* The numbers of the change's pull request and tickets, links in the accent, under the title in
+   the list and after it in the line above the screens. */
+.past-references { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
+.past-change-head .past-references { grid-column: 1 / -1; font-size: 12px; }
+.past-banner .past-references { margin-left: 6px; font-size: 13px; }
+.past-change-head .past-references .issue, .past-banner .past-references .issue { font-size: inherit; }
 
 /* A round: the day, once for the rounds of the same day, and the time, in columns of their own
    that line up from one round to the next. The round the page shows is marked in the accent, with

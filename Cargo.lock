@@ -409,6 +409,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "change-references"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "ts-rs",
+]
+
+[[package]]
+name = "change-references-finder"
+version = "0.2.0"
+dependencies = [
+ "change-references",
+ "linear-issues",
+ "review-repository",
+ "reviewer-config",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "check-changed"
 version = "0.2.0"
 dependencies = [
@@ -4248,6 +4269,7 @@ name = "review-explore-page"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "change-references",
  "futures",
  "linear-issues",
  "markdown-html",
@@ -4275,6 +4297,7 @@ version = "0.2.0"
 dependencies = [
  "agent-fork",
  "axum",
+ "change-references",
  "herdr-client",
  "nix",
  "quick-tunnel",
@@ -4303,6 +4326,7 @@ name = "review-explore-page-server"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "change-references",
  "linear-issues",
  "review-explore",
  "review-explore-citations",
@@ -4359,6 +4383,8 @@ version = "0.2.0"
 dependencies = [
  "agent-fork",
  "agent-hooks",
+ "change-references",
+ "change-references-finder",
  "component-core",
  "crossbeam-channel",
  "eyre",
@@ -4581,6 +4607,7 @@ version = "0.2.0"
 dependencies = [
  "agent-fork",
  "base64 0.22.1",
+ "change-references",
  "fs2",
  "getrandom 0.3.4",
  "herdr-client",
@@ -4751,6 +4778,7 @@ dependencies = [
  "agent-fork",
  "agent-forks",
  "agent-hooks",
+ "change-references-finder",
  "claude-fork",
  "claude-hooks",
  "codex-daemon",
