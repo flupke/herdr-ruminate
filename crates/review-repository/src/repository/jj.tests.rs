@@ -175,8 +175,28 @@ fn revision_candidates_and_edits_follow_the_real_jj_graph() {
     assert_eq!(parents[0].change_id.as_str(), parent);
 }
 
+/// The change IDs of the revision history's lines, in the order the history lists them.
+fn listed_changes(repository: &Repository) -> Vec<String> {
+    repository
+        .revision_history()
+        .unwrap()
+        .into_iter()
+        .filter_map(|line| line.change_id.map(|change| change.as_str().to_owned()))
+        .collect()
+}
+
+/// The change IDs of the revision candidates in `direction`, as `]v` or `[v` offers them.
+fn candidate_ids(repository: &Repository, direction: RevisionDirection) -> Vec<String> {
+    repository
+        .revision_candidates(direction)
+        .unwrap()
+        .into_iter()
+        .map(|candidate| candidate.change_id.as_str().to_owned())
+        .collect()
+}
+
 #[test]
-fn revision_navigation_never_moves_onto_another_workspace_s_changes() {
+fn revision_navigation_never_moves_onto_another_workspace_s_working_copy() {
     let fixture = JjFixture::new(JjLayout::NonColocated);
     let repository = Repository::discover(fixture.root()).unwrap();
     fixture.new_change("shared base");
@@ -189,8 +209,7 @@ fn revision_navigation_never_moves_onto_another_workspace_s_changes() {
     let other_task = fixture.change_id();
     fixture.add_workspace_on("other-task", &other_task);
     let other_working_copy = fixture.working_copy("other-task");
-    // A third workspace's working copy is a direct child of the reviewed change, as in the
-    // reported case.
+    // A third workspace's working copy is a direct child of the reviewed change.
     fixture.add_workspace_on("child-task", &reviewed);
     let child_working_copy = fixture.working_copy("child-task");
     // The review workspace's own child, which no working copy reaches.
@@ -199,51 +218,35 @@ fn revision_navigation_never_moves_onto_another_workspace_s_changes() {
     let own_child = fixture.change_id();
     fixture.edit(&reviewed);
 
-    // `]v`: only the review workspace's own child.
-    let children = repository
-        .revision_candidates(RevisionDirection::Children)
-        .unwrap();
+    // `]v`: every child but the third workspace's working-copy commit.
+    let mut children = candidate_ids(&repository, RevisionDirection::Children);
+    children.sort();
+    let mut expected = vec![other_task.clone(), own_child.clone()];
+    expected.sort();
+    assert_eq!(children, expected);
+    // `[v`: the base both stacks share.
     assert_eq!(
-        children
-            .iter()
-            .map(|child| child.change_id.as_str())
-            .collect::<Vec<_>>(),
-        [own_child.as_str()]
+        candidate_ids(&repository, RevisionDirection::Parents),
+        std::slice::from_ref(&shared_base)
     );
-    // `[v`: the base both stacks share stays the review workspace's.
-    let parents = repository
-        .revision_candidates(RevisionDirection::Parents)
-        .unwrap();
-    assert_eq!(
-        parents
-            .iter()
-            .map(|parent| parent.change_id.as_str())
-            .collect::<Vec<_>>(),
-        [shared_base.as_str()]
-    );
-    // `vv`: the history lists the review workspace's changes and none of the others'.
-    let history = repository.revision_history().unwrap();
-    let listed = history
-        .iter()
-        .filter_map(|line| line.change_id.as_ref().map(ChangeId::as_str))
-        .collect::<Vec<_>>();
-    for own in [&shared_base, &reviewed, &own_child] {
+    // `vv`: the history lists every change but the other workspaces' working-copy commits.
+    let listed = listed_changes(&repository);
+    for offered in [&shared_base, &reviewed, &own_child, &other_task] {
         assert!(
-            listed.contains(&own.as_str()),
-            "{own} missing from {listed:?}"
+            listed.contains(offered),
+            "{offered} missing from {listed:?}"
         );
     }
-    for other in [&other_task, &other_working_copy, &child_working_copy] {
+    for working_copy in [&other_working_copy, &child_working_copy] {
         assert!(
-            !listed.contains(&other.as_str()),
-            "{other} listed in {listed:?}"
+            !listed.contains(working_copy),
+            "{working_copy} listed in {listed:?}"
         );
     }
 
     // A jump back or forward edits by change ID: the edit itself refuses the other
-    // workspaces' changes, and names their workspaces.
+    // workspaces' working-copy commits, and names their workspaces.
     for (change, workspace) in [
-        (&other_task, "other-task"),
         (&other_working_copy, "other-task"),
         (&child_working_copy, "child-task"),
     ] {
@@ -260,23 +263,93 @@ fn revision_navigation_never_moves_onto_another_workspace_s_changes() {
     assert_eq!(fixture.working_copy("other-task"), other_working_copy);
     assert_eq!(fixture.working_copy("child-task"), child_working_copy);
 
-    // The review workspace's own changes stay editable.
-    assert_eq!(
-        repository
-            .edit_revision(&ChangeId::from(own_child.clone()))
-            .unwrap(),
-        RevisionEdit::Edited
-    );
-    assert_eq!(fixture.change_id(), own_child);
-    assert_eq!(
-        repository
-            .edit_revision(&ChangeId::from(shared_base.clone()))
-            .unwrap(),
-        RevisionEdit::Edited
-    );
-    assert_eq!(fixture.change_id(), shared_base);
+    // Every other change stays editable, the one below the other task's working copy too.
+    for change in [&own_child, &other_task, &shared_base] {
+        assert_eq!(
+            repository
+                .edit_revision(&ChangeId::from(change.clone()))
+                .unwrap(),
+            RevisionEdit::Edited
+        );
+        assert_eq!(&fixture.change_id(), change);
+    }
     assert_eq!(fixture.working_copy("other-task"), other_working_copy);
     assert_eq!(fixture.working_copy("child-task"), child_working_copy);
+}
+
+#[test]
+fn revision_navigation_climbs_the_own_stack_up_to_another_workspace_s_working_copy() {
+    // The reported shape: the review workspace's @ at the bottom of a stack of described
+    // changes, and another workspace's working copy on top of it.
+    let fixture = JjFixture::new(JjLayout::NonColocated);
+    let repository = Repository::discover(fixture.root()).unwrap();
+    fixture.new_change("reviewed change");
+    let reviewed = fixture.change_id();
+    let mut stack = Vec::new();
+    for description in ["first above", "second above", "bookmarked top"] {
+        fixture.new_change(description);
+        stack.push(fixture.change_id());
+    }
+    let top = stack.last().unwrap().clone();
+    fixture.add_workspace_on("other-task", &top);
+    let other_working_copy = fixture.working_copy("other-task");
+    fixture.edit(&reviewed);
+
+    // `vv`: the picker lists the whole stack above @, and not the other working copy.
+    let listed = listed_changes(&repository);
+    for change in std::iter::once(&reviewed).chain(&stack) {
+        assert!(listed.contains(change), "{change} missing from {listed:?}");
+    }
+    assert!(
+        !listed.contains(&other_working_copy),
+        "{other_working_copy} listed in {listed:?}"
+    );
+
+    // `]v` climbs the stack one change at a time, up to its top.
+    for change in &stack {
+        let children = repository
+            .revision_candidates(RevisionDirection::Children)
+            .unwrap();
+        assert_eq!(
+            children
+                .iter()
+                .map(|child| child.change_id.as_str())
+                .collect::<Vec<_>>(),
+            [change.as_str()]
+        );
+        assert_eq!(
+            repository.edit_revision(&children[0].change_id).unwrap(),
+            RevisionEdit::Edited
+        );
+        assert_eq!(&fixture.change_id(), change);
+    }
+    // Above the top sits only the other workspace's working copy: `]v` offers nothing, and an
+    // edit by change ID is refused.
+    assert!(candidate_ids(&repository, RevisionDirection::Children).is_empty());
+    assert_eq!(
+        repository
+            .edit_revision(&ChangeId::from(other_working_copy.clone()))
+            .unwrap(),
+        RevisionEdit::OtherWorkspace {
+            workspaces: vec!["other-task".to_owned()]
+        }
+    );
+    assert_eq!(fixture.change_id(), top);
+    assert_eq!(fixture.working_copy("other-task"), other_working_copy);
+
+    // `[v` steps back down, and `]v` still goes back up: what the reviewer offers does not
+    // depend on where in the stack @ is.
+    let below_top = &stack[stack.len() - 2];
+    assert_eq!(
+        candidate_ids(&repository, RevisionDirection::Parents),
+        std::slice::from_ref(below_top)
+    );
+    fixture.edit(below_top);
+    assert_eq!(
+        candidate_ids(&repository, RevisionDirection::Children),
+        std::slice::from_ref(&top)
+    );
+    assert_eq!(fixture.working_copy("other-task"), other_working_copy);
 }
 
 #[test]

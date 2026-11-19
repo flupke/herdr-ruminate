@@ -83,7 +83,8 @@ A test of a reviewer path that runs `jj edit`, or another command that moves a w
 sets up real jj workspaces: a `JjFixture`, then `add_workspace_on(name, parent)` for each
 other workspace. It runs the path in the review's workspace, then reads each workspace's
 working copy with `working_copy(name)`, and asserts that the others did not move, and that the
-review's own moved only where the path was asked to go.
+review's own moved only where the path was asked to go. Put another workspace's working copy
+on top of a stack above the review's @ too (ADR 0023).
 
 ## Auditing a crate
 

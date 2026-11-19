@@ -632,9 +632,8 @@ pub enum RevisionEdit {
     Edited,
     /// The change is immutable or unknown, or the backend has no revisions.
     Unavailable,
-    /// The change belongs to other workspaces, named here: it is their working-copy commit,
-    /// or only their working copies reach it. Editing it would move this workspace's working
-    /// copy onto their work.
+    /// The change is the working-copy commit of other workspaces, named here. Editing it would
+    /// put this workspace's working copy on the commit they are writing.
     OtherWorkspace { workspaces: Vec<String> },
 }
 

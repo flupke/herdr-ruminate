@@ -51,13 +51,12 @@ const REVISION_CANDIDATE_TEMPLATE: &str = concat!(
     r#"change_id ++ "\0" ++ change_id.shortest(8) ++ "\0" ++ "#,
     r#"description.first_line() ++ "\0""#,
 );
-/// The changes that belong to the other workspaces: their working-copy commits, and the
-/// changes only their working copies reach. The reviewer neither offers nor edits one: `jj
-/// edit` would move this workspace's working copy onto another workspace's work. The changes
-/// this workspace's working copy also reaches, such as a shared base, stay this workspace's.
+/// The other workspaces' working-copy commits. The reviewer neither offers nor edits one: `jj
+/// edit` would put this workspace's working copy on the commit another workspace is writing.
+/// The changes below one, such as this workspace's own stack above @, stay offered: ADR 0023.
 macro_rules! other_workspaces_revset {
     () => {
-        "((working_copies() ~ @) | (::(working_copies() ~ @) ~ ::@))"
+        "(working_copies() ~ @)"
     };
 }
 /// The mutable changes the reviewer can make this workspace's working-copy commit.
@@ -372,13 +371,14 @@ impl RepositoryBackend for JjBackend {
         if log_lines(repository, &format!("{change} & mutable()"), "change_id")?.is_empty() {
             return Ok(RevisionEdit::Unavailable);
         }
-        let in_other_workspace = format!("{change} & {}", other_workspaces_revset!());
-        if !log_lines(repository, &in_other_workspace, "change_id")?.is_empty() {
-            let mut workspaces = log_lines(
-                repository,
-                &format!("({change}:: & working_copies()) ~ @"),
-                r#"working_copies.map(|workspace| workspace.name()).join("\n")"#,
-            )?;
+        // The other workspaces whose working-copy commit the change is: none for a change this
+        // workspace may edit. This workspace is never among them, since the revset leaves @ out.
+        let mut workspaces = log_lines(
+            repository,
+            &format!("{change} & {}", other_workspaces_revset!()),
+            r#"working_copies.map(|workspace| workspace.name()).join("\n")"#,
+        )?;
+        if !workspaces.is_empty() {
             workspaces.sort();
             workspaces.dedup();
             return Ok(RevisionEdit::OtherWorkspace { workspaces });
