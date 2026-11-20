@@ -431,6 +431,23 @@ fn every_choice_gets_a_fork_told_that_answer_with_its_own_request_answer_and_acc
 }
 
 #[test]
+fn a_fork_of_an_agent_on_the_reviewer_s_model_is_told_it_too() {
+    let mut harness = Harness::start();
+    let _folder = harness.claude_started_by_herdr_bowtie(true);
+
+    harness.ask(RunAhead::Every);
+
+    let started = harness.forks.started();
+    assert!(!started.is_empty());
+    for (session, prompt) in started {
+        assert!(
+            prompt.contains(crate::tests::ON_FABLE),
+            "{session}: {prompt}"
+        );
+    }
+}
+
+#[test]
 fn with_run_ahead_off_no_fork_starts_and_nothing_is_saved_for_forks() {
     let mut harness = Harness::start();
 

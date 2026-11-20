@@ -38,6 +38,7 @@ Elsewhere: the glossary is [CONTEXT.md](../../CONTEXT.md); decisions are in [.ag
 - [Explore recovery](explore-recovery.md): what is never saved, what a crash can lose, and the durable record of each delivery.
 - [Run-ahead](run-ahead.md): what forks cost and need, the guarantees across crates, how Herdr and Claude Code behave, the reviewer's Claude Code plugin, the contract check with real Claude Code and when to run it, and a check with real Claude Code under herdr-app.
 - [Codex's app-server daemon](codex-daemon.md): its socket and what a client hears, resumes and restarts, its hooks, its forks' settings and approvals, the reviewer's Codex plugin, running a Codex TUI in a test.
+- [Explore models](explore-models.md): the round on herdr-bowtie's reviewer's model and Implement by a subagent on the worker's, how Claude Code switches models and what it costs, and the real check of a change to them.
 - [Explore settings](explore-settings.md): where the settings are saved, and when another reviewer sees a change.
 - [Explore statistics](explore-statistics.md): how to run `reviewer-control stats`, and the limits of its numbers.
 

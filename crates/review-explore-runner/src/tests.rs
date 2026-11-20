@@ -615,6 +615,139 @@ fn the_prompt_names_the_round_its_index_and_the_tools_that_end_the_turn_with_the
     }
     assert!(prompt.contains(review_types::MCP_SERVER), "{prompt}");
     assert!(!prompt.contains("fresh-access"), "the access is in turn.md");
+    assert!(!prompt.contains("Explore runs on"), "no model: {prompt}");
+}
+
+#[test]
+fn the_prompt_of_a_round_on_the_reviewer_s_model_ends_with_the_line_that_names_it() {
+    let comparison = comparison();
+    let mut exploration = Exploration::new(Arc::new(comparison.clone()));
+    let request = exploration.request(None, None).unwrap();
+    let turn = prepared(&request, &comparison).on_models(Some(models(true)));
+
+    let prompt = turn.prompt(std::path::Path::new("/run/turn-7"));
+
+    assert!(
+        prompt.ends_with("\nExplore runs on claude-fable-5-2 at max effort.\n"),
+        "{prompt}"
+    );
+}
+
+/// The prompts that name the round's model, which the tests of the plugin's hooks module switch
+/// on (`crates/claude-hooks/plugin/hooks/round-prompts.ts`): a round's turn, its Implement and its
+/// Post review.
+fn round_prompts() -> [String; 3] {
+    let comparison = comparison();
+    let mut request = Exploration::new(Arc::new(comparison.clone()))
+        .request(None, None)
+        .unwrap();
+    request.instance = "round-1".into();
+    let implementation = review_explore::ImplementationRequest {
+        instance: "round-1".into(),
+        conclusion: "conclusion".into(),
+        delivery: "delivery".into(),
+        text: "Add a test.".into(),
+    };
+    let models = models(true);
+    [
+        prepared(&request, &comparison)
+            .on_models(Some(models.clone()))
+            .prompt(std::path::Path::new("/run/turn-7")),
+        implementation_prompt(&implementation, ChangeAuthor::Reviewer, Some(&models)),
+        implementation_prompt(&implementation, ChangeAuthor::Other, Some(&models)),
+    ]
+}
+
+#[test]
+fn the_hooks_module_s_tests_switch_on_the_prompts_the_reviewer_sends() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../claude-hooks/plugin/hooks/round-prompts.ts");
+    let written = format!(
+        "// The prompts that name the round's model, as crates/review-explore-runner writes them:\n\
+         // its test the_hooks_module_s_tests_switch_on_the_prompts_the_reviewer_sends writes this\n\
+         // file again when run with BLESS=1.\n\
+         export const ROUND_PROMPTS: string[] = {}\n",
+        serde_json::to_string_pretty(&round_prompts()).unwrap()
+    );
+    if std::env::var_os("BLESS").is_some() {
+        std::fs::write(&path, &written).unwrap();
+    }
+
+    let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+
+    assert!(
+        on_disk == written,
+        "{} no longer holds the prompts: run this test again with BLESS=1",
+        path.display()
+    );
+}
+
+/// The models of a round on Fable 5.2 at max effort, implemented on Opus at high effort when
+/// `worker`.
+fn models(worker: bool) -> review_explore_model::ExploreModels {
+    use review_explore_model::{Effort, ModelEffort};
+    review_explore_model::ExploreModels {
+        round: ModelEffort {
+            model: "claude-fable-5-2".into(),
+            effort: Effort::Max,
+        },
+        worker: worker.then(|| ModelEffort {
+            model: "opus".into(),
+            effort: Effort::High,
+        }),
+    }
+}
+
+#[test]
+fn implement_has_a_fresh_subagent_on_the_worker_s_model_do_the_tasks_and_reviews_its_work() {
+    let request = review_explore::ImplementationRequest {
+        instance: "round".into(),
+        conclusion: "conclusion".into(),
+        delivery: "delivery".into(),
+        text: "Add a lock to src/lib.rs.".into(),
+    };
+    let today = implementation_prompt(&request, ChangeAuthor::Reviewer, None);
+
+    let delegated = implementation_prompt(&request, ChangeAuthor::Reviewer, Some(&models(true)));
+
+    let (opening, tasks) = today.split_once("Tasks from the reviewer:").unwrap();
+    assert!(
+        delegated.starts_with(opening),
+        "today's prompt stays: {delegated}"
+    );
+    assert!(
+        delegated.ends_with(&format!("Tasks from the reviewer:{tasks}")),
+        "{delegated}"
+    );
+    let added = &delegated[opening.len()..delegated.len() - tasks.len()]
+        .strip_suffix("Tasks from the reviewer:")
+        .unwrap();
+    assert!(
+        added.ends_with("\n\nExplore runs on claude-fable-5-2 at max effort.\n\n"),
+        "the agent goes on on the round's model: {added}"
+    );
+    // The worker's model and effort, as the Agent tool takes them.
+    for named in ["`opus`", "`high`"] {
+        assert!(added.contains(named), "{named}: {added}");
+    }
+    // Without the worker's model, the agent implements the list itself, on the round's model.
+    let no_worker = implementation_prompt(&request, ChangeAuthor::Reviewer, Some(&models(false)));
+    assert_eq!(
+        no_worker,
+        today.replace(
+            "Tasks from the reviewer:",
+            "Explore runs on claude-fable-5-2 at max effort.\n\nTasks from the reviewer:"
+        )
+    );
+    // Someone else's change gets no subagent: posting the review is the whole scope.
+    let posted = implementation_prompt(&request, ChangeAuthor::Other, Some(&models(true)));
+    assert_eq!(
+        posted,
+        implementation_prompt(&request, ChangeAuthor::Other, None).replace(
+            "Review from the reviewer:",
+            "Explore runs on claude-fable-5-2 at max effort.\n\nReview from the reviewer:"
+        )
+    );
 }
 
 /// The strings `value` holds as an enum value or a constant, at any depth.
@@ -849,8 +982,8 @@ fn post_review_asks_to_post_the_list_and_nothing_else() {
         text: "src/lib.rs:3 Why a lock?".into(),
     };
 
-    let own = implementation_prompt(&request, ChangeAuthor::Reviewer);
-    let others = implementation_prompt(&request, ChangeAuthor::Other);
+    let own = implementation_prompt(&request, ChangeAuthor::Reviewer, None);
+    let others = implementation_prompt(&request, ChangeAuthor::Other, None);
 
     assert!(own.ends_with("Tasks from the reviewer:\nsrc/lib.rs:3 Why a lock?"));
     assert!(others.ends_with("Review from the reviewer:\nsrc/lib.rs:3 Why a lock?"));

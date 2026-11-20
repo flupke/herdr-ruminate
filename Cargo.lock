@@ -4273,6 +4273,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "review-explore-model"
+version = "0.2.0"
+dependencies = [
+ "herdr-client",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "review-explore-page"
 version = "0.2.0"
 dependencies = [
@@ -4377,6 +4386,7 @@ dependencies = [
  "markdown-marks",
  "mermaid-js",
  "review-explore",
+ "review-explore-model",
  "review-explore-round-settings",
  "review-repository",
  "review-source",
@@ -4401,6 +4411,7 @@ dependencies = [
  "linear-issues",
  "review-explore",
  "review-explore-citations",
+ "review-explore-model",
  "review-explore-page",
  "review-explore-round-settings",
  "review-explore-runner",

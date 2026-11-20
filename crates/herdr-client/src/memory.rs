@@ -3,7 +3,9 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::protocol::{Agent, AgentPort, PaneId, PaneProcessInfo, PromptWait, SessionSnapshot};
+use crate::protocol::{
+    Agent, AgentPort, PaneId, PaneProcess, PaneProcessInfo, PromptWait, SessionSnapshot,
+};
 use crate::{Error, Result};
 
 /// A prompt submitted to one agent pane.
@@ -25,6 +27,8 @@ struct Host {
     session: SessionSnapshot,
     agents: Vec<Agent>,
     process_groups: HashMap<PaneId, u32>,
+    /// The command line of the foreground process of each pane that has one.
+    commands: HashMap<PaneId, Vec<String>>,
     prompts: Vec<SentPrompt>,
     /// Panes whose agent reads each prompt without starting on it.
     swallowing: HashSet<PaneId>,
@@ -70,6 +74,12 @@ impl InMemoryAgents {
     /// Set the foreground process group Herdr reports for `pane_id`.
     pub fn set_process_group(&self, pane_id: &PaneId, group: u32) {
         self.host().process_groups.insert(pane_id.clone(), group);
+    }
+
+    /// Set the command line of the foreground process Herdr reports for `pane_id`.
+    pub fn set_command(&self, pane_id: &PaneId, argv: &[&str]) {
+        let argv = argv.iter().map(|argument| (*argument).to_owned()).collect();
+        self.host().commands.insert(pane_id.clone(), argv);
     }
 
     /// Make the agent in `pane_id` read each prompt without starting on it, as an agent that
@@ -142,10 +152,20 @@ impl AgentPort for InMemoryAgents {
     }
 
     fn pane_process_info(&self, pane_id: &PaneId) -> Result<PaneProcessInfo> {
+        let host = self.host();
         Ok(PaneProcessInfo {
             pane_id: pane_id.clone(),
-            foreground_process_group_id: self.host().process_groups.get(pane_id).copied(),
-            foreground_processes: Vec::new(),
+            foreground_process_group_id: host.process_groups.get(pane_id).copied(),
+            foreground_processes: host
+                .commands
+                .get(pane_id)
+                .map(|argv| PaneProcess {
+                    pid: 0,
+                    name: argv.first().cloned().unwrap_or_default(),
+                    argv: Some(argv.clone()),
+                })
+                .into_iter()
+                .collect(),
         })
     }
 

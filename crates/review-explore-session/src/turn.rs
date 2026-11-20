@@ -318,9 +318,11 @@ impl ExploreSession {
             .zip(request.answer.as_ref())
             .and_then(|(round, answer)| round.exploration.answered_number(answer))
             .map(Into::into);
-        Ok(TurnInstructions::prepare(
-            request, comparison, access, unreviewed, &round, answered,
-        ))
+        let models = self.round_models();
+        Ok(
+            TurnInstructions::prepare(request, comparison, access, unreviewed, &round, answered)
+                .on_models(models),
+        )
     }
 
     pub(crate) fn prompt_finished(&mut self, event: ui_events::ExploreFinished, attempt: &str) {

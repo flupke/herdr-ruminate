@@ -7,7 +7,9 @@
 //! not run; anywhere else, it does nothing. In a terminal of herdr-core, which keeps no agent
 //! session, the hook also names the agent's session in the terminal's session label, and
 //! removes it when the session ends (ADR 0016). Claude Code reads its hooks when it starts: an
-//! agent started before the plugin was installed runs without them.
+//! agent started before the plugin was installed runs without them. Its hooks module
+//! (`plugin/hooks/register.ts`) runs the agent's main loop on the model and effort an Explore
+//! round's prompt names (`review-explore-model`).
 
 use std::io::{Read, Write};
 use std::time::Duration;

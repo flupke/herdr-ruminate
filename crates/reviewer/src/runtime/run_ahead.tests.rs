@@ -37,7 +37,14 @@ pub(super) enum FakeAgent {
     Configured,
     /// The same, with [`MISCONFIGURED_SETTINGS`], which Claude Code skips as a whole.
     Misconfigured,
+    /// A forkable fake agent started as herdr-bowtie starts a worker: on its role's model and
+    /// effort, with a folder that holds its self-review's agent file, on the reviewer's.
+    HerdrBowtie,
 }
+
+/// herdr-bowtie's self-review agent file of the [`FakeAgent::HerdrBowtie`] agent.
+const SELF_REVIEW_AGENT: &str =
+    "---\nname: bt-self-review\nmodel: claude-fable-5-2\neffort: max\n---\n\nReview.\n";
 
 /// The settings of the [`FakeAgent::Configured`] agent, with a hook a fork must not run.
 const AGENT_SETTINGS: &str = r#"{"env": {"FORCE_HYPERLINK": "1"}, "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "agent-stop"}]}]}}"#;
@@ -59,7 +66,9 @@ impl FakeAgent {
         // `claude` in its directory, the server's, where the test links the fake agent as `claude`.
         let configuration = format!("CLAUDE_CONFIG_DIR={}", root.join(CLAUDE_CONFIG).display());
         match self {
-            Self::Forkable | Self::Configured | Self::Misconfigured => vec![plugin, configuration],
+            Self::Forkable | Self::Configured | Self::Misconfigured | Self::HerdrBowtie => {
+                vec![plugin, configuration]
+            }
             Self::Plain | Self::Unhooked => vec![configuration],
         }
     }
@@ -68,6 +77,22 @@ impl FakeAgent {
     /// `root`.
     pub(super) fn arguments(self, root: &Path) -> Vec<String> {
         let content = match self {
+            Self::HerdrBowtie => {
+                let prompts = root.join("prompts");
+                let agents = prompts.join(".claude/agents");
+                fs::create_dir_all(&agents).unwrap();
+                fs::write(agents.join("bt-self-review.md"), SELF_REVIEW_AGENT).unwrap();
+                return [
+                    "--model",
+                    "claude-opus-5-5",
+                    "--effort",
+                    "high",
+                    "--add-dir",
+                    &prompts.display().to_string(),
+                ]
+                .map(str::to_owned)
+                .to_vec();
+            }
             Self::Configured => AGENT_SETTINGS,
             Self::Misconfigured => MISCONFIGURED_SETTINGS,
             Self::Plain | Self::Forkable | Self::Unhooked => return Vec::new(),
@@ -300,6 +325,46 @@ fn a_fork_of_an_agent_with_settings_of_its_own_runs_them_with_its_guard_in_place
             .all(|argument| !argument.contains("agent-settings.json")),
         "the fork passes its own settings only"
     );
+}
+
+/// The line of each prompt of a round of the [`FakeAgent::HerdrBowtie`] agent.
+const ON_FABLE: &str = "\nExplore runs on claude-fable-5-2 at max effort.\n";
+
+#[test]
+fn a_round_of_an_agent_herdr_bowtie_started_names_the_reviewer_s_model_to_it_and_its_forks() {
+    let mut run = RunAheadFlow::start_with(FakeAgent::HerdrBowtie, test_waits());
+    run.flow.turn(None, 1);
+
+    let sessions = run.wait_for_forks(2);
+
+    let prompts = run.herdr().prompts();
+    assert!(
+        prompts[0].contains(ON_FABLE),
+        "the round's first prompt: {}",
+        prompts[0]
+    );
+    for session in &sessions {
+        let forked = run.fork_file(session, "prompt");
+        assert!(forked.contains(ON_FABLE), "the fork {session}: {forked}");
+    }
+}
+
+#[test]
+fn a_round_of_an_agent_without_the_reviewer_s_settings_names_no_model() {
+    let mut run = RunAheadFlow::start();
+    run.flow.turn(None, 1);
+
+    let sessions = run.wait_for_forks(2);
+
+    let prompts = run.herdr().prompts();
+    assert!(!prompts[0].contains("Explore runs on"), "{}", prompts[0]);
+    for session in &sessions {
+        let forked = run.fork_file(session, "prompt");
+        assert!(
+            !forked.contains("Explore runs on"),
+            "the fork {session}: {forked}"
+        );
+    }
 }
 
 #[test]

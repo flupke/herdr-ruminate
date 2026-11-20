@@ -1,7 +1,7 @@
 {
   "name": "progressive-reviewer",
   "version": "0.1.0",
-  "description": "Tells the progressive reviewer what the agent in its pane of Herdr, or its terminal of herdr-core, does, and under herdr-core which session it runs. Elsewhere, its hooks do nothing.",
+  "description": "Tells the progressive reviewer what the agent in its pane of Herdr, or its terminal of herdr-core, does, and under herdr-core which session it runs; elsewhere, those hooks do nothing. A prompt of the reviewer's Explore round, Implement or Post review that names a model and an effort on a line of its own puts the session's main loop on them until the process ends or a later round names others.",
   "author": {
     "name": "Luper Rouch"
   },

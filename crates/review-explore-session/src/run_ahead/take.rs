@@ -134,6 +134,8 @@ impl ExploreSession {
         let agent = self.agent_to_fork(&pane)?;
         let choices = self.choices_to_prepare(&question)?;
         let point = self.run_ahead.host.point(&agent).map_err(Refusal::failed)?;
+        // A prepared turn runs on the round's model and effort, as the agent's would.
+        let models = review_explore_model::ExploreModels::of_agent(&*self.agents, &agent);
         let round = self.state.round.clone().ok_or("no round")?;
         let comparison = self.state.comparison.clone().ok_or("no change captured")?;
         let (unreviewed, mut files, diverged) = self
@@ -175,6 +177,7 @@ impl ExploreSession {
                         comparison: &comparison,
                         unreviewed: &unreviewed,
                         round_data: &round_data,
+                        models: models.as_ref(),
                     },
                     reserved,
                     fork,
@@ -486,6 +489,8 @@ struct ForkTurnInputs<'a> {
     comparison: &'a Arc<Comparison>,
     unreviewed: &'a Unreviewed,
     round_data: &'a RoundData,
+    /// The models and the efforts of the round, if the reviewer knows them.
+    models: Option<&'a review_explore_model::ExploreModels>,
 }
 
 /// The fork `created` that answers `question` with `choice`, and the files of its turn, whose
@@ -503,6 +508,7 @@ fn fork_turn(
         comparison,
         unreviewed,
         round_data,
+        models,
     } = inputs;
     let mut exploration = round.exploration.clone();
     let mut request = exploration
@@ -526,7 +532,8 @@ fn fork_turn(
         .map(Into::into);
     let turn = TurnInstructions::prepare(
         &request, comparison, &access, unreviewed, round_data, answered,
-    );
+    )
+    .on_models(models.cloned());
     let files = TurnFiles::write(&turn).map_err(|error| {
         format!(
             "the files of the turn for {} not written: {error}",

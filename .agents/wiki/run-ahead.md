@@ -19,7 +19,9 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
   are taken again only once the agent replied to every message of the talk and the round
   conversation stayed quiet for a minute (`TALK_QUIET`, injected through
   `Collaborators::talk_quiet`).
-- Each fork costs about one agent turn; it reads the agent's prompt cache.
+- Each fork costs about one agent turn; it reads the agent's prompt cache. A fork's model is the
+  transcript's last answer's; the round's line in its prompt runs it at the round's effort too,
+  through the plugin's hooks module ([Explore models](explore-models.md)).
 - It needs Claude Code or Codex in the agent's pane. `agent-forks` picks the host by the agent
   Herdr reports, and a fork's calls by the fields its host keeps of it (`HostFields`, flattened
   into the fork's record: a record saved before keeps `transcripts` and `process` at its top

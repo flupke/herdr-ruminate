@@ -28,6 +28,7 @@ members = [
     "crates/review-explore",
     "crates/review-round-conversation",
     "crates/review-explore-runner",
+    "crates/review-explore-model",
     "crates/review-explore-citations",
     "crates/review-explore-tally",
     "crates/review-explore-page",

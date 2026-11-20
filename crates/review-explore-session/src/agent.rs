@@ -1,6 +1,7 @@
 //! The agent that receives this session's prompts.
 
 use herdr_client::protocol::Agent;
+use review_explore_model::ExploreModels;
 use review_thread_service::PinnedAgent;
 
 use crate::ExploreSession;
@@ -23,6 +24,16 @@ impl ExploreSession {
         let agent = PinnedAgent::for_selected_prompt(selected);
         self.state.agent = Some(agent.clone());
         Ok(agent)
+    }
+
+    /// The models and the efforts of the round, as the command line of the agent the session
+    /// prompts names them; none when it names none, or no agent is selected, and the round runs
+    /// on the agent's own model.
+    pub(crate) fn round_models(&self) -> Option<ExploreModels> {
+        // The agent as last known: a moment when the host reports no session leaves its
+        // process, and so the line, as they are.
+        let agent = self.state.agent.as_ref()?.known_agent()?;
+        ExploreModels::of_agent(&*self.agents, &agent)
     }
 
     pub(crate) fn retry_agent(&mut self) -> eyre::Result<Agent> {

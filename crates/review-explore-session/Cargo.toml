@@ -18,6 +18,7 @@ review-explore = { path = "../review-explore" }
 review-explore-citations = { path = "../review-explore-citations" }
 review-explore-tally = { path = "../review-explore-tally" }
 review-explore-page = { path = "../review-explore-page" }
+review-explore-model = { path = "../review-explore-model" }
 review-explore-runner = { path = "../review-explore-runner" }
 review-explore-round-settings = { path = "../review-explore-round-settings" }
 review-run-ahead = { path = "../review-run-ahead" }

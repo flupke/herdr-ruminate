@@ -1,5 +1,6 @@
 {
-  "description": "Each hook hands the event, with the agent's pane, to the reviewers of its host, Herdr or herdr-core; under herdr-core, it also names the agent's session in a label of its terminal.",
+  "description": "Each hook hands the event, with the agent's pane, to the reviewers of its host, Herdr or herdr-core; under herdr-core, it also names the agent's session in a label of its terminal. Its hooks module runs the agent's main loop on the model and effort an Explore round names.",
+  "modules": ["./register.ts"],
   "hooks": {
     "SessionStart": [
       {

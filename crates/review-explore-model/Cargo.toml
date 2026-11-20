@@ -1,0 +1,17 @@
+[package]
+name = "review-explore-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+herdr-client = { path = "../herdr-client" }
+
+[dev-dependencies]
+herdr-client = { path = "../herdr-client", features = ["memory"] }
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -722,6 +722,101 @@ fn the_lines_an_answer_settled_are_marked_reviewed_by_explore() {
     assert_eq!(record.author, review_types::MarkAuthor::Explore { answer });
 }
 
+impl Harness {
+    /// Makes the agent in the pane Claude Code as herdr-bowtie starts it: a folder of its
+    /// `--add-dir` holds its self-review's agent file, on Fable 5.2 at max effort when
+    /// `reviewer_settings`. The folder lives as long as the value returned.
+    fn claude_started_by_herdr_bowtie(&self, reviewer_settings: bool) -> tempfile::TempDir {
+        let folder = tempfile::tempdir().unwrap();
+        if reviewer_settings {
+            let agents = folder.path().join(".claude/agents");
+            std::fs::create_dir_all(&agents).unwrap();
+            std::fs::write(
+                agents.join("bt-self-review.md"),
+                "---\nname: bt-self-review\nmodel: claude-fable-5-2\neffort: max\n---\n\nReview.\n",
+            )
+            .unwrap();
+        }
+        self.agents.upsert_agent(Agent {
+            agent: Some("claude".into()),
+            ..agent()
+        });
+        let added = folder.path().to_str().unwrap();
+        let command = [
+            "claude",
+            "--model",
+            "claude-opus-5-5",
+            "--effort",
+            "high",
+            "--add-dir",
+            added,
+        ];
+        self.agents.set_command(&PaneId(PANE.into()), &command);
+        folder
+    }
+}
+
+/// The line that names the reviewer's model and effort, on Fable 5.2 at max effort.
+pub(crate) const ON_FABLE: &str = "\nExplore runs on claude-fable-5-2 at max effort.\n";
+
+#[test]
+fn a_round_of_an_agent_herdr_bowtie_started_runs_on_its_reviewer_s_model_and_effort() {
+    let mut harness = Harness::start();
+    let _folder = harness.claude_started_by_herdr_bowtie(true);
+    harness.capture();
+    let first = harness.request(None);
+    let access = harness.turn(&first);
+    let kickoff = harness.agents.prompts()[0].text.clone();
+    assert!(kickoff.contains(ON_FABLE), "{kickoff}");
+
+    assert!(applied(harness.submit(&access, question(&first, 1))));
+    harness.answer("Keep it.");
+
+    let next = harness.agents.prompts()[1].text.clone();
+    assert!(next.contains(ON_FABLE), "every turn names it: {next}");
+}
+
+#[test]
+fn implement_on_an_agent_herdr_bowtie_started_has_a_subagent_on_its_worker_s_model_do_it() {
+    let mut harness = Harness::start();
+    let _folder = harness.claude_started_by_herdr_bowtie(true);
+    harness.conclude();
+    let request = harness
+        .saved()
+        .exploration
+        .implementation("Add a regression test.".into())
+        .unwrap();
+    let before = harness.agents.prompts().len();
+
+    harness
+        .session
+        .handle(Input::Command(Command::Implement(request.clone())));
+
+    let finished = harness.next::<ui_events::ExploreImplementationFinished>();
+    assert_eq!(finished.state, review_explore::ImplementationState::Sent);
+    let prompt = harness.agents.prompts()[before].text.clone();
+    // The agent's own model and effort, as herdr-bowtie started it, as the Agent tool takes them.
+    for named in ["`opus`", "`high`"] {
+        assert!(prompt.contains(named), "{named}: {prompt}");
+    }
+    assert!(
+        prompt.ends_with("Tasks from the reviewer:\nAdd a regression test."),
+        "{prompt}"
+    );
+}
+
+#[test]
+fn a_round_of_an_agent_without_the_reviewer_s_settings_starts_as_before() {
+    let mut harness = Harness::start();
+    let _folder = harness.claude_started_by_herdr_bowtie(false);
+    harness.capture();
+    let first = harness.request(None);
+    harness.turn(&first);
+
+    let kickoff = harness.agents.prompts()[0].text.clone();
+    assert!(!kickoff.contains("Explore runs on"), "{kickoff}");
+}
+
 #[test]
 fn the_kickoff_turn_cannot_mark_lines() {
     let mut harness = Harness::start();

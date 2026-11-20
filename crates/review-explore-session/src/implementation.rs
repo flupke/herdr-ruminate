@@ -101,8 +101,12 @@ impl ExploreSession {
                 &round.implementations[&request.delivery],
                 true,
             )));
-        let prompt =
-            review_explore_runner::implementation_prompt(&request, round.exploration.author);
+        let models = self.round_models();
+        let prompt = review_explore_runner::implementation_prompt(
+            &request,
+            round.exploration.author,
+            models.as_ref(),
+        );
         let observer = DurableDispatch {
             began: std::sync::atomic::AtomicBool::default(),
             grants: None,
