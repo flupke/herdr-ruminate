@@ -25,9 +25,12 @@ ui-events = { path = "../ui-events" }
 uuid.workspace = true
 
 [dev-dependencies]
+hc-client = { path = "../hc-client" }
+hc-test-support = { path = "../hc-test-support" }
 herdr-bus.workspace = true
 herdr-client = { path = "../herdr-client", features = ["memory"] }
 review-source = { path = "../review-source" }
+review-test-support = { path = "../review-test-support" }
 review-words-bus = { path = "../review-words-bus", features = ["flush"] }
 tempfile.workspace = true
 test-case.workspace = true

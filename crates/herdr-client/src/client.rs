@@ -41,8 +41,9 @@ pub struct HerdrClient {
     prompt_start_timeout: Duration,
 }
 
-/// Stops event streams from another thread at once: it shuts down the sockets of the streams
-/// tied to it, which ends the reads they wait in, and refuses the subscriptions that follow.
+/// Stops event streams, or withdraws a prompt the host waits to type, from another thread at
+/// once: it shuts down the sockets tied to it, which ends the reads they wait in, and refuses
+/// the subscriptions and the sends that follow.
 #[derive(Clone, Debug, Default)]
 pub struct EventCanceller(Arc<Mutex<Cancellation>>);
 

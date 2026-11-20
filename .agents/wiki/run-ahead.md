@@ -90,7 +90,8 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
 - No prompt reaches the agent while it switches or settles: the session holds
   `PromptSender::hold`, which keeps the thread service's courier, and so the round
   conversation's wakeups and the prompts to every other agent, from sending until the switch
-  or the settling ends.
+  or the settling ends. The switch waits only for the prompt on its way to its own pane
+  (`PromptHold::drained`), not for one that waits on another agent's input line.
 - A fork's guard (`fork-guard`'s rules, in `claude-fork`'s `PreToolUse` hook and in the
   Codex plugin's) refuses every jj command without
   `--ignore-working-copy`, so the jj commands the Explore instructions name

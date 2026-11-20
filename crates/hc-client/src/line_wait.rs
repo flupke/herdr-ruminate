@@ -25,13 +25,21 @@
 //! typed, once. All this holds while herdr-core's hold behind unsent typing is off
 //! (`draft_wait = 0`): with it on, the press of no key, which does not wait for that hold, could
 //! be answered while herdr-core still holds the send.
+//!
+//! The owner of the prompt may withdraw it while it waits ([`EventCanceller`]): a withdrawal
+//! closes the watch the client waits on, and hangs up a send herdr-core waits out its pause for,
+//! as a key pressed then does, so the prompt is not typed. Before it hangs up, it reads the
+//! screen, as for a key: once herdr-core may be typing the prompt, the client hangs up no more,
+//! and the prompt goes. herdr-core may begin to type it between that read and the hang-up.
 
+use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use agent_input_line::{Agent as InputAgent, Line};
+use herdr_client::client::EventCanceller;
 use herdr_client::protocol::{AgentPort, PaneId, PromptWait};
 use herdr_client::{Error, Result};
 use serde_json::json;
@@ -50,6 +58,9 @@ enum Offered {
     /// Someone typed, or opened a dialog, while herdr-core waited to type it: the client hung
     /// up, and herdr-core typed nothing. The prompt waits for that.
     Withdrawn(PromptWait),
+    /// Its owner withdrew it while herdr-core waited to type it: the client hung up, and
+    /// herdr-core typed nothing.
+    Cancelled,
 }
 
 /// How the client reads the input line of an agent: by the agent it is, or not at all for an
@@ -82,6 +93,8 @@ enum AfterPrint {
     Held(PromptWait),
     /// herdr-core may be typing the prompt: the client hangs up no more.
     Typing,
+    /// Its owner withdrew the send.
+    Withdrawn,
     /// The send waits on.
     Waits,
 }
@@ -107,16 +120,20 @@ enum Heard {
     Printed,
     /// The watch ended: only the answer may come.
     WatchEnded,
+    /// The owner of the prompt withdrew it.
+    Withdrawn,
 }
 
 impl HcClient {
     /// Sends `text` to `pane` once its agent's input line reads empty, telling `waits` why it
-    /// waits until then, as the module says.
+    /// waits until then, as the module says; [`Error::Cancelled`] once `withdrawal` is
+    /// cancelled before herdr-core may be typing it.
     pub(super) fn send_on_empty_line(
         &self,
         pane: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<Sent> {
         let mut told: Option<PromptWait> = None;
         let mut tell = |wait: Option<PromptWait>| {
@@ -137,14 +154,21 @@ impl HcClient {
             let held = wait.is_some();
             tell(wait);
             if held {
-                // A stream that ended, as with the agent's program, leaves the next watch to tell
-                // why.
+                let Some(_tie) = watch.tie(withdrawal)? else {
+                    return Err(Error::Cancelled);
+                };
+                // A stream that ended, as with the agent's program or a withdrawal, leaves the
+                // next look to tell why.
                 let _ = watch.printed();
+                if withdrawal.is_cancelled() {
+                    return Err(Error::Cancelled);
+                }
                 continue;
             }
-            match self.offer(pane, text, &agent, &screen, watch)? {
+            match self.offer(pane, text, &agent, &screen, watch, withdrawal)? {
                 Offered::Answered(answer) => return answer,
                 Offered::Withdrawn(wait) => tell(Some(wait)),
+                Offered::Cancelled => return Err(Error::Cancelled),
             }
         }
     }
@@ -162,7 +186,7 @@ impl HcClient {
 
     /// Offers the send of `text` to `pane`, whose terminal painted `screen` as the client read its line
     /// empty, and hangs up once `watch` shows someone typed or opened a dialog while herdr-core
-    /// waits to type it.
+    /// waits to type it, or once `withdrawal` is cancelled then.
     fn offer(
         &self,
         pane: &PaneId,
@@ -170,6 +194,7 @@ impl HcClient {
         agent: &Reader,
         screen: &str,
         mut watch: ScreenWatch,
+        withdrawal: &EventCanceller,
     ) -> Result<Offered> {
         let socket = self.connect(Some(SEND_TIMEOUT))?;
         let hang_up = socket.try_clone().map_err(|source| Error::Io {
@@ -177,6 +202,21 @@ impl HcClient {
             path: self.socket_path.clone(),
             source,
         })?;
+        // A withdrawal shuts `withdrawn` down, which ends the read of its other end: tied before
+        // the send goes.
+        let io = |operation, source| Error::Io {
+            operation,
+            path: self.socket_path.clone(),
+            source,
+        };
+        let (withdrawn, told) = UnixStream::pair()
+            .map_err(|source| io("pair the sockets that tell a withdrawal", source))?;
+        let tie = withdrawal
+            .tie(&withdrawn)
+            .map_err(|source| io("tie a send to its withdrawal", source))?;
+        let Some(_tie) = tie else {
+            return Err(Error::Cancelled);
+        };
         let closer: WatchCloser = watch.closer()?;
         let probe = self.connect(Some(SEND_TIMEOUT))?;
         let probe_closer = probe.try_clone().map_err(|source| Error::Io {
@@ -207,6 +247,12 @@ impl HcClient {
                 );
                 let _ = quiet.send(Heard::Quiet);
             });
+            let withdrawals = heard.clone();
+            scope.spawn(move || {
+                // Nothing is written there: the read ends once the socket is shut down.
+                let _ = (&told).read(&mut [0]);
+                let _ = withdrawals.send(Heard::Withdrawn);
+            });
             scope.spawn(move || {
                 loop {
                     let printed = watch.printed();
@@ -224,6 +270,7 @@ impl HcClient {
             let outcome = self.hear(&offer, &hearing, &hang_up);
             closer.close();
             let _ = probe_closer.shutdown(std::net::Shutdown::Both);
+            let _ = withdrawn.shutdown(std::net::Shutdown::Both);
             outcome
         })
     }
@@ -233,7 +280,8 @@ impl HcClient {
     /// send tells: herdr-core types the send once that pause ends, and answers it only once the
     /// agent went working, or a few seconds after it typed, so a hang-up then would lose the
     /// answer of a prompt typed already, which the client would offer again. A screen that shows
-    /// the prompt in the line, or the agent gone working, ends that time too.
+    /// the prompt in the line, or the agent gone working, ends that time too, and so the time a
+    /// withdrawal hangs up in.
     fn hear(
         &self,
         offer: &Offer<'_>,
@@ -247,19 +295,40 @@ impl HcClient {
                 operation: "terminal.send".to_owned(),
                 detail: "the send stopped before herdr-core answered",
             })?;
-            match heard {
+            let sign = match heard {
                 Heard::Answer(answer) => return Ok(Offered::Answered(answer)),
-                Heard::Quiet => typing = true,
-                Heard::Printed if !typing => {
-                    match self.after_print(offer, hearing, &mut last_read) {
-                        AfterPrint::Answered(answer) => return Ok(Offered::Answered(answer)),
-                        AfterPrint::Held(wait) => return Ok(withdraw(hearing, hang_up, wait)),
-                        AfterPrint::Typing => typing = true,
-                        AfterPrint::Waits => {}
-                    }
-                }
-                Heard::Printed | Heard::WatchEnded => {}
+                Heard::Quiet => AfterPrint::Typing,
+                // herdr-core may be typing the prompt: nothing makes the client hang up now.
+                _ if typing => continue,
+                Heard::Withdrawn => AfterPrint::Withdrawn,
+                Heard::Printed => self.after_print(offer, hearing, &mut last_read),
+                Heard::WatchEnded => continue,
+            };
+            if let Some(offered) = self.act_on(sign, offer, hearing, hang_up, &mut typing) {
+                return Ok(offered);
             }
+        }
+    }
+
+    /// What the client does on `sign` of the send of `offer`: what became of the send, once
+    /// it has an outcome; it sets `typing` once herdr-core may be typing it.
+    fn act_on(
+        &self,
+        sign: AfterPrint,
+        offer: &Offer<'_>,
+        hearing: &mpsc::Receiver<Heard>,
+        hang_up: &UnixStream,
+        typing: &mut bool,
+    ) -> Option<Offered> {
+        match sign {
+            AfterPrint::Answered(answer) => Some(Offered::Answered(answer)),
+            AfterPrint::Held(wait) => Some(withdraw(hearing, hang_up, wait)),
+            AfterPrint::Withdrawn if !self.may_be_typing(offer) => Some(cancel(hearing, hang_up)),
+            AfterPrint::Withdrawn | AfterPrint::Typing => {
+                *typing = true;
+                None
+            }
+            AfterPrint::Waits => None,
         }
     }
 
@@ -276,12 +345,8 @@ impl HcClient {
             thread::sleep(READ_GAP.saturating_sub(read.elapsed()));
         }
         *last_read = Some(Instant::now());
-        for heard in hearing.try_iter() {
-            match heard {
-                Heard::Answer(answer) => return AfterPrint::Answered(answer),
-                Heard::Quiet => return AfterPrint::Typing,
-                Heard::Printed | Heard::WatchEnded => {}
-            }
+        if let Some(sign) = sign_among(hearing.try_iter()) {
+            return sign;
         }
         match self.while_offered(offer) {
             WhileOffered::Typing => AfterPrint::Typing,
@@ -300,6 +365,7 @@ impl HcClient {
             match hearing.recv_timeout(left) {
                 Ok(Heard::Answer(answer)) => return AfterPrint::Answered(answer),
                 Ok(Heard::Quiet) => return AfterPrint::Typing,
+                Ok(Heard::Withdrawn) => return AfterPrint::Withdrawn,
                 Ok(Heard::Printed | Heard::WatchEnded) => {}
                 Err(_) => break,
             }
@@ -309,6 +375,14 @@ impl HcClient {
             WhileOffered::Typing => AfterPrint::Typing,
             WhileOffered::Empty => AfterPrint::Waits,
         }
+    }
+
+    /// Whether herdr-core may be typing the send of `offer` already, as the screen shows the
+    /// prompt in the line or the agent gone working: a withdrawal lets it go then, and hangs it
+    /// up otherwise. An agent that goes on showing an empty line once it got the prompt, as for
+    /// a command that starts no turn, cannot tell.
+    fn may_be_typing(&self, offer: &Offer<'_>) -> bool {
+        matches!(self.while_offered(offer), WhileOffered::Typing)
     }
 
     /// What the screen of the agent `offer` sends to shows now. A screen that cannot be read
@@ -348,11 +422,26 @@ impl HcClient {
     }
 }
 
+/// What the signs among `heard` tell of a send, if any: an answer, or the end of herdr-core's
+/// pause, before a withdrawal.
+fn sign_among(heard: impl IntoIterator<Item = Heard>) -> Option<AfterPrint> {
+    let mut withdrawn = false;
+    for heard in heard {
+        match heard {
+            Heard::Answer(answer) => return Some(AfterPrint::Answered(answer)),
+            Heard::Quiet => return Some(AfterPrint::Typing),
+            Heard::Withdrawn => withdrawn = true,
+            Heard::Printed | Heard::WatchEnded => {}
+        }
+    }
+    withdrawn.then_some(AfterPrint::Withdrawn)
+}
+
 /// The first answer among `heard`, if any.
 fn answer_among(heard: impl IntoIterator<Item = Heard>) -> Option<Result<Sent>> {
     heard.into_iter().find_map(|heard| match heard {
         Heard::Answer(answer) => Some(answer),
-        Heard::Quiet | Heard::Printed | Heard::WatchEnded => None,
+        Heard::Quiet | Heard::Printed | Heard::WatchEnded | Heard::Withdrawn => None,
     })
 }
 
@@ -364,6 +453,16 @@ fn withdraw(hearing: &mpsc::Receiver<Heard>, hang_up: &UnixStream, wait: PromptW
     match answer_among(hearing.iter()) {
         Some(Ok(sent)) => Offered::Answered(Ok(sent)),
         Some(Err(_)) | None => Offered::Withdrawn(wait),
+    }
+}
+
+/// Hangs the send up on `hang_up` for its owner, who withdrew it: an answer that came first stands,
+/// as herdr-core typed the prompt then.
+fn cancel(hearing: &mpsc::Receiver<Heard>, hang_up: &UnixStream) -> Offered {
+    let _ = hang_up.shutdown(std::net::Shutdown::Both);
+    match answer_among(hearing.iter()) {
+        Some(Ok(sent)) => Offered::Answered(Ok(sent)),
+        Some(Err(_)) | None => Offered::Cancelled,
     }
 }
 

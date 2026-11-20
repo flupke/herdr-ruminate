@@ -290,7 +290,8 @@ impl HcClient {
     }
 
     /// Pastes `text` into the terminal of `pane_id` and presses Enter, once the agent's input
-    /// line there reads empty, telling `waits` why it waits until then ([`line_wait`]). Sent
+    /// line there reads empty, telling `waits` why it waits until then, unless `withdrawal` is
+    /// cancelled before herdr-core types it ([`line_wait`]). Sent
     /// without a caller, so herdr-core types the text as it is, without the `<hc from="...">`
     /// tags it puts around what one of its terminals sends another. The refusals `hc schema`
     /// lists typed nothing ([`untyped`]).
@@ -299,8 +300,9 @@ impl HcClient {
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<Sent> {
-        self.send_on_empty_line(pane_id, text, waits)
+        self.send_on_empty_line(pane_id, text, waits, withdrawal)
     }
 
     /// Calls `method` with `params`, and parses its result; herdr-core's refusal is an error.
@@ -568,11 +570,11 @@ impl AgentPort for HcClient {
     }
 
     fn prompt_agent(&self, pane_id: &PaneId, text: &str) -> Result<()> {
-        self.prompt_agent_telling_waits(pane_id, text, &mut |_| {})
+        self.prompt_agent_telling_waits(pane_id, text, &mut |_| {}, &EventCanceller::default())
     }
 
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()> {
-        self.submit_prompt_telling_waits(pane_id, text, &mut |_| {})
+        self.submit_prompt_telling_waits(pane_id, text, &mut |_| {}, &EventCanceller::default())
     }
 
     /// herdr-core tells whether the agent went working within a few seconds; an agent that
@@ -582,8 +584,9 @@ impl AgentPort for HcClient {
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
-        let sent = self.send(pane_id, text, waits)?;
+        let sent = self.send(pane_id, text, waits, withdrawal)?;
         if sent.started != Some(false) {
             return Ok(());
         }
@@ -606,8 +609,9 @@ impl AgentPort for HcClient {
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
-        self.send(pane_id, text, waits).map(|_| ())
+        self.send(pane_id, text, waits, withdrawal).map(|_| ())
     }
 
     /// herdr-core tells each change of a terminal's labels, the session label's included.

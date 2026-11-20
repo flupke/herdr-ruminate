@@ -1,8 +1,10 @@
 //! An in-memory agent host for tests that exercise agent delivery without Herdr.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
+use crate::client::EventCanceller;
 use crate::protocol::{
     Agent, AgentPort, PaneId, PaneProcess, PaneProcessInfo, PromptWait, SessionSnapshot,
 };
@@ -20,7 +22,18 @@ pub struct SentPrompt {
 /// Clones share the same host, so a test can keep one handle while the code under
 /// test owns another.
 #[derive(Clone, Debug, Default)]
-pub struct InMemoryAgents(Arc<Mutex<Host>>);
+pub struct InMemoryAgents(Arc<Shared>);
+
+#[derive(Debug, Default)]
+struct Shared {
+    host: Mutex<Host>,
+    /// Tells a prompt that waits on an agent's input line that the line may have emptied.
+    changed: Condvar,
+}
+
+/// How often a prompt that waits on an agent's input line looks whether its owner withdrew it:
+/// a withdrawal tells nobody.
+const WITHDRAWAL_LOOK: Duration = Duration::from_millis(5);
 
 #[derive(Debug, Default)]
 struct Host {
@@ -41,11 +54,16 @@ struct Host {
     refusing: Option<String>,
     /// Why the host holds each prompt to a pane before it types it, for a while.
     holding: HashMap<PaneId, PromptWait>,
+    /// Panes whose agent's input line shows text someone typed: a prompt there waits until it
+    /// empties.
+    typed_lines: HashSet<PaneId>,
+    /// How many prompts wait on each pane's input line.
+    waiting: HashMap<PaneId, usize>,
 }
 
 impl InMemoryAgents {
     fn host(&self) -> MutexGuard<'_, Host> {
-        self.0.lock().expect("in-memory agent host lock")
+        self.0.host.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Replace the session snapshot that target resolution reads.
@@ -119,6 +137,72 @@ impl InMemoryAgents {
             waits(Some(wait));
             waits(None);
         }
+    }
+
+    /// Leave text in the input line of the agent in `pane_id`, as a person who types there
+    /// does: each prompt to it waits, telling [`PromptWait::TypedText`], until
+    /// [`Self::empty_line`] or its withdrawal.
+    pub fn type_in_line(&self, pane_id: &PaneId) {
+        self.host().typed_lines.insert(pane_id.clone());
+    }
+
+    /// Empty the input line of the agent in `pane_id`: the prompts that wait there go.
+    pub fn empty_line(&self, pane_id: &PaneId) {
+        self.host().typed_lines.remove(pane_id);
+        self.0.changed.notify_all();
+    }
+
+    /// Waits until `count` prompts wait for the input line of the agent in `pane_id` to empty.
+    pub fn wait_until_waiting(&self, pane_id: &PaneId, count: usize) {
+        drop(
+            self.0
+                .changed
+                .wait_while(self.host(), |host| {
+                    host.waiting.get(pane_id).copied().unwrap_or_default() != count
+                })
+                .unwrap_or_else(PoisonError::into_inner),
+        );
+    }
+
+    /// Holds the prompt to `pane_id` while its agent's input line shows text, as herdr-core's
+    /// client does, telling `waits` why and then that it no longer waits; a prompt withdrawn
+    /// before the line empties is never typed.
+    fn wait_for_line(
+        &self,
+        pane_id: &PaneId,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
+    ) -> Result<()> {
+        self.hold(pane_id, waits);
+        if withdrawal.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        if !self.host().typed_lines.contains(pane_id) {
+            return Ok(());
+        }
+        waits(Some(PromptWait::TypedText));
+        let mut host = self.host();
+        *host.waiting.entry(pane_id.clone()).or_default() += 1;
+        self.0.changed.notify_all();
+        while host.typed_lines.contains(pane_id) && !withdrawal.is_cancelled() {
+            host = self
+                .0
+                .changed
+                .wait_timeout(host, WITHDRAWAL_LOOK)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+        let withdrawn = withdrawal.is_cancelled();
+        if let Some(waiting) = host.waiting.get_mut(pane_id) {
+            *waiting -= 1;
+        }
+        drop(host);
+        self.0.changed.notify_all();
+        if withdrawn {
+            return Err(Error::Cancelled);
+        }
+        waits(None);
+        Ok(())
     }
 
     /// Make the host refuse each prompt before it types it, for `reason`, as herdr-core
@@ -207,8 +291,9 @@ impl AgentPort for InMemoryAgents {
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
-        self.hold(pane_id, waits);
+        self.wait_for_line(pane_id, waits, withdrawal)?;
         self.prompt_agent(pane_id, text)
     }
 
@@ -217,8 +302,9 @@ impl AgentPort for InMemoryAgents {
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
-        self.hold(pane_id, waits);
+        self.wait_for_line(pane_id, waits, withdrawal)?;
         self.submit_prompt(pane_id, text)
     }
 

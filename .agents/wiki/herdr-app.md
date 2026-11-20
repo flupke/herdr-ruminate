@@ -248,10 +248,11 @@ both stay.
   (`AgentPort::types_prompts_whole`): herdr-core types the reviewer's text whole, never among
   the user's keys. Under Herdr, which types at once, it still blocks any other prompt
   ([Review threads](threads.md#delivery)). A refused send reached nothing: the pane says so,
-  and Retry sends again. Two waits stay as they were: run-ahead's `/resume` (`claude-fork`,
-  `codex-fork`) still blocks every prompt while its send waits, and the one courier that
-  sends all prompts holds every agent's while a send waits for text in one agent's line, for
-  as long as it stays there.
+  and Retry sends again. One wait stays as it was: run-ahead's `/resume` (`claude-fork`,
+  `codex-fork`) still blocks every prompt while its send waits. A send that waits for text in
+  one agent's line holds no prompt to another agent: the thread service sends on a lane per
+  terminal ([Review threads](threads.md#delivery)). But while run-ahead switches the session of
+  that agent, its hold keeps every prompt back, and the switch waits for that send first.
 - The client offers a send only while the agent's input line reads empty, read from the paint of
   a watch-only attach, styles included; text in the line, no input line, or an agent other than
   Claude Code or Codex holds it with no time limit, read again on each print, and the client tells
@@ -265,7 +266,12 @@ both stay.
   `hc_test_support::PrivateCore` (`crates/hc-client/tests/private_core.rs`, with a bash agent
   that draws Claude Code's line and a `Person` typing through `hc attach`, under
   `draft_wait = 0`), then one check with real Claude Code in a private herdr-app (below), never in
-  the user's.
+  the user's. A change to what the thread service does while a prompt waits there (its order, a
+  withdrawal, the prompts to other agents, run-ahead's drain) adds behaviour tests on the courier
+  through `PromptSender` and `InMemoryAgents` (`type_in_line`, `wait_until_waiting`;
+  `review-thread-service`'s `delivery.rs`), and a check with two bash agents on a private core
+  (`crates/review-thread-service/tests/private_core.rs`): text left in one agent's line, and a
+  wakeup that reaches the other.
 - Nothing names a Codex agent's session under herdr-core: Codex's hook runs in its daemon,
   which cannot tell the terminal, so the Codex resume, which reports a session only when the
   host reports one, reports none there.

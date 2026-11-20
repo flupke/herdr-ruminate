@@ -632,8 +632,8 @@ impl Move {
     }
 
     /// Moves the agent of `pane` through `host`, on a thread of its own, once the prompt the
-    /// courier was sending when `hold` began, if any, is sent: nothing else is typed in the
-    /// pane meanwhile, and the session's thread does not wait. `done` gets the outcome.
+    /// courier was sending to `pane` when `hold` began, if any, is sent: nothing else is typed in
+    /// the pane meanwhile, and the session's thread does not wait. `done` gets the outcome.
     fn start_once_drained(
         self,
         host: &Arc<dyn ForkHost>,
@@ -641,7 +641,7 @@ impl Move {
         pane: &PaneId,
         done: Box<dyn FnOnce(Result<Agent, SwitchFailure>) + Send>,
     ) {
-        let (host, drained, pane) = (Arc::clone(host), hold.drained(), pane.clone());
+        let (host, drained, pane) = (Arc::clone(host), hold.drained(pane), pane.clone());
         std::thread::spawn(move || {
             drained.wait();
             match &self {

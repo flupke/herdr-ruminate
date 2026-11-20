@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use herdr_client::client::read_line;
+use herdr_client::client::{EventCanceller, Tie, read_line};
 use herdr_client::protocol::PaneId;
 use herdr_client::{Error, Result};
 use serde::Deserialize;
@@ -153,6 +153,18 @@ impl ScreenWatch {
             .map(WatchCloser)
             .map_err(|source| Error::Io {
                 operation: "share a herdr-core terminal's watch",
+                path: self.socket_path.clone(),
+                source,
+            })
+    }
+
+    /// Ties the watch to `canceller` until the tie drops, so that cancelling it ends the wait of
+    /// [`Self::printed`]; `None` when it was cancelled already.
+    pub(super) fn tie(&self, canceller: &EventCanceller) -> Result<Option<Tie>> {
+        canceller
+            .tie(self.reader.get_ref())
+            .map_err(|source| Error::Io {
+                operation: "tie a herdr-core terminal's watch to its withdrawal",
                 path: self.socket_path.clone(),
                 source,
             })

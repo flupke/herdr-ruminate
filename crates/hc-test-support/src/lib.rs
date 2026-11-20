@@ -23,6 +23,81 @@ use serde_json::{Value, json};
 
 const SESSION: &str = "t";
 
+/// A shell line that reports `state` as Claude Code does, with OSC 7501.
+pub fn report(state: &str) -> String {
+    format!(r"printf '\033]7501;app=claude-code:state={state}\007';")
+}
+
+/// A shell line that draws Claude Code's empty input line between its two rules, and echoes no
+/// key typed in the terminal: the client sends to the agent only on an empty line.
+pub fn input_line() -> &'static str {
+    r"stty -echo; printf '\n──── worker ─\n❯ \n────────────\n';"
+}
+
+/// A shell script that plays Claude Code's input line: it draws what is typed in it between two
+/// rules, takes Backspace and Ctrl+U as Claude Code does, and writes each line submitted with
+/// Enter to `lines`, and when, in nanoseconds since the epoch, to `submitted`, going working then
+/// idle; it writes each key it reads to `keys`. Ctrl+R opens a dialog in place of the input line,
+/// as Claude Code's rewind does, which writes each key it gets to `dialog` until Esc closes it.
+/// `before` runs first.
+pub fn line_agent(before: &str) -> String {
+    agent_of_line(
+        before,
+        &format!("{} draw; {}", report("working"), report("idle")),
+    )
+}
+
+/// [`line_agent`], but for an agent that reports no turn on what is submitted, as for a command
+/// of its own: herdr-core answers a send to it only a few seconds after it typed it.
+pub fn line_agent_without_turns(before: &str) -> String {
+    agent_of_line(before, "")
+}
+
+/// [`line_agent_without_turns`], but for an agent that shows the line it took in its input line
+/// once submitted, as an agent shows that it took a prompt: a look at its screen tells that
+/// herdr-core typed the prompt, which it answers only seconds later.
+pub fn line_agent_keeping_its_line(before: &str) -> String {
+    agent_of_line(before, r#"typed="$(tail -n 1 lines)""#)
+}
+
+/// The script of [`line_agent`], which runs `on_enter` once a line is submitted.
+fn agent_of_line(before: &str, on_enter: &str) -> String {
+    format!(
+        r#"{before} stty -echo -icanon; typed=''; mode=line
+draw() {{ if [ "$mode" = line ]; then printf '\033[H\033[2J──── worker ─\r\n❯ %s\r\n────────────\r\n' "$typed"; else printf '\033[H\033[2JRewind to:\r\n  1. earlier\r\n  2. now\r\n'; fi; }}
+draw; {idle}
+while IFS= read -rsn1 -d '' key; do
+  printf '%s' "$key" >> keys
+  if [ "$mode" = dialog ]; then
+    if [ "$key" = $'\x1b' ]; then mode=line; draw; else printf '%s' "$key" >> dialog; fi
+    continue
+  fi
+  case "$key" in
+    $'\n') date +%s%N >> submitted; printf '%s\n' "$typed" >> lines; typed=''; {on_enter} ;;
+    $'\x12') mode=dialog ;;
+    $'\x15') typed='' ;;
+    $'\x7f') typed="${{typed%?}}" ;;
+    *) typed+="$key" ;;
+  esac
+  draw
+done"#,
+        idle = report("idle"),
+    )
+}
+
+/// What the agent in `folder` wrote to its file `name`; empty before it wrote any.
+pub fn written(folder: &std::path::Path, name: &str) -> String {
+    std::fs::read_to_string(folder.join(name)).unwrap_or_default()
+}
+
+/// Waits until the agent in `folder` read `key`: it tells no one, but writes each key it reads
+/// to its `keys` file.
+pub fn wait_until_read(folder: &std::path::Path, key: char) {
+    while !written(folder, "keys").contains(key) {
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
 /// A herdr-core started for one test, and stopped with it.
 pub struct PrivateCore {
     /// Short, under `/tmp`: the socket's path must fit in 107 bytes.

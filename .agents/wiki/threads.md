@@ -65,6 +65,15 @@ records it for the tab it is in.
   back to the input box, and the reviewer's, typed after it, would join it. A blocked prompt runs no turn; Claude
   Code 2.1.309 shows the reason and puts the prompt back in the input box, so the user clears
   the box before Retry.
+- The courier sends on a lane of its own for each agent's terminal: the prompts to one agent go
+  one at a time, in order, and one that waits there, as for text left in the agent's input line
+  under herdr-core, holds none to another agent. A prompt whose owner withdraws it
+  (`PromptCancellation`) while it waits is not typed: the withdrawal (an `EventCanceller`)
+  closes the hc client's watch on the line, and hangs up a send herdr-core still holds for its
+  quiet pause. Before it hangs up, the client reads the agent's screen, as for a key someone
+  presses then: a prompt pasted in the line, or the agent gone working, means herdr-core may be
+  typing it, and the prompt goes. herdr-core may still begin to type between that read and the
+  hang-up, and an agent that shows an empty line once it took a prompt tells nothing.
 - A wakeup that did not reach the agent shows in the pane in each thread it covered, above
   Retry agent or the reply being written, until another wakeup goes or a reply comes
   (`ThreadWakeupReported`). It raises no toast, which would cover the diff: the thread holds

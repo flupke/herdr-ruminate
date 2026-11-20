@@ -167,26 +167,35 @@ pub trait AgentPort: Send + Sync {
 
     /// [`Self::prompt_agent`], telling `waits` why the prompt waits before the host types it,
     /// each time that changes, and `None` once it no longer waits: a host that types it at once
-    /// never tells.
+    /// never tells. Once `withdrawal` is cancelled, a prompt the host has not begun to type
+    /// waits no more and is never typed: [`crate::Error::Cancelled`].
     fn prompt_agent_telling_waits(
         &self,
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
         let _ = waits;
+        if withdrawal.is_cancelled() {
+            return Err(crate::Error::Cancelled);
+        }
         self.prompt_agent(pane_id, text)
     }
 
-    /// [`Self::submit_prompt`], telling `waits` why the prompt waits, as
-    /// [`Self::prompt_agent_telling_waits`] does.
+    /// [`Self::submit_prompt`], telling `waits` why the prompt waits, and withdrawn by
+    /// `withdrawal`, as [`Self::prompt_agent_telling_waits`] does.
     fn submit_prompt_telling_waits(
         &self,
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
         let _ = waits;
+        if withdrawal.is_cancelled() {
+            return Err(crate::Error::Cancelled);
+        }
         self.submit_prompt(pane_id, text)
     }
 
@@ -236,8 +245,9 @@ impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
-        (**self).prompt_agent_telling_waits(pane_id, text, waits)
+        (**self).prompt_agent_telling_waits(pane_id, text, waits, withdrawal)
     }
 
     fn submit_prompt_telling_waits(
@@ -245,8 +255,9 @@ impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
         pane_id: &PaneId,
         text: &str,
         waits: &mut dyn FnMut(Option<PromptWait>),
+        withdrawal: &EventCanceller,
     ) -> Result<()> {
-        (**self).submit_prompt_telling_waits(pane_id, text, waits)
+        (**self).submit_prompt_telling_waits(pane_id, text, waits, withdrawal)
     }
 
     fn announces_sessions(&self) -> bool {

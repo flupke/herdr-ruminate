@@ -235,9 +235,14 @@ impl RealAgent {
         let (client, terminal) = (self.client.clone(), self.terminal.clone());
         let (told, waits) = std::sync::mpsc::channel();
         let sender = thread::spawn(move || {
-            client.submit_prompt_telling_waits(&terminal, text, &mut |wait| {
-                let _ = told.send(wait);
-            })
+            client.submit_prompt_telling_waits(
+                &terminal,
+                text,
+                &mut |wait| {
+                    let _ = told.send(wait);
+                },
+                &EventCanceller::default(),
+            )
         });
         (waits, sender)
     }

@@ -37,8 +37,9 @@ pub enum Error {
     #[error("nothing reached the agent: {reason}")]
     NotTyped { reason: String },
 
-    /// An event stream was cancelled before or while it subscribed.
-    #[error("the host's event stream was cancelled")]
+    /// An event stream was cancelled before or while it subscribed, or the owner of a prompt
+    /// withdrew it while the host waited to type it.
+    #[error("cancelled before the host acted on it")]
     Cancelled,
 
     /// Herdr, or herdr-core, rejected a socket request.

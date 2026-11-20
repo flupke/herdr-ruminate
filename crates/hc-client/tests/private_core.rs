@@ -9,7 +9,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use hc_client::HcClient;
-use hc_test_support::PrivateCore;
+use hc_test_support::{
+    PrivateCore, input_line, line_agent, line_agent_keeping_its_line, line_agent_without_turns,
+    report, wait_until_read, written,
+};
 use herdr_client::client::EventCanceller;
 use herdr_client::protocol::{
     AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, PromptWait, TabId,
@@ -17,74 +20,6 @@ use herdr_client::protocol::{
 
 /// How fast the person types.
 const PACE: Duration = Duration::from_millis(300);
-
-/// A shell line that reports `state` as Claude Code does, with OSC 7501.
-fn report(state: &str) -> String {
-    format!(r"printf '\033]7501;app=claude-code:state={state}\007';")
-}
-
-/// A shell line that draws Claude Code's empty input line between its two rules, and echoes no
-/// key typed in the terminal: the client sends to the agent only on an empty line.
-fn input_line() -> &'static str {
-    r"stty -echo; printf '\n──── worker ─\n❯ \n────────────\n';"
-}
-
-/// A shell script that plays Claude Code's input line: it draws what is typed in it between two
-/// rules, takes Backspace and Ctrl+U as Claude Code does, and writes each line submitted with
-/// Enter to `lines`, and when, in nanoseconds since the epoch, to `submitted`, going working then
-/// idle; it writes each key it reads to `keys`. Ctrl+R opens a dialog in place of the input line,
-/// as Claude Code's rewind does, which writes each key it gets to `dialog` until Esc closes it.
-/// `before` runs first.
-fn line_agent(before: &str) -> String {
-    agent_of_line(
-        before,
-        &format!("{} draw; {}", report("working"), report("idle")),
-    )
-}
-
-/// [`line_agent`], but for an agent that reports no turn on what is submitted, as for a command
-/// of its own: herdr-core answers a send to it only a few seconds after it typed it.
-fn line_agent_without_turns(before: &str) -> String {
-    agent_of_line(before, "")
-}
-
-/// The script of [`line_agent`], which runs `on_enter` once a line is submitted.
-fn agent_of_line(before: &str, on_enter: &str) -> String {
-    format!(
-        r#"{before} stty -echo -icanon; typed=''; mode=line
-draw() {{ if [ "$mode" = line ]; then printf '\033[H\033[2J──── worker ─\r\n❯ %s\r\n────────────\r\n' "$typed"; else printf '\033[H\033[2JRewind to:\r\n  1. earlier\r\n  2. now\r\n'; fi; }}
-draw; {idle}
-while IFS= read -rsn1 -d '' key; do
-  printf '%s' "$key" >> keys
-  if [ "$mode" = dialog ]; then
-    if [ "$key" = $'\x1b' ]; then mode=line; draw; else printf '%s' "$key" >> dialog; fi
-    continue
-  fi
-  case "$key" in
-    $'\n') date +%s%N >> submitted; printf '%s\n' "$typed" >> lines; typed=''; {on_enter} ;;
-    $'\x12') mode=dialog ;;
-    $'\x15') typed='' ;;
-    $'\x7f') typed="${{typed%?}}" ;;
-    *) typed+="$key" ;;
-  esac
-  draw
-done"#,
-        idle = report("idle"),
-    )
-}
-
-/// What the agent in `folder` wrote to its file `name`; empty before it wrote any.
-fn written(folder: &std::path::Path, name: &str) -> String {
-    std::fs::read_to_string(folder.join(name)).unwrap_or_default()
-}
-
-/// Waits until the agent in `folder` read `key`: it tells no one, but writes each key it reads
-/// to its `keys` file.
-fn wait_until_read(folder: &std::path::Path, key: char) {
-    while !written(folder, "keys").contains(key) {
-        thread::sleep(Duration::from_millis(10));
-    }
-}
 
 /// The outcome of a send on a thread of its own, with each wait it told.
 type Telling = thread::JoinHandle<(herdr_client::Result<()>, Vec<Option<PromptWait>>)>;
@@ -96,14 +31,29 @@ fn send_telling_waits(
     agent: &PaneId,
     text: &'static str,
 ) -> (Telling, mpsc::Receiver<Option<PromptWait>>) {
+    send_withdrawn_by(client, agent, text, EventCanceller::default())
+}
+
+/// [`send_telling_waits`], for a prompt that `withdrawal` withdraws once cancelled.
+fn send_withdrawn_by(
+    client: &HcClient,
+    agent: &PaneId,
+    text: &'static str,
+    withdrawal: EventCanceller,
+) -> (Telling, mpsc::Receiver<Option<PromptWait>>) {
     let (client, agent) = (client.clone(), agent.clone());
     let (told, waits) = mpsc::channel();
     let sender = thread::spawn(move || {
         let mut all = Vec::new();
-        let sent = client.submit_prompt_telling_waits(&agent, text, &mut |wait| {
-            all.push(wait.clone());
-            let _ = told.send(wait);
-        });
+        let sent = client.submit_prompt_telling_waits(
+            &agent,
+            text,
+            &mut |wait| {
+                all.push(wait.clone());
+                let _ = told.send(wait);
+            },
+            &withdrawal,
+        );
         (sent, all)
     });
     (sender, waits)
@@ -540,6 +490,107 @@ fn a_line_with_text_holds_the_prompt_until_it_empties_however_long() {
         !written(folder.path(), "keys").contains('\u{15}'),
         "a Ctrl+U reached the agent"
     );
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_prompt_withdrawn_while_text_in_the_line_holds_it_stops_waiting_and_is_never_typed() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(folder.path(), &line_agent(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    let mut person = core.person_at(&agent);
+    person.types("my own", Duration::from_millis(50));
+    wait_until_read(folder.path(), 'n');
+    let withdrawal = EventCanceller::default();
+
+    let (sender, waits) = send_withdrawn_by(&client, &agent, PROMPT, withdrawal.clone());
+    assert_eq!(waits.recv().unwrap(), Some(PromptWait::TypedText));
+    let withdrawn = Instant::now();
+    withdrawal.cancel();
+    let (sent, told) = sender.join().unwrap();
+
+    // At once: the agent printed nothing since the line was read.
+    assert!(
+        withdrawn.elapsed() < Duration::from_secs(1),
+        "the send ended {:?} after its withdrawal",
+        withdrawn.elapsed()
+    );
+    assert!(
+        matches!(sent, Err(herdr_client::Error::Cancelled)),
+        "{sent:?}"
+    );
+    assert_eq!(told, [Some(PromptWait::TypedText)]);
+    person.presses_enter();
+    // Past herdr-core's quiet pause after the person's Enter.
+    thread::sleep(Duration::from_secs(5));
+    assert_eq!(written(folder.path(), "lines"), "my own\n");
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_prompt_withdrawn_while_herdr_core_waits_out_its_pause_is_never_typed() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(folder.path(), &line_agent(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    thread::sleep(Duration::from_secs(3));
+    let mut person = core.person_at(&agent);
+    // A key, erased: the line reads empty, and herdr-core waits out its quiet pause before it
+    // types the send it is offered.
+    person.types("x", Duration::ZERO);
+    person.presses_backspace();
+    wait_until_read(folder.path(), '\u{7f}');
+    let withdrawal = EventCanceller::default();
+
+    let (sender, _) = send_withdrawn_by(&client, &agent, PROMPT, withdrawal.clone());
+    // The client offered the send, which herdr-core holds for its pause.
+    thread::sleep(Duration::from_millis(500));
+    withdrawal.cancel();
+    let (sent, told) = sender.join().unwrap();
+
+    assert!(
+        matches!(sent, Err(herdr_client::Error::Cancelled)),
+        "{sent:?}"
+    );
+    assert_eq!(told, []);
+    // Past herdr-core's pause: the send it held would have been typed by now.
+    thread::sleep(Duration::from_secs(5));
+    assert_eq!(written(folder.path(), "lines"), "");
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_prompt_withdrawn_once_herdr_core_typed_it_reports_it_sent() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    // Without a turn to report, herdr-core answers the send only seconds after it typed it; the
+    // prompt stays in the agent's line meanwhile.
+    let agent = core.run(folder.path(), &line_agent_keeping_its_line(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    // herdr-core types in a terminal that just started only once its output settled.
+    thread::sleep(Duration::from_secs(3));
+    let typed = {
+        // The whole prompt: the agent draws it a key at a time.
+        let waiting = core.command(&["wait", &agent.0, "--output", PROMPT, "--json"]);
+        thread::spawn(move || {
+            let mut waiting = waiting;
+            waiting.output().unwrap()
+        })
+    };
+    let withdrawal = EventCanceller::default();
+
+    let (sender, _) = send_withdrawn_by(&client, &agent, PROMPT, withdrawal.clone());
+    typed.join().unwrap();
+    withdrawal.cancel();
+    let (sent, told) = sender.join().unwrap();
+
+    sent.unwrap();
+    assert_eq!(written(folder.path(), "lines"), format!("{PROMPT}\n"));
+    assert_eq!(told, []);
 }
 
 #[test]

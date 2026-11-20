@@ -109,6 +109,7 @@ shell's pinned `hc` (`TEST_HC_BIN_PATH`), or else `hc` on the `PATH`:
 
 ```sh
 scripts/dev-shell cargo nextest run -p hc-client --run-ignored only
+scripts/dev-shell cargo nextest run -p review-thread-service --run-ignored only
 ```
 
 The run-ahead contract check runs real Claude Code turns: see
