@@ -178,6 +178,17 @@ fn wait_for_turn_end(host: &dyn AgentHost, pane: &PaneId, wait: Duration) {
     }
 }
 
+/// Why a fork of the session `session` of the agent `claude` cannot start, whatever run-ahead
+/// tries: a fork is `claude -p --resume`, which Claude Code refuses for a session started in
+/// Code Mode. `None` when it may start.
+fn unresumable(claude: &PaneClaude, session: &str) -> Option<String> {
+    claude.transcripts().code_mode(session).then(|| {
+        "the agent's session runs in Claude Code's Code Mode, which Claude Code resumes only in \
+         its interactive terminal, so run-ahead cannot fork it"
+            .into()
+    })
+}
+
 /// Whether Herdr reports `agent` as Claude Code.
 fn runs_claude(agent: &Agent) -> bool {
     agent.agent.as_deref() == Some("claude")
@@ -229,7 +240,13 @@ impl ForkHost for ClaudeForks {
     }
 
     fn unforkable(&self, agent: &Agent) -> Option<String> {
-        self.forkable(agent).err()
+        let session = match self.forkable(agent) {
+            Ok((_, session)) => session,
+            Err(why) => return Some(why),
+        };
+        // An agent whose process cannot be read now gets its reason from `point`.
+        let claude = pane_claude(&*self.host, &agent.pane_id).ok()?;
+        unresumable(&claude, session)
     }
 
     fn point(&self, agent: &Agent) -> Result<ForkPoint, String> {
@@ -410,3 +427,7 @@ impl ForkHost for ClaudeForks {
         self.log.write(line);
     }
 }
+
+#[cfg(test)]
+#[path = "host.tests.rs"]
+mod tests;

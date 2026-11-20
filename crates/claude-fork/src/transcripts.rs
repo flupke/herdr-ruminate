@@ -88,6 +88,31 @@ impl Transcripts {
         Some(last)
     }
 
+    /// Whether `session` runs in Code Mode, which Claude Code 2.1.329 records in an entry
+    /// `{"type":"repl-mode","replMode":true}` beside the conversation, and resumes only in its
+    /// interactive terminal, never with `-p`. The last such entry counts; a session with none
+    /// runs without it, as every session started without `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE`.
+    pub(crate) fn code_mode(&self, session: &str) -> bool {
+        let Some(file) = self
+            .find(session)
+            .and_then(|path| fs::File::open(path).ok())
+        else {
+            return false;
+        };
+        BufReader::new(file)
+            .lines()
+            .map_while(Result::ok)
+            // A message that quotes the entry escapes its quotes, so it never matches.
+            .filter(|line| line.contains("\"type\":\"repl-mode\""))
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(&line).ok())
+            .filter(|entry| {
+                entry.get("type").and_then(serde_json::Value::as_str) == Some("repl-mode")
+            })
+            .last()
+            .and_then(|entry| entry.get("replMode").and_then(serde_json::Value::as_bool))
+            .unwrap_or(false)
+    }
+
     /// The last conversation entry of `session` once it ends a turn, waiting up to `wait` for
     /// it on the changes of the transcript's directory; the last entry at the deadline when none
     /// does. Claude Code writes the end of a turn after it reports the turn ended to herdr-core.

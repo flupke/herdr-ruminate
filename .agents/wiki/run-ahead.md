@@ -50,6 +50,15 @@ answer to the agent in the pane. Any other answer runs the plain chain. The modu
   and the settings set `disableAllHooks` false, which outranks theirs. For settings that
   disable the hooks, or that a fork cannot read, no fork is taken, and the answer's line says
   why.
+- Claude Code 2.1.329 resumes a session started in Code Mode (the user's setting
+  `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1`) only in its interactive terminal: `claude -p --resume`
+  refuses it, with the variable on or off, before any request ("This session was started in
+  Code Mode (experimental) … can't be resumed here"), so no fork of such an agent can start.
+  Claude Code marks such a session with a transcript entry `{"type":"repl-mode","replMode":true}`,
+  and with `replMode` false once it goes on without Code Mode; the last entry counts, for
+  Claude Code and for `ClaudeForks::unforkable`, which reads it: run-ahead takes no fork, the
+  run-ahead setting in the pane says why, and so does each answer's line, even for an agent
+  without the reviewer's plugin; it counts as no failure.
 - Claude Code 2.1.318 skips a settings file with an error as a whole, the guard with it (seen
   with `"permissions": {"allow": "notalist"}`), and still runs. So the fork's settings carry a
   `SessionStart` hook that writes a mark on its standard error, which `-p`'s `stream-json`
@@ -164,11 +173,19 @@ answer. To check it again after a change to the forks or the switch:
    see [herdr-app](herdr-app.md#a-private-herdr-app)), then `claude --settings <file>`, the
    file holding `pluginConfigs` with this checkout's `bin/reviewer-control` as the plugin's
    `control`, as herdr-bowtie's agents carry a settings file. Accept the folder's trust with
-   `hc keys <t> down enter`.
+   `hc keys <t> down enter`. The sandbox's terminals have a `HOME` of their own, where Claude
+   Code shows its first-run screens: set `HOME` to yours, and `CLAUDE_CONFIG_DIR` to the
+   configuration whose account pays, when it is not `~/.claude` (an account at its weekly limit
+   answers no turn). For an agent in Code Mode, add `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1`: no
+   fork starts, and the pane says why. Quit the agent with `/exit`: Ctrl+C does not quit it
+   in the insert mode of the vim editor mode your `~/.claude.json` may set.
 5. `herdr-app do mod.open '{"name":"herdr-progressive-reviewer"}'`; in the pane, `e`, then `p`
    (Start in the pane). Once `run-ahead.log` in the private state says the fork submitted, `end`,
    `1`, `ctrl+enter`: the pane shows the next turn with `Prepared while you were thinking`.
-   About ten Sonnet turns on the user's subscription.
+   About ten Sonnet turns on the user's subscription. Reset, to start a round again, takes two
+   clicks within 5 s on the pane's Reset corner (`app-sandbox run <name> xdotool mousemove <x>
+   <y> click 1`, at the pixels of `shot`), the second on Confirm reset. A new build reaches the
+   round once the pane is closed (`pane.close`) and opened again: the round goes on.
 
 ## The reviewer's Claude Code plugin
 

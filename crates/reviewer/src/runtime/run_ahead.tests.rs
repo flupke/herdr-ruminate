@@ -894,6 +894,70 @@ fn an_agent_started_without_the_plugin_is_not_forked_and_its_answers_say_to_rest
 }
 
 #[test]
+fn an_agent_in_code_mode_is_not_forked_and_its_answers_say_why() {
+    answers_of_an_agent_in_code_mode_say_why(RunAheadFlow::start());
+}
+
+#[test]
+fn an_agent_in_code_mode_without_the_plugin_is_not_told_to_restart() {
+    // A restart with the plugin would still leave it in Code Mode.
+    answers_of_an_agent_in_code_mode_say_why(RunAheadFlow::start_with(
+        FakeAgent::Unhooked,
+        test_waits(),
+    ));
+}
+
+/// Marks the session of `run`'s agent as Claude Code 2.1.329 marks a session started in Code
+/// Mode, which it resumes only in its interactive terminal; then checks that the question takes
+/// no fork, that the answer says why, and that run-ahead counts no failure.
+fn answers_of_an_agent_in_code_mode_say_why(mut run: RunAheadFlow) {
+    let transcript = run.transcript("session");
+    fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    let mut file = fs::File::options()
+        .create(true)
+        .append(true)
+        .open(&transcript)
+        .unwrap();
+    std::io::Write::write_all(
+        &mut file,
+        concat!(
+            r#"{"type":"repl-mode","replMode":true,"sessionId":"session"}"#,
+            "\n"
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    run.flow.turn(None, 1);
+    let prompts = run.herdr().prompts().len();
+    // The answer says why once run-ahead tried to take the question's forks.
+    run.flow.state.wait_until(
+        "run-ahead's refusal",
+        || run.log().contains("Code Mode").then_some(()),
+        || format!("run-ahead's log:\n{}", run.log()),
+    );
+
+    let request = run.answer_bare("keep");
+
+    let delivered = run
+        .herdr()
+        .wait_for_prompts("the answer", |delivered| delivered.len() > prompts);
+    assert!(
+        delivered[prompts].contains(&format!("Explore request: {}", request.request)),
+        "the answer reached the agent: {delivered:?}"
+    );
+    let saved = run.saved();
+    assert_eq!(saved.forks, Vec::new(), "{}", run.log());
+    let review_run_ahead::TurnPath::Plain {
+        reason: review_run_ahead::PlainReason::NoForks { why: Some(why) },
+    } = &saved.answers.last().unwrap().path
+    else {
+        panic!("{:?}", saved.answers.last().unwrap().path);
+    };
+    assert!(why.contains("Code Mode"), "{why}");
+    assert_eq!(saved.failed_in_a_row, 0, "{}", run.log());
+}
+
+#[test]
 fn a_reset_stops_every_fork_and_deletes_its_transcript() {
     let mut run = RunAheadFlow::start();
     run.flow.turn(None, 1);

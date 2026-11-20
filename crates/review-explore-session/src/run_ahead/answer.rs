@@ -199,13 +199,18 @@ impl ExploreSession {
         request: &'a TurnRequest,
     ) -> Result<&'a Alternative, PlainReason> {
         let answer = request.answer.as_ref().expect("an answer");
-        // First, whatever the answer: run-ahead stays off for that agent until it restarts.
+        // First, whatever the answer: run-ahead stays off for that agent until it restarts,
+        // unless it never forks the agent, whose answers say why, as the refusal to take its
+        // forks does.
         if self
             .agents
             .get_agent(&armed.asked.pane)
             .ok()
             .flatten()
-            .is_some_and(|agent| self.run_ahead.host.unhooked(&agent).is_some())
+            .is_some_and(|agent| {
+                self.run_ahead.host.unhooked(&agent).is_some()
+                    && self.run_ahead.host.unforkable(&agent).is_none()
+            })
         {
             return Err(PlainReason::NoHooks);
         }

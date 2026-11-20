@@ -67,6 +67,7 @@ pub fn install(control: &Path) -> eyre::Result<()> {
         eprintln!("Codex: no `{CODEX}` on PATH, skipped the plugin {PLUGIN}");
         return Ok(());
     }
+    let _turn = lock_marketplace(control)?;
     let marketplace = marketplace_of(control);
     write_marketplace(&marketplace, control)?;
     let source = marketplace.to_string_lossy();
@@ -86,6 +87,7 @@ pub fn install(control: &Path) -> eyre::Result<()> {
 /// of `codex`'s environment, and the marketplace written beside `control`. Without `codex` on
 /// `PATH`, it removes that marketplace alone, and leaves Codex's home as it is.
 pub fn uninstall(control: &Path) -> eyre::Result<()> {
+    let _turn = lock_marketplace(control)?;
     if codex_on_path() {
         let removed = untrust()?;
         eprintln!("Codex: removed the trust of {removed} hook(s) of {PLUGIN}");
@@ -98,6 +100,18 @@ pub fn uninstall(control: &Path) -> eyre::Result<()> {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
         _ => Ok(()),
     }
+}
+
+/// An exclusive lock on the marketplace beside `control`, held until the file is dropped:
+/// installs and uninstalls that run at once, such as tests in processes of their own, take
+/// turns, or one removes the folder another writes or hands to Codex.
+fn lock_marketplace(control: &Path) -> eyre::Result<fs::File> {
+    let path = control.with_file_name("codex-plugin.lock");
+    let file =
+        fs::File::create(&path).wrap_err_with(|| format!("cannot create {}", path.display()))?;
+    file.lock()
+        .wrap_err_with(|| format!("cannot lock {}", path.display()))?;
+    Ok(file)
 }
 
 /// Where the marketplace of the plugin whose hook runs `control` is written.

@@ -8,6 +8,8 @@
 //! as the agent has them. [`ClaudeForks`] is the [`review_run_ahead::ForkHost`] that starts,
 //! follows and stops them, and switches the agent to a fork's session with Claude Code's own
 //! `/resume`, which the hooks of the reviewer's Claude Code plugin confirm (`agent_hooks`).
+//! A session in Code Mode (as its last `repl-mode` entry says) is never forked: Claude Code
+//! resumes it only in its interactive terminal, never with `-p` (`Transcripts::code_mode`).
 
 mod arguments;
 mod fields;

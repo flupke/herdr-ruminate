@@ -37,6 +37,35 @@ fn the_last_entry_is_the_last_conversation_line_and_the_model_the_last_answer_s(
     assert_eq!(transcripts.last_entry("s2"), None);
 }
 
+#[test]
+fn a_session_runs_in_code_mode_as_its_last_repl_mode_entry_says() {
+    let (_root, transcripts, directory) = project();
+    let marked =
+        |mode: bool| format!(r#"{{"type":"repl-mode","replMode":{mode},"sessionId":"s"}}"#);
+    // A message that quotes the entry holds it escaped, in a string.
+    let quoted = serde_json::json!({
+        "type": "user",
+        "uuid": "u1",
+        "message": {"role": "user", "content": marked(true)},
+    })
+    .to_string();
+    let write = |session: &str, lines: &[String]| {
+        fs::write(
+            directory.join(format!("{session}.jsonl")),
+            lines.join("\n") + "\n",
+        )
+        .unwrap();
+    };
+    write("on", &[marked(true), quoted.clone()]);
+    write("off", &[quoted]);
+    write("turned-off", &[marked(true), marked(false)]);
+
+    assert!(transcripts.code_mode("on"));
+    assert!(!transcripts.code_mode("off"));
+    assert!(!transcripts.code_mode("turned-off"));
+    assert!(!transcripts.code_mode("missing"));
+}
+
 /// A turn of Claude Code 2.1.318 up to a tool call, whose result is the last entry.
 const MID_TURN: &str = concat!(
     r#"{"type":"user","uuid":"u1","message":{"role":"user"}}"#,
