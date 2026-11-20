@@ -1,4 +1,4 @@
-use review_threads::Post;
+use review_threads::{Post, WakeupFailure, WakeupWait};
 use serde_json::json;
 
 use super::*;
@@ -80,7 +80,7 @@ fn the_conversation_lists_its_messages_in_order_with_their_question_quote_and_de
     assert_eq!(answered.author, Author::Agent);
     assert_eq!(answered.delivery, None);
     assert!(answered.unread);
-    assert_eq!(waiting.delivery, Some(Delivery::Waiting));
+    assert_eq!(waiting.delivery, Some(Delivery::Waiting { held: None }));
     assert!(asked.posted_at_ms.is_some() && answered.posted_at_ms >= asked.posted_at_ms);
     assert_eq!(conversation.unread, 1);
     assert!(conversation.can_retry);
@@ -110,10 +110,10 @@ fn a_failed_wakeup_marks_the_messages_it_covered_as_not_delivered() {
     talk(&mut book, "round-1", "Covered", None);
     let through = book.sequence();
     talk(&mut book, "round-1", "Posted after the wakeup", None);
-    let failure = WakeupFailure {
+    let failure = WakeupNotice::Failed(WakeupFailure {
         through,
         error: "The agent did not start on the prompt.".into(),
-    };
+    });
 
     let conversation = RoundConversation::new(&book, "round-1", Some(&failure));
     assert_eq!(
@@ -122,11 +122,38 @@ fn a_failed_wakeup_marks_the_messages_it_covered_as_not_delivered() {
             error: "The agent did not start on the prompt.".into()
         })
     );
-    assert_eq!(conversation.messages[1].delivery, Some(Delivery::Waiting));
+    assert_eq!(
+        conversation.messages[1].delivery,
+        Some(Delivery::Waiting { held: None })
+    );
 
     reply(&mut book, "round-1", "Got both");
     let conversation = RoundConversation::new(&book, "round-1", Some(&failure));
     assert_eq!(conversation.messages[0].delivery, Some(Delivery::Answered));
+}
+
+#[test]
+fn a_wakeup_that_waits_says_why_on_the_messages_it_covers() {
+    let mut book = ReviewThreads::new("change".into());
+    talk(&mut book, "round-1", "Covered", None);
+    let wait = WakeupNotice::Waiting(WakeupWait {
+        through: book.sequence(),
+        reason: "the agent's input line shows text someone typed".into(),
+    });
+    talk(&mut book, "round-1", "Posted after the wakeup", None);
+
+    let conversation = RoundConversation::new(&book, "round-1", Some(&wait));
+
+    assert_eq!(
+        conversation.messages[0].delivery,
+        Some(Delivery::Waiting {
+            held: Some("the agent's input line shows text someone typed".into())
+        })
+    );
+    assert_eq!(
+        conversation.messages[1].delivery,
+        Some(Delivery::Waiting { held: None })
+    );
 }
 
 #[test]
@@ -143,7 +170,10 @@ fn the_conversation_serializes_as_plain_data() {
     let value = serde_json::to_value(RoundConversation::new(&book, "round-1", None)).unwrap();
     let message = &value["messages"][0];
     assert_eq!(message["author"], "reviewer");
-    assert_eq!(message["delivery"], json!({"state": "waiting"}));
+    assert_eq!(
+        message["delivery"],
+        json!({"state": "waiting", "held": null})
+    );
     assert_eq!(
         message["asked_under"],
         json!({"stage": "conclusion", "conclusion": "request-9"})

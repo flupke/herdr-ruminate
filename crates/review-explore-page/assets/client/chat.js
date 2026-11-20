@@ -132,7 +132,7 @@ export class Chat {
     const rebuilt = this.messages.show(keyOf(conversation.messages), () =>
       conversation.messages.length > 0 ? conversation.messages.map(message) : h('p', { class: 'chat-empty hint' }, 'Ask, challenge, or add context. The agent replies here; a message answers nothing.'),
     );
-    const waiting = waitingSince(conversation.messages);
+    const waiting = pendingOf(conversation.messages);
     this.pending.show(keyOf(waiting), () => (waiting === null ? null : pendingRow(waiting)));
     this.tick(waiting !== null);
     this.card.show(keyOf(conversation.card), () => (conversation.card ? statusCard(conversation.card) : null));
@@ -337,28 +337,31 @@ function message(message) {
 
 /**
  * The row that says the agent works on the reviewer's messages, with the time since the
- * earliest one it has not replied to.
- * @param {number} since
+ * earliest one it has not replied to; or, while the wakeup that carries them waits to reach
+ * the agent, why it waits.
+ * @param {{ since: number, held: string | null }} waiting
  */
-function pendingRow(since) {
-  return h(
-    'p',
-    { class: 'chat-pending', role: 'status' },
-    h('span', { class: 'chat-pending-glyph', 'aria-hidden': 'true' }, '…'),
-    h('span', {}, 'The agent is answering · ', h('span', { class: 'chat-pending-time', 'data-since': String(since) }, elapsed(since))),
-  );
+function pendingRow({ since, held }) {
+  const words =
+    held === null
+      ? h('span', {}, 'The agent is answering · ', h('span', { class: 'chat-pending-time', 'data-since': String(since) }, elapsed(since)))
+      : h('span', {}, `Waiting to reach the agent: ${held}`);
+  return h('p', { class: 'chat-pending', role: 'status' }, h('span', { class: 'chat-pending-glyph', 'aria-hidden': 'true' }, '…'), words);
 }
 
 /**
- * When the earliest of the reviewer's messages that wait for the agent was posted; `null` when
- * none waits, or a message that waits did not reach the agent.
+ * When the earliest of the reviewer's messages that wait for the agent was posted, and why the
+ * wakeup that carries them waits to reach it, if it does; `null` when none waits, or a message
+ * that waits did not reach the agent.
  * @param {ChatMessageView[]} messages
+ * @returns {{ since: number, held: string | null } | null}
  */
-function waitingSince(messages) {
+function pendingOf(messages) {
   if (messages.some((one) => one.delivery?.state === 'not_delivered')) return null;
   const waiting = messages.filter((one) => one.delivery?.state === 'waiting');
   if (waiting.length === 0) return null;
-  return waiting[0].posted_at_ms ?? Date.now();
+  const held = waiting.map((one) => (one.delivery?.state === 'waiting' ? one.delivery.held : null)).find((reason) => reason) ?? null;
+  return { since: waiting[0].posted_at_ms ?? Date.now(), held };
 }
 
 /** "0:31": the minutes and seconds since `since`.

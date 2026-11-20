@@ -36,8 +36,8 @@ impl PageThreads {
             }
             comments::Event::Wakeup {
                 review_unit,
-                failure,
-            } => self.publisher.wakeup(review_unit.clone(), failure.clone()),
+                notice,
+            } => self.publisher.wakeup(review_unit.clone(), notice.clone()),
             comments::Event::Posted(posted) => {
                 if let Some(reply) = self.lock().remove(&posted.message_id) {
                     reply.send(posted.result.clone().map_err(CommandRefusal::Failed));

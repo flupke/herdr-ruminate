@@ -1,5 +1,5 @@
 use review_explore_page::CommandReply;
-use review_threads::{AskedUnder, Post, ReviewThreads, ThreadCommand, WakeupFailure};
+use review_threads::{AskedUnder, Post, ReviewThreads, ThreadCommand, WakeupFailure, WakeupNotice};
 use ui_events::{ReviewThreadsLoaded, ThreadPostFinished};
 
 use super::*;
@@ -81,10 +81,10 @@ fn the_page_sees_the_threads_and_the_wakeups_the_worker_publishes() {
     }));
     threads.observe(&comments::Event::Wakeup {
         review_unit: "review-1".into(),
-        failure: Some(WakeupFailure {
+        notice: Some(WakeupNotice::Failed(WakeupFailure {
             through: 1,
             error: "No agent is focused".into(),
-        }),
+        })),
     });
 
     let conversation = feed.conversation(&"review-1".into(), "round-1");

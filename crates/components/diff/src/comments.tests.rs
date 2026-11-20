@@ -1100,16 +1100,45 @@ fn unresolved_threads_can_retry_from_either_view_even_after_an_older_answer() {
 }
 
 #[test]
+fn a_wakeup_that_waits_shows_why_in_the_threads_it_covers_until_it_goes() {
+    let mut fixture = CommentFixture::new();
+    fixture.add("Please answer this");
+    let through = fixture.book().threads()[0].messages[0].sequence();
+    let report = |notice| ui_events::ThreadWakeupReported {
+        review_unit: "change".into(),
+        notice,
+    };
+    let waits = "Waiting to reach the agent: the agent's input line shows text";
+
+    fixture
+        .registry
+        .publish(report(Some(review_threads::WakeupNotice::Waiting(
+            review_threads::WakeupWait {
+                through,
+                reason: "the agent's input line shows text someone typed".into(),
+            },
+        ))))
+        .unwrap();
+    let waiting = fixture.text().contains(waits);
+    fixture.registry.publish(report(None)).unwrap();
+    let gone = fixture.text().contains(waits);
+
+    assert_eq!((waiting, gone), (true, false), "{}", fixture.text());
+}
+
+#[test]
 fn a_failed_wakeup_shows_once_in_the_threads_it_covered_until_another_goes_or_a_reply_comes() {
     let mut fixture = CommentFixture::new();
     fixture.add("Please answer this");
     let through = fixture.book().threads()[0].messages[0].sequence();
     let report = |unit: &str, through: u64| ui_events::ThreadWakeupReported {
         review_unit: unit.into(),
-        failure: Some(review_threads::WakeupFailure {
-            through,
-            error: "Focus an agent".into(),
-        }),
+        notice: Some(review_threads::WakeupNotice::Failed(
+            review_threads::WakeupFailure {
+                through,
+                error: "Focus an agent".into(),
+            },
+        )),
     };
     let shown = |fixture: &CommentFixture| {
         fixture
@@ -1153,7 +1182,7 @@ fn a_failed_wakeup_shows_once_in_the_threads_it_covered_until_another_goes_or_a_
         .registry
         .publish(ui_events::ThreadWakeupReported {
             review_unit: "change".into(),
-            failure: None,
+            notice: None,
         })
         .unwrap();
     let sent_again = shown(&fixture);

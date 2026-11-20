@@ -24,7 +24,7 @@ pub use paths::ThreadPaths;
 pub use post::Post;
 pub use round::AskedUnder;
 pub use source::{ThreadSource, ThreadSubject};
-pub use wakeup::WakeupFailure;
+pub use wakeup::{WakeupFailure, WakeupNotice, WakeupWait};
 
 /// The stable identity of one review thread.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]

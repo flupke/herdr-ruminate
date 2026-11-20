@@ -1,11 +1,11 @@
 [package]
-name = "claude-input-line"
+name = "agent-input-line"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-description = "Tells, from the text of a Claude Code terminal's screen, whether its input line is empty."
+description = "Reads an agent's input line, Claude Code's or Codex's, from its terminal's screen as herdr-core paints it, styles included: empty, typed text, or none shown."
 
 [dev-dependencies]
 test-case.workspace = true

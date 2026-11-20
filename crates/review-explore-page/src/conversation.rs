@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use review_round_conversation::RoundConversation;
-use review_threads::{MessageId, ReviewThreads, ThreadCommand, WakeupFailure};
+use review_threads::{MessageId, ReviewThreads, ThreadCommand, WakeupNotice};
 use review_types::ReviewUnit;
 use tokio::sync::watch;
 
@@ -22,7 +22,7 @@ pub(crate) struct ThreadsSnapshot {
     /// Changes with every change the pages show.
     pub(crate) revision: u64,
     by_review: HashMap<ReviewUnit, Arc<ReviewThreads>>,
-    failures: HashMap<ReviewUnit, WakeupFailure>,
+    notices: HashMap<ReviewUnit, WakeupNotice>,
 }
 
 impl ThreadsSnapshot {
@@ -34,7 +34,7 @@ impl ThreadsSnapshot {
                 .into_iter()
                 .map(|threads| (threads.review_unit.clone(), Arc::new(threads)))
                 .collect(),
-            failures: HashMap::new(),
+            notices: HashMap::new(),
         }
     }
 
@@ -52,10 +52,10 @@ impl ThreadsSnapshot {
     /// The conversation of the round `round` of the review `unit`: empty until the owner loaded
     /// the review's threads, or until the round's first message.
     pub(crate) fn conversation(&self, unit: &ReviewUnit, round: &str) -> RoundConversation {
-        let failure = self.failures.get(unit);
+        let notice = self.notices.get(unit);
         match self.threads(unit) {
-            Some(threads) => RoundConversation::new(threads, round, failure),
-            None => RoundConversation::new(&ReviewThreads::new(unit.clone()), round, failure),
+            Some(threads) => RoundConversation::new(threads, round, notice),
+            None => RoundConversation::new(&ReviewThreads::new(unit.clone()), round, notice),
         }
     }
 }
@@ -80,16 +80,17 @@ impl ThreadsPublisher {
     }
 
     /// The latest wakeup for the pending comments of the review `unit` is on its way to the
-    /// agent (`None`), or did not reach it, for `failure`. The same again changes nothing.
-    pub fn wakeup(&self, unit: ReviewUnit, failure: Option<WakeupFailure>) {
+    /// agent (`None`), or `notice` says why it waits to reach it or did not reach it. The same
+    /// again changes nothing.
+    pub fn wakeup(&self, unit: ReviewUnit, notice: Option<WakeupNotice>) {
         self.0.send_if_modified(|snapshot| {
-            if snapshot.failures.get(&unit) == failure.as_ref() {
+            if snapshot.notices.get(&unit) == notice.as_ref() {
                 return false;
             }
             snapshot.revision += 1;
-            match failure {
-                Some(failure) => snapshot.failures.insert(unit, failure),
-                None => snapshot.failures.remove(&unit),
+            match notice {
+                Some(notice) => snapshot.notices.insert(unit, notice),
+                None => snapshot.notices.remove(&unit),
             };
             true
         });

@@ -257,7 +257,7 @@ tags: Array<"changed_after_first_pick" | "as_recommended">, };
 /**
  * What became of a message the reviewer wrote.
  */
-export type Delivery = { "state": "waiting" } | { "state": "not_delivered", error: string, } | { "state": "answered" };
+export type Delivery = { "state": "waiting", held: string | null, } | { "state": "not_delivered", error: string, } | { "state": "answered" };
 /**
  * One part of the design, under its heading: its thesis, then the rest of its text.
  */

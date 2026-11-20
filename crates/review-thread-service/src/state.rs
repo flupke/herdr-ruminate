@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use herdr_client::protocol::{Agent, AgentPort, AgentTarget, HerdrEvent, PaneId};
+use herdr_client::protocol::{Agent, AgentPort, AgentTarget, HerdrEvent, PaneId, PromptWait};
 use review_mcp::{Operation, Response};
 use review_store::ReviewStore;
 use review_threads::{
     Author, Message, Post, Recipient, Resolution, ReviewThreads, SavedDrafts, ThreadCommand,
-    ThreadId, WakeupFailure,
+    ThreadId, WakeupFailure, WakeupNotice, WakeupWait,
 };
 use review_types::ReviewUnit;
 use review_words_bus::{Place, UserWords, WordsBus};
@@ -18,7 +18,8 @@ use vision_turns::TurnLog;
 
 use crate::delivery::{Courier, PromptError, PromptQueue};
 use crate::{
-    BusInput, Command, Event, Input, access::Access, notification::Notification, wakeup::Wakeup,
+    BusInput, Command, Event, Input, NotificationNews, access::Access, notification::Notification,
+    wakeup::Wakeup,
 };
 
 /// How often the worker checks the host again while a prompt or wakeup waits. A prompt bound to
@@ -128,11 +129,11 @@ impl State {
                 );
                 request.respond(result);
             }
-            Input::Notified {
+            Input::Notification {
                 token,
                 through,
-                result,
-            } => self.notified(&token, through, result),
+                news,
+            } => self.notification(&token, through, news),
             Input::LogTurns(turns) => self.turns = Some(turns),
             Input::Withdrawn => {}
             Input::Bus(input) => self.bus_input(input),
@@ -171,10 +172,21 @@ impl State {
         }
     }
 
+    /// News of the notification sent for access `token`, for the comments `through` a sequence.
+    fn notification(&mut self, token: &str, through: u64, news: NotificationNews) {
+        match news {
+            NotificationNews::Outcome(result) => self.notified(token, through, result),
+            NotificationNews::Waits(wait) => self.notification_waits(token, wait),
+        }
+    }
+
     /// The notification sent for access `token`, for the comments `through` a sequence, has
     /// its outcome. One that failed is not sent again until the reviewer retries or posts
     /// another comment, which a wakeup requested since then already did.
     fn notified(&mut self, token: &str, through: u64, result: Result<(), PromptError>) {
+        if let Some(wakeup) = self.wakeups.get_mut(token) {
+            wakeup.hold(None);
+        }
         let Err(error) = result else {
             return;
         };
@@ -191,11 +203,35 @@ impl State {
             .map(|access| access.review_unit.clone());
         self.report_wakeup(
             unit.as_ref(),
-            Some(WakeupFailure {
+            Some(WakeupNotice::Failed(WakeupFailure {
                 through,
                 error: error.to_string(),
-            }),
+            })),
         );
+    }
+
+    /// The notification sent for access `token` waits for `wait` before the agent's host types it,
+    /// or no longer waits: the threads its wakeup covers say so, with those of the notifications
+    /// after it, which wait behind it.
+    fn notification_waits(&mut self, token: &str, wait: Option<PromptWait>) {
+        let Some(wakeup) = self.wakeups.get_mut(token) else {
+            return;
+        };
+        wakeup.hold(wait);
+        let notice = wakeup.held().map(|(wait, through)| {
+            WakeupNotice::Waiting(WakeupWait {
+                through,
+                reason: wait.to_string(),
+            })
+        });
+        let unit = self
+            .access
+            .get(token)
+            .map(|access| access.review_unit.clone());
+        // A wait alone is no error: without a review to name, nothing shows it.
+        if let Some(unit) = &unit {
+            self.report_wakeup(Some(unit), notice);
+        }
     }
 
     /// The wakeup for the pending comments of `unit` cannot reach the agent: say why, and
@@ -206,22 +242,25 @@ impl State {
                 .get(unit)?
                 .pending_comment_sequence_for(&self.recipient(unit))
         }) {
-            Some(through) => self.report_wakeup(unit, Some(WakeupFailure { through, error })),
+            Some(through) => self.report_wakeup(
+                unit,
+                Some(WakeupNotice::Failed(WakeupFailure { through, error })),
+            ),
             None => (self.publish)(Event::Error(error)),
         }
     }
 
-    /// Publish what became of the latest wakeup for `unit`: `None` while one is on its way, or
-    /// why one did not reach the agent. Without a review or a waiting comment to name, a
-    /// failure is only an error.
-    fn report_wakeup(&self, unit: Option<&ReviewUnit>, failure: Option<WakeupFailure>) {
+    /// Publish what became of the latest wakeup for `unit`: `None` while one is on its way, why
+    /// it waits to reach the agent, or why one did not reach it. Without a review or a waiting
+    /// comment to name, a failure is only an error.
+    fn report_wakeup(&self, unit: Option<&ReviewUnit>, notice: Option<WakeupNotice>) {
         match unit {
             Some(unit) => (self.publish)(Event::Wakeup {
                 review_unit: unit.clone(),
-                failure,
+                notice,
             }),
             None => {
-                if let Some(failure) = failure {
+                if let Some(WakeupNotice::Failed(failure)) = notice {
                     (self.publish)(Event::Error(failure.error));
                 }
             }
@@ -746,27 +785,45 @@ impl State {
         };
         if wakeup.needs_poll() {
             let through = wakeup.sent();
+            // One on its way, or waiting behind one that waits.
+            let notice = wakeup.held().map(|(wait, through)| {
+                WakeupNotice::Waiting(WakeupWait {
+                    through,
+                    reason: wait.to_string(),
+                })
+            });
             let unit = access.review_unit.clone();
-            self.report_wakeup(Some(&unit), None);
+            self.report_wakeup(Some(&unit), notice);
             let inputs = self.inputs.clone();
             let token = token.to_owned();
             let turns = self.turns.clone();
             let sent = prompt.clone();
-            self.courier.send(current, prompt, None, move |result| {
-                if let Some(turns) = &turns {
-                    let turn = CommentsTurn {
-                        kind: "comments",
-                        access: &token,
-                        text: &sent,
-                    };
-                    turns.record(&turn, result.as_ref().err().map(ToString::to_string));
+            let waits = {
+                let (inputs, token) = (self.inputs.clone(), token.clone());
+                move |wait| {
+                    let _ = inputs.send(Input::Notification {
+                        token: token.clone(),
+                        through,
+                        news: NotificationNews::Waits(wait),
+                    });
                 }
-                let _ = inputs.send(Input::Notified {
-                    token,
-                    through,
-                    result,
+            };
+            self.courier
+                .send_telling_waits(current, prompt, None, waits, move |result| {
+                    if let Some(turns) = &turns {
+                        let turn = CommentsTurn {
+                            kind: "comments",
+                            access: &token,
+                            text: &sent,
+                        };
+                        turns.record(&turn, result.as_ref().err().map(ToString::to_string));
+                    }
+                    let _ = inputs.send(Input::Notification {
+                        token,
+                        through,
+                        news: NotificationNews::Outcome(result),
+                    });
                 });
-            });
         }
         Ok(())
     }

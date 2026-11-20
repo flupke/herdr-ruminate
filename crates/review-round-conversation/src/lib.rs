@@ -2,7 +2,7 @@
 //! as plain data that a page can draw and a serde message can carry.
 
 use review_threads::{
-    AskedUnder, Author, Message, MessageId, ReviewThread, ReviewThreads, ThreadId, WakeupFailure,
+    AskedUnder, Author, Message, MessageId, ReviewThread, ReviewThreads, ThreadId, WakeupNotice,
 };
 use serde::Serialize;
 
@@ -48,7 +48,8 @@ pub struct ConversationMessage {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Delivery {
     /// The agent has not replied yet: the wakeup is on its way, or the agent is working on it.
-    Waiting,
+    /// `held` says why the wakeup that covers it waits to reach the agent, while it does.
+    Waiting { held: Option<String> },
     /// The wakeup that covered it did not reach the agent; Retry sends another. The reviewer
     /// keeps no record of it: after a restart the message reads as waiting, and Retry still
     /// applies.
@@ -59,10 +60,10 @@ pub enum Delivery {
 
 impl RoundConversation {
     /// The conversation of `round` in `threads`, where the latest wakeup for the review's
-    /// pending comments failed with `failure`, if it did: the failure of the thread worker's
-    /// latest `Event::Wakeup` for the review, which is `None` again once another wakeup is on
-    /// its way.
-    pub fn new(threads: &ReviewThreads, round: &str, failure: Option<&WakeupFailure>) -> Self {
+    /// pending comments shows `notice`, if any: the notice of the thread worker's latest
+    /// `Event::Wakeup` for the review, which is `None` again once another wakeup is on its way.
+    /// A wakeup that waits leaves its messages waiting; one that failed marks them not delivered.
+    pub fn new(threads: &ReviewThreads, round: &str, notice: Option<&WakeupNotice>) -> Self {
         let thread = threads.round_conversation(round);
         Self {
             round: round.to_owned(),
@@ -72,7 +73,7 @@ impl RoundConversation {
                     thread
                         .messages
                         .iter()
-                        .map(|message| ConversationMessage::new(thread, message, failure))
+                        .map(|message| ConversationMessage::new(thread, message, notice))
                         .collect()
                 })
                 .unwrap_or_default(),
@@ -90,18 +91,25 @@ impl RoundConversation {
 }
 
 impl ConversationMessage {
-    fn new(thread: &ReviewThread, message: &Message, failure: Option<&WakeupFailure>) -> Self {
+    fn new(thread: &ReviewThread, message: &Message, notice: Option<&WakeupNotice>) -> Self {
         let delivery = (message.author == Author::Reviewer).then(|| {
             if thread.is_answered(message) {
                 Delivery::Answered
             } else {
-                match failure {
-                    Some(failure) if message.sequence() <= failure.through => {
+                match notice {
+                    Some(WakeupNotice::Failed(failure))
+                        if message.sequence() <= failure.through =>
+                    {
                         Delivery::NotDelivered {
                             error: failure.error.clone(),
                         }
                     }
-                    _ => Delivery::Waiting,
+                    Some(WakeupNotice::Waiting(wait)) if message.sequence() <= wait.through => {
+                        Delivery::Waiting {
+                            held: Some(wait.reason.clone()),
+                        }
+                    }
+                    _ => Delivery::Waiting { held: None },
                 }
             }
         });

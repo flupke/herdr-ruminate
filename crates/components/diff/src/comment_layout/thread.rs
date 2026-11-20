@@ -5,7 +5,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use review_threads::{AskedUnder, Author, Message, MessageId, ReviewThread};
+use review_threads::{AskedUnder, Author, Message, MessageId, ReviewThread, WakeupNotice};
 use ui_frame::Frame;
 use ui_theme::Palette;
 use unicode_width::UnicodeWidthStr;
@@ -57,14 +57,14 @@ impl Comments {
             .focused_id()
             .filter(|_| self.replies_to(thread))
             .and_then(|id| drafts.get(id).map(|open| (id, open)));
-        let failure = self.wakeup_failure(thread);
+        let notice = self.wakeup_notice(thread);
         if let Some(editing) = replying {
             layout.separator(&mut rows, None);
-            layout.wakeup_failure(&mut rows, failure.as_deref(), None);
+            layout.wakeup_notice(&mut rows, notice.as_ref(), None);
             self.editor_rows(&mut rows, editing, true, layout);
         } else if let Some(parked) = self.parked_reply(&drafts, &thread.id) {
             layout.separator(&mut rows, None);
-            layout.wakeup_failure(&mut rows, failure.as_deref(), None);
+            layout.wakeup_notice(&mut rows, notice.as_ref(), None);
             self.editor_rows(&mut rows, parked, false, layout);
         } else if let Some(comment) = thread.messages.last() {
             layout.separator(&mut rows, Some(&comment.id));
@@ -73,7 +73,7 @@ impl Comments {
             } else {
                 layout.reply_field(&mut rows, &comment.id);
             }
-            layout.wakeup_failure(&mut rows, failure.as_deref(), Some(&comment.id));
+            layout.wakeup_notice(&mut rows, notice.as_ref(), Some(&comment.id));
             layout.controls(&mut rows, Some(thread), None);
         }
         rows
@@ -393,19 +393,22 @@ impl ThreadLayout {
         self.blank(rows, Some(id));
     }
 
-    /// Why the thread's comment did not reach the agent, if it did not, above the Retry agent
-    /// that sends it again, or above the reply being written.
-    fn wakeup_failure(
+    /// Why the thread's comment waits to reach the agent, or did not reach it, if either, above
+    /// the Retry agent that sends it again, or above the reply being written.
+    fn wakeup_notice(
         self,
         rows: &mut Vec<CommentRow>,
-        error: Option<&str>,
+        notice: Option<&WakeupNotice>,
         id: Option<&MessageId>,
     ) {
-        let Some(error) = error else {
+        let Some(notice) = notice else {
             return;
         };
-        let text = format!("Not delivered: {error}");
-        self.plain(rows, &text, self.palette.deletion, id);
+        let colour = match notice {
+            WakeupNotice::Waiting(_) => self.palette.warning,
+            WakeupNotice::Failed(_) => self.palette.deletion,
+        };
+        self.plain(rows, &notice.text(), colour, id);
         self.blank(rows, id);
     }
 

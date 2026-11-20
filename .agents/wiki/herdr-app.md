@@ -87,11 +87,16 @@ itself Herdr too, and labels its terminals `herdr.*`.
   (herdr-core's `draft`): the characters typed less the Backspaces, until they press Enter, Ctrl-C
   or Ctrl-U, at most 60 s after their last key (`HC_DRAFT_MS` in the core's environment sets that
   limit; `PrivateCore::holding_unsent_typing_for`). Control keys, Alt+key, Delete and Esc count nothing,
-  so text Claude Code's Esc Esc or Ctrl-W erased still holds the send, with its input line empty. A
-  Ctrl+U pressed through `terminal.keys`, which waits only for the quiet pause, ends that count, and
-  a send already held then types 0.2 s later; `terminal.keys` with no key presses nothing and
-  answers at once only when nobody typed for the quiet pause (measured on 0.1.20 and 0.1.21, `hc
-  keys` refuses no key). A client that hangs up cancels a held send from 0.1.20: nothing is typed.
+  so text Claude Code's Esc Esc or Ctrl-W erased still holds the send, with its input line empty.
+  `draft_wait = 0` in `~/.config/herdr-core/config.toml` turns that hold off, as the user chose
+  for every sender (`HC_DRAFT_MS=0`, `PrivateCore::holding_unsent_typing_for(Duration::ZERO)`): the send then
+  types into a half-written line 3.1 s after the person's last key (0.1.21), and the reviewer's
+  client needs it off (ADR 0024). `terminal.keys` with no key presses nothing and answers at once
+  only when nobody typed for the quiet pause, else when the pause ends, the moment a held send
+  types; it does not wait for the hold behind unsent typing (measured on 0.1.20 and 0.1.21; `hc
+  keys` refuses no key: only the API sends one). A client that hangs up cancels a held send from
+  0.1.20: nothing is typed (checked on 0.1.21, 1 s after the key).
+  herdr-core also types in a terminal that just started only once its output settled, about 1 s.
   Once it types, it answers `started`: whether the program went `working` within a few seconds (null
   when it reports no status). With `wait`, it then waits for the end of that turn. It types only on
   an exact status with `if`, and refuses a `blocked` program unless `force`, also one that blocked
@@ -104,6 +109,21 @@ itself Herdr too, and labels its terminals `herdr.*`.
   in `<hc from="...">` tags unless `notes = false` in `~/.config/herdr-core/config.toml`; a request
   with no `caller` (the API, not the `hc` command) types the text as it is, even when it comes from
   a terminal of the core.
+- `terminal.attach` with `observe: true` watches a terminal without typing or resizing (0.1.21).
+  It needs a framed connection: send `hello` with `framed: true` as a JSON line, read its JSON
+  line, then each message is a frame: channel (u32, little-endian), kind (u8), length (u32), payload.
+  Channel 0 carries JSON-RPC (the attach request goes there as kind 0); the answer names the
+  terminal's channel, whose DATA frames (kind 0) the watcher credits back with CREDIT frames (kind
+  4, payload the u32 count of bytes read; window 256 KiB). A new watcher first gets a whole paint,
+  sent at once in frames of 16 KiB but its last (185 KiB in 12 frames within 1 ms), so a frame
+  shorter than 16 KiB ends it, and a frame after it was printed, even 6 ms later: a watcher that
+  waits for a gap after the paint takes such a print for paint and misses it. It starts with CAN and
+  `ESC [!p`, sets tab stops, then gives each row ended by CR LF with SGR styles, at the terminal's
+  own size whatever size the watcher names. Then come the bytes the program prints, 0.2 to 16 ms
+  after it printed (median 0.5 ms, 177 lines); an idle Claude Code or Codex prints nothing. Claude
+  Code 2.1.329 and Codex 0.166 draw their placeholders dim (`ESC [2m`), which `terminal.read`
+  loses: it reads Claude Code's first placeholder, `Try "edit <filepath> to…"`, as typed text.
+  Measured with `hc attach --observe` under `strace`, and a script of the framing.
 - Claude Code reports `blocked` while a question of its `AskUserQuestion` tool waits on the
   user (2.1.318).
 - Claude Code 2.1.318 can move a conversation into a background session while the `claude`
@@ -230,11 +250,22 @@ both stay.
   ([Review threads](threads.md#delivery)). A refused send reached nothing: the pane says so,
   and Retry sends again. Two waits stay as they were: run-ahead's `/resume` (`claude-fork`,
   `codex-fork`) still blocks every prompt while its send waits, and the one courier that
-  sends all prompts holds every agent's while a send waits for the user typing in one.
-- A client that follows a window's focus (the review pane's) ends the hold of unsent typing an
-  idle Claude Code's empty input line no longer shows
-  ([ADR 0022](../adr/0022-end-unsent-typing-that-holds-a-wakeup-with-ctrl-u.md)). A pane on a
-  machine where no herdr-app writes the view it follows never does: the hold stays.
+  sends all prompts holds every agent's while a send waits for text in one agent's line, for
+  as long as it stays there.
+- The client offers a send only while the agent's input line reads empty, read from the paint of
+  a watch-only attach, styles included; text in the line, no input line, or an agent other than
+  Claude Code or Codex holds it with no time limit, read again on each print, and the client tells
+  why (`AgentPort::prompt_agent_telling_waits`), which the review pane shows under the comments a
+  wakeup covers, and the Explore page under its conversation. Text someone types, or a dialog
+  they open, while herdr-core waits out its quiet pause makes the client hang up, and offer the
+  send again on an empty line; a press of no key offered with the send tells when that pause ends
+  (it is answered then), after which the client hangs up no more
+  ([ADR 0024](../adr/0024-type-a-prompt-only-while-the-agent-s-input-line-reads-empty.md)). To
+  test a change to how a prompt reaches an agent: behaviour tests of `HcClient` against
+  `hc_test_support::PrivateCore` (`crates/hc-client/tests/private_core.rs`, with a bash agent
+  that draws Claude Code's line and a `Person` typing through `hc attach`, under
+  `draft_wait = 0`), then one check with real Claude Code in a private herdr-app (below), never in
+  the user's.
 - Nothing names a Codex agent's session under herdr-core: Codex's hook runs in its daemon,
   which cannot tell the terminal, so the Codex resume, which reports a session only when the
   host reports one, reports none there.
@@ -359,16 +390,17 @@ folders, as the contract check does (below).
 
 `crates/reviewer/tests/claude_code_under_hc.rs` checks that real Claude Code takes the
 reviewer's prompts through herdr-core as the reviewer expects: its hook reports a sent prompt
-as typed, a long one too, and the text left in its input box joined to it; it runs a prompt
-the user submits while the send waits for them; it reports `working` after a send, and
-`blocked` while a question waits on its user, when herdr-core types nothing. It runs the
+as typed, a long one too; it runs a prompt the user submits while the send waits for them; it
+reports `working` after a send, and `blocked` while a question waits on its user; text left in
+its input box holds the prompt until it is cleared, and a question that waits on its user, which
+it expects to show no input line, until it is answered. It runs the
 user's `claude` on the user's login and configuration, with the reviewer's plugin set to
 this build's `reviewer-control` by `--settings`: the plugin must be installed (`make install`).
 Unlike the run-ahead check ([Run-ahead](run-ahead.md#the-contract-check)), which never reads
 `~/.claude`, it needs no token of `claude setup-token`: the user chose their own login. It
 leaves in the user's configuration the session of each run, and the trust of its folder,
 `~/.cache/herdr-reviewer/hc-contract-check`, recorded once; it runs their other plugins,
-hooks and MCP servers, on a private core. About 30 s and five Sonnet turns. Run it after an
+hooks and MCP servers, on a private core. Six Sonnet turns. Run it after an
 upgrade of Claude Code or herdr-core, or a change to the prompts' delivery
 (`review-thread-service`'s `delivery.rs`, `hc-client`'s `send`, `agent-hooks`'s expectations):
 

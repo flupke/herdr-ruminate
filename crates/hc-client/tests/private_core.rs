@@ -10,9 +10,10 @@ use std::time::{Duration, Instant};
 
 use hc_client::HcClient;
 use hc_test_support::PrivateCore;
-use herdr_app_focus::AppHome;
 use herdr_client::client::EventCanceller;
-use herdr_client::protocol::{AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, TabId};
+use herdr_client::protocol::{
+    AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, PromptWait, TabId,
+};
 
 /// How fast the person types.
 const PACE: Duration = Duration::from_millis(300);
@@ -20,6 +21,92 @@ const PACE: Duration = Duration::from_millis(300);
 /// A shell line that reports `state` as Claude Code does, with OSC 7501.
 fn report(state: &str) -> String {
     format!(r"printf '\033]7501;app=claude-code:state={state}\007';")
+}
+
+/// A shell line that draws Claude Code's empty input line between its two rules, and echoes no
+/// key typed in the terminal: the client sends to the agent only on an empty line.
+fn input_line() -> &'static str {
+    r"stty -echo; printf '\n──── worker ─\n❯ \n────────────\n';"
+}
+
+/// A shell script that plays Claude Code's input line: it draws what is typed in it between two
+/// rules, takes Backspace and Ctrl+U as Claude Code does, and writes each line submitted with
+/// Enter to `lines`, and when, in nanoseconds since the epoch, to `submitted`, going working then
+/// idle; it writes each key it reads to `keys`. Ctrl+R opens a dialog in place of the input line,
+/// as Claude Code's rewind does, which writes each key it gets to `dialog` until Esc closes it.
+/// `before` runs first.
+fn line_agent(before: &str) -> String {
+    agent_of_line(
+        before,
+        &format!("{} draw; {}", report("working"), report("idle")),
+    )
+}
+
+/// [`line_agent`], but for an agent that reports no turn on what is submitted, as for a command
+/// of its own: herdr-core answers a send to it only a few seconds after it typed it.
+fn line_agent_without_turns(before: &str) -> String {
+    agent_of_line(before, "")
+}
+
+/// The script of [`line_agent`], which runs `on_enter` once a line is submitted.
+fn agent_of_line(before: &str, on_enter: &str) -> String {
+    format!(
+        r#"{before} stty -echo -icanon; typed=''; mode=line
+draw() {{ if [ "$mode" = line ]; then printf '\033[H\033[2J──── worker ─\r\n❯ %s\r\n────────────\r\n' "$typed"; else printf '\033[H\033[2JRewind to:\r\n  1. earlier\r\n  2. now\r\n'; fi; }}
+draw; {idle}
+while IFS= read -rsn1 -d '' key; do
+  printf '%s' "$key" >> keys
+  if [ "$mode" = dialog ]; then
+    if [ "$key" = $'\x1b' ]; then mode=line; draw; else printf '%s' "$key" >> dialog; fi
+    continue
+  fi
+  case "$key" in
+    $'\n') date +%s%N >> submitted; printf '%s\n' "$typed" >> lines; typed=''; {on_enter} ;;
+    $'\x12') mode=dialog ;;
+    $'\x15') typed='' ;;
+    $'\x7f') typed="${{typed%?}}" ;;
+    *) typed+="$key" ;;
+  esac
+  draw
+done"#,
+        idle = report("idle"),
+    )
+}
+
+/// What the agent in `folder` wrote to its file `name`; empty before it wrote any.
+fn written(folder: &std::path::Path, name: &str) -> String {
+    std::fs::read_to_string(folder.join(name)).unwrap_or_default()
+}
+
+/// Waits until the agent in `folder` read `key`: it tells no one, but writes each key it reads
+/// to its `keys` file.
+fn wait_until_read(folder: &std::path::Path, key: char) {
+    while !written(folder, "keys").contains(key) {
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// The outcome of a send on a thread of its own, with each wait it told.
+type Telling = thread::JoinHandle<(herdr_client::Result<()>, Vec<Option<PromptWait>>)>;
+
+/// Sends `text` to `agent` on a thread of its own: its outcome, and the waits it tells as they
+/// come.
+fn send_telling_waits(
+    client: &HcClient,
+    agent: &PaneId,
+    text: &'static str,
+) -> (Telling, mpsc::Receiver<Option<PromptWait>>) {
+    let (client, agent) = (client.clone(), agent.clone());
+    let (told, waits) = mpsc::channel();
+    let sender = thread::spawn(move || {
+        let mut all = Vec::new();
+        let sent = client.submit_prompt_telling_waits(&agent, text, &mut |wait| {
+            all.push(wait.clone());
+            let _ = told.send(wait);
+        });
+        (sent, all)
+    });
+    (sender, waits)
 }
 
 /// Waits until the agent of `pane` reports `status`, and returns the statuses until then.
@@ -40,7 +127,10 @@ fn the_agents_of_a_tab_are_its_terminals_that_report_a_status() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    let agent = core.run(folder.path(), &format!("{} read -r line", report("idle")));
+    let agent = core.run(
+        folder.path(),
+        &format!("{} {} read -r line", input_line(), report("idle")),
+    );
     let shell = core.run(folder.path(), "exec sleep 600");
     wait_for(&client, &agent, AgentStatus::Idle);
 
@@ -77,7 +167,8 @@ fn a_prompt_reaches_the_agent_as_typed_and_the_agent_starts_on_it() {
     let agent = core.run(
         folder.path(),
         &format!(
-            "{} read -r line; printf '%s' \"$line\" > prompt; {} exec sleep 600",
+            "{} {} read -r line; printf '%s' \"$line\" > prompt; {} exec sleep 600",
+            input_line(),
             report("idle"),
             report("working")
         ),
@@ -101,7 +192,10 @@ fn an_agent_that_never_starts_on_a_prompt_is_told() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    let agent = core.run(folder.path(), &format!("{} exec cat", report("idle")));
+    let agent = core.run(
+        folder.path(),
+        &format!("{} {} exec cat", input_line(), report("idle")),
+    );
     wait_for(&client, &agent, AgentStatus::Idle);
 
     // herdr-core's own window of a few seconds after the send tells that `cat` never worked.
@@ -120,7 +214,8 @@ fn a_prompt_to_an_agent_that_waits_on_its_user_types_nothing() {
     let agent = core.run(
         folder.path(),
         &format!(
-            "{} read -r line; printf '%s' \"$line\" > typed; {} read -r line",
+            "{} {} read -r line; printf '%s' \"$line\" > typed; {} read -r line",
+            input_line(),
             report("blocked"),
             report("done")
         ),
@@ -154,8 +249,9 @@ fn a_prompt_to_an_agent_that_blocked_while_the_person_typed_types_nothing() {
     let agent = core.run(
         folder.path(),
         &format!(
-            "{} while read -rn1 key && [ \"$key\" != '!' ]; do :; done; {} read -r line; \
+            "{} {} while read -rn1 key && [ \"$key\" != '!' ]; do :; done; {} read -r line; \
              printf '%s' \"$line\" > typed; {} read -r line",
+            input_line(),
             report("working"),
             report("blocked"),
             report("done")
@@ -202,8 +298,9 @@ fn a_prompt_waits_until_the_person_typing_in_the_agent_s_terminal_stops() {
     let agent = core.run(
         folder.path(),
         &format!(
-            "{} for n in 1 2; do read -r line; printf '%s\\n' \"$line\" >> lines; done; {} exec \
-             sleep 600",
+            "{} {} for n in 1 2; do read -r line; printf '%s\\n' \"$line\" >> lines; done; {} \
+             exec sleep 600",
+            input_line(),
             report("idle"),
             report("working")
         ),
@@ -227,135 +324,6 @@ fn a_prompt_waits_until_the_person_typing_in_the_agent_s_terminal_stops() {
     );
 }
 
-/// A shell line that draws Claude Code's input line between its two rules, showing `shown`, and
-/// echoes no key typed in the terminal: as Claude Code shows an empty line after its user erased
-/// what they typed with a key herdr-core does not count as erasing.
-fn input_line(shown: &str) -> String {
-    format!(r"stty -echo; printf '\n──── worker ─\n❯ {shown}\n────────────\n';")
-}
-
-/// Where the keyboard is of the herdr-app window that a test's client follows.
-#[derive(Clone, Copy, Debug)]
-enum Keyboard {
-    /// In a pane that shows no terminal of the core.
-    Elsewhere,
-    /// In the agent's terminal.
-    InAgent,
-    /// herdr-app wrote no view: it may be in any terminal.
-    Unknown,
-}
-
-/// A client of `core` that follows the herdr-app window whose home is `home`, its keyboard
-/// where `keyboard` says, `agent` showing in the pane `p1`; it looks for unsent typing every
-/// 100 ms.
-fn following_a_window(
-    core: &PrivateCore,
-    home: &std::path::Path,
-    agent: &PaneId,
-    keyboard: Keyboard,
-) -> HcClient {
-    let view = |pane: &str| {
-        serde_json::json!({"active": "sp1", "spaces": {"sp1": "tb1"}, "tabs": {"tb1": {"focused": pane}}})
-            .to_string()
-    };
-    match keyboard {
-        Keyboard::Elsewhere => std::fs::write(home.join("view.json"), view("p2")).unwrap(),
-        Keyboard::InAgent => {
-            std::fs::write(home.join("view.json"), view("p1")).unwrap();
-            core.set_document(
-                "herdr-app",
-                &serde_json::json!({"spaces": [{"tabs": [
-                    {"root": {"id": "p1", "content": {"terminal": agent.0}}}
-                ]}]}),
-            );
-        }
-        Keyboard::Unknown => {}
-    }
-    core.client()
-        .following_focus(AppHome::new(home.to_owned()))
-        .looking_for_unsent_typing_every(Duration::from_millis(100))
-}
-
-#[test]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
-fn a_prompt_held_behind_typing_an_idle_agent_s_empty_input_line_does_not_show_goes_once_nobody_types()
- {
-    // herdr-core holds the send for 10 minutes past the person's last key, in place of 60 s: a
-    // client that waits for it never gets its answer before nextest ends the test.
-    let core = PrivateCore::holding_unsent_typing_for(Duration::from_secs(600));
-    let folder = tempfile::tempdir().unwrap();
-    let window = tempfile::tempdir().unwrap();
-    let agent = core.run(
-        folder.path(),
-        &format!(
-            "{} {} read -r line; printf '%s\\n' \"$line\" >> lines; {} read -r line; printf \
-             '%s\\n' \"$line\" >> lines; {} exec sleep 600",
-            input_line(""),
-            report("idle"),
-            report("working"),
-            report("done")
-        ),
-    );
-    let client = following_a_window(&core, window.path(), &agent, Keyboard::Elsewhere);
-    wait_for(&client, &agent, AgentStatus::Idle);
-    let mut person = core.person_at(&agent);
-    person.types("xyz", PACE);
-    person.erases_word();
-
-    client
-        .prompt_agent(&agent, "Review crates/hc-client")
-        .unwrap();
-    // A marker after the prompt: what the agent read before it is all herdr-core typed.
-    core.hc(&["keys", &agent.0, "m", "enter"]);
-    wait_for(&client, &agent, AgentStatus::Done);
-
-    // The Ctrl+U that ended the person's unsent typing erased nothing the agent reads, and
-    // herdr-core typed the prompt once.
-    assert_eq!(
-        std::fs::read_to_string(folder.path().join("lines")).unwrap(),
-        "Review crates/hc-client\nm\n"
-    );
-}
-
-#[test_case::test_case("xyz", Keyboard::Elsewhere; "the input line shows the person's text")]
-#[test_case::test_case("", Keyboard::InAgent; "the window's keyboard is in the agent's terminal")]
-#[test_case::test_case("", Keyboard::Unknown; "the window's focus cannot be read")]
-#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
-fn a_prompt_held_behind_typing_waits_for_it_while_someone_may_be_typing(
-    shown: &str,
-    keyboard: Keyboard,
-) {
-    // herdr-core gives the hold up 6 s past the person's last key, some 3 s after its quiet
-    // pause: the client looks some 30 times meanwhile.
-    let core = PrivateCore::holding_unsent_typing_for(Duration::from_secs(6));
-    let folder = tempfile::tempdir().unwrap();
-    let window = tempfile::tempdir().unwrap();
-    let agent = core.run(
-        folder.path(),
-        &format!(
-            "{} {} read -r line; printf '%s\\n' \"$line\" >> lines; {} exec sleep 600",
-            input_line(shown),
-            report("idle"),
-            report("working")
-        ),
-    );
-    let client = following_a_window(&core, window.path(), &agent, keyboard);
-    wait_for(&client, &agent, AgentStatus::Idle);
-    let mut person = core.person_at(&agent);
-    // Left in the terminal's line, which the agent reads with the prompt.
-    person.types("xyz", PACE);
-
-    client
-        .prompt_agent(&agent, "Review crates/hc-client")
-        .unwrap();
-
-    // No Ctrl+U erased the person's typing: herdr-core typed the prompt after it.
-    assert_eq!(
-        std::fs::read_to_string(folder.path().join("lines")).unwrap(),
-        "xyzReview crates/hc-client\n"
-    );
-}
-
 #[test]
 #[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn an_agents_statuses_follow_its_turns_and_end_with_its_program() {
@@ -365,7 +333,8 @@ fn an_agents_statuses_follow_its_turns_and_end_with_its_program() {
     let agent = core.run(
         folder.path(),
         &format!(
-            "{} read -r line; {} {} read -r line",
+            "{} {} read -r line; {} {} read -r line",
+            input_line(),
             report("idle"),
             report("working"),
             report("done")
@@ -401,7 +370,10 @@ fn an_agent_that_exits_leaves_and_labels_reach_its_terminal() {
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    let agent = core.run(folder.path(), &format!("{} read -r line", report("idle")));
+    let agent = core.run(
+        folder.path(),
+        &format!("{} {} read -r line", input_line(), report("idle")),
+    );
     wait_for(&client, &agent, AgentStatus::Idle);
     let (events, told) = mpsc::channel();
     {
@@ -459,7 +431,10 @@ fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_i
     let core = PrivateCore::start();
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    let agent = core.run(folder.path(), &format!("{} read -r line", report("idle")));
+    let agent = core.run(
+        folder.path(),
+        &format!("{} {} read -r line", input_line(), report("idle")),
+    );
     wait_for(&client, &agent, AgentStatus::Idle);
     let (events, told) = mpsc::channel();
     {
@@ -506,6 +481,221 @@ fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_i
     assert_eq!(session(&client), None);
 }
 
+/// The prompt the behaviour tests send.
+const PROMPT: &str = "Review crates/hc-client";
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn an_empty_input_line_gets_the_prompt_at_once() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(folder.path(), &line_agent(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    // herdr-core types in a terminal that just started only once its output settled, a second
+    // later (hc 0.1.21): an agent the reviewer wakes ran for longer.
+    thread::sleep(Duration::from_secs(3));
+
+    let start = std::time::SystemTime::now();
+    let (sender, _) = send_telling_waits(&client, &agent, PROMPT);
+    let (sent, waits) = sender.join().unwrap();
+
+    sent.unwrap();
+    let submitted = written(folder.path(), "submitted");
+    let submitted = Duration::from_nanos(submitted.trim().parse().unwrap());
+    let took = submitted - start.duration_since(std::time::UNIX_EPOCH).unwrap();
+    assert!(took < Duration::from_secs(1), "the prompt took {took:?}");
+    eprintln!("the prompt reached the agent after {took:?}");
+    assert_eq!(written(folder.path(), "lines"), format!("{PROMPT}\n"));
+    assert_eq!(waits, []);
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_line_with_text_holds_the_prompt_until_it_empties_however_long() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(folder.path(), &line_agent(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    let mut person = core.person_at(&agent);
+    person.types("my own", Duration::from_millis(50));
+    wait_until_read(folder.path(), 'n');
+
+    let (sender, waits) = send_telling_waits(&client, &agent, PROMPT);
+    assert_eq!(waits.recv().unwrap(), Some(PromptWait::TypedText));
+    // Well past herdr-core's quiet pause after the person's last key, which alone holds a send.
+    thread::sleep(Duration::from_secs(8));
+    assert_eq!(written(folder.path(), "lines"), "");
+    person.presses_enter();
+    let (sent, told) = sender.join().unwrap();
+
+    sent.unwrap();
+    assert_eq!(
+        written(folder.path(), "lines"),
+        format!("my own\n{PROMPT}\n")
+    );
+    assert_eq!(told, [Some(PromptWait::TypedText), None]);
+    assert!(
+        !written(folder.path(), "keys").contains('\u{15}'),
+        "a Ctrl+U reached the agent"
+    );
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_screen_with_no_input_line_holds_the_prompt() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    // A dialog, with no input line, until a key answers it.
+    let agent = core.run(
+        folder.path(),
+        &line_agent(&format!(
+            r"stty -echo -icanon; printf '❯ 1. Yes\r\n  2. No\r\n'; {} IFS= read -rsn1 answer;",
+            report("idle")
+        )),
+    );
+    wait_for(&client, &agent, AgentStatus::Idle);
+
+    let (sender, waits) = send_telling_waits(&client, &agent, PROMPT);
+    assert_eq!(waits.recv().unwrap(), Some(PromptWait::NoInputLine));
+    thread::sleep(Duration::from_secs(5));
+    assert_eq!(written(folder.path(), "lines"), "");
+    core.hc(&["keys", &agent.0, "1"]);
+    let (sent, told) = sender.join().unwrap();
+
+    sent.unwrap();
+    assert_eq!(written(folder.path(), "lines"), format!("{PROMPT}\n"));
+    assert_eq!(told, [Some(PromptWait::NoInputLine), None]);
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_prompt_herdr_core_does_not_type_at_once_is_withdrawn_and_typed_once_on_an_empty_line() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(folder.path(), &line_agent(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    let mut person = core.person_at(&agent);
+    // A key, erased: the line reads empty, and herdr-core waits out its quiet pause before it
+    // types the send it is offered.
+    person.types("x", Duration::ZERO);
+    person.presses_backspace();
+    wait_until_read(folder.path(), '\u{7f}');
+
+    let (sender, waits) = send_telling_waits(&client, &agent, PROMPT);
+    thread::sleep(Duration::from_millis(500));
+    // "Re", as the prompt starts: herdr-core's pause, not the text, tells it from the prompt.
+    person.types("Re", Duration::from_millis(50));
+    assert_eq!(waits.recv().unwrap(), Some(PromptWait::TypedText));
+    // herdr-core would have typed the send 3 s after "Re", after it: the client hung up.
+    thread::sleep(Duration::from_secs(6));
+    assert_eq!(written(folder.path(), "lines"), "");
+    person.erases_line();
+    let (sent, told) = sender.join().unwrap();
+
+    sent.unwrap();
+    // Once, alone: the person's "Re" went with the Ctrl+U they pressed.
+    assert_eq!(written(folder.path(), "lines"), format!("{PROMPT}\n"));
+    assert_eq!(told, [Some(PromptWait::TypedText), None]);
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_prompt_to_an_agent_whose_line_is_not_read_waits() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(
+        folder.path(),
+        &format!(
+            r#"{} printf '\033]7501;app=pi:state=idle\007'; read -r line; printf '%s' "$line" > typed"#,
+            input_line()
+        ),
+    );
+    wait_for(&client, &agent, AgentStatus::Idle);
+
+    let (_sender, waits) = send_telling_waits(&client, &agent, PROMPT);
+
+    assert_eq!(
+        waits.recv().unwrap(),
+        Some(PromptWait::UnreadAgent("pi".to_owned()))
+    );
+    thread::sleep(Duration::from_secs(4));
+    assert_eq!(written(folder.path(), "typed"), "");
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_key_pressed_after_herdr_core_typed_the_prompt_never_sends_it_again() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    // Without a turn to report, herdr-core answers the send only seconds after it typed it.
+    let agent = core.run(folder.path(), &line_agent_without_turns(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    // herdr-core types in a terminal that just started only once its output settled.
+    thread::sleep(Duration::from_secs(3));
+    let mut person = core.person_at(&agent);
+    let typed = {
+        let waiting = core.command(&["wait", &agent.0, "--output", "Review", "--json"]);
+        thread::spawn(move || {
+            let mut waiting = waiting;
+            waiting.output().unwrap()
+        })
+    };
+
+    let (sender, _) = send_telling_waits(&client, &agent, PROMPT);
+    typed.join().unwrap();
+    // The person starts on their next message while herdr-core has not answered yet.
+    person.types("next", Duration::from_millis(50));
+    let (sent, told) = sender.join().unwrap();
+
+    sent.unwrap();
+    assert_eq!(written(folder.path(), "lines"), format!("{PROMPT}\n"));
+    assert_eq!(
+        told,
+        [],
+        "the client took the person's keys for a reason to send again"
+    );
+}
+
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn a_dialog_opened_while_herdr_core_waits_out_its_pause_withdraws_the_prompt() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    let agent = core.run(folder.path(), &line_agent(""));
+    wait_for(&client, &agent, AgentStatus::Idle);
+    thread::sleep(Duration::from_secs(3));
+    let mut person = core.person_at(&agent);
+    // A key, erased: the line reads empty, and herdr-core waits out its quiet pause before it
+    // types the send it is offered.
+    person.types("x", Duration::ZERO);
+    person.presses_backspace();
+    wait_until_read(folder.path(), '\u{7f}');
+
+    let (sender, waits) = send_telling_waits(&client, &agent, PROMPT);
+    // The client offered the send, which herdr-core holds for its pause: Ctrl+R then opens the
+    // dialog within that pause.
+    thread::sleep(Duration::from_millis(500));
+    person.types("\u{12}", Duration::ZERO);
+    assert_eq!(waits.recv().unwrap(), Some(PromptWait::NoInputLine));
+    // Past herdr-core's pause after Ctrl+R: the send it held would have gone into the dialog.
+    thread::sleep(Duration::from_secs(5));
+    assert_eq!(written(folder.path(), "dialog"), "");
+    person.presses_esc();
+    let (sent, told) = sender.join().unwrap();
+
+    sent.unwrap();
+    assert_eq!(written(folder.path(), "dialog"), "");
+    assert_eq!(written(folder.path(), "lines"), format!("{PROMPT}\n"));
+    assert_eq!(told, [Some(PromptWait::NoInputLine), None]);
+}
+
 /// The variable that makes [`send_from_this_terminal`] send, to the terminal it names.
 const SEND_TO: &str = "PRIVATE_CORE_SEND_TO";
 
@@ -518,7 +708,8 @@ fn a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged() {
     let agent = core.run(
         folder.path(),
         &format!(
-            "{} read -r line; printf '%s' \"$line\" > typed; {} read -r line",
+            "{} {} read -r line; printf '%s' \"$line\" > typed; {} read -r line",
+            input_line(),
             report("idle"),
             report("done")
         ),

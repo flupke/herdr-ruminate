@@ -258,10 +258,19 @@ impl Person {
         self.press(b"\r");
     }
 
-    /// Presses Ctrl-W, which erases the word before the cursor in a terminal's line, and in
-    /// Claude Code's input line: herdr-core still counts the word's characters as unsent typing.
-    pub fn erases_word(&mut self) {
-        self.press(b"\x17");
+    /// Presses Backspace.
+    pub fn presses_backspace(&mut self) {
+        self.press(b"\x7f");
+    }
+
+    /// Presses Esc.
+    pub fn presses_esc(&mut self) {
+        self.press(b"\x1b");
+    }
+
+    /// Presses Ctrl+U, which empties the line.
+    pub fn erases_line(&mut self) {
+        self.press(b"\x15");
     }
 
     fn press(&mut self, key: &[u8]) {

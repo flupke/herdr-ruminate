@@ -255,7 +255,10 @@ impl Owner {
             through,
             error: error.into(),
         };
-        self.threads.wakeup(REVIEW.into(), Some(failure));
+        self.threads.wakeup(
+            REVIEW.into(),
+            Some(review_threads::WakeupNotice::Failed(failure)),
+        );
     }
 }
 

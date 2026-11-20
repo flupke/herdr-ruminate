@@ -9,7 +9,7 @@ members = [
     "crates/codex-fork",
     "crates/agent-forks",
     "crates/hc-client",
-    "crates/claude-input-line",
+    "crates/agent-input-line",
     "crates/herdr-app-focus",
     "crates/hc-test-support",
     "crates/reviewer-dirs",

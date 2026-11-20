@@ -14,7 +14,7 @@ use agent_hooks::{AgentHooks, Heard, HookDirectory, HookedAgent, OtherPrompts};
 use hc_client::HcClient;
 use hc_test_support::PrivateCore;
 use herdr_client::client::EventCanceller;
-use herdr_client::protocol::{AgentHost, AgentPort, AgentStatus, PaneId};
+use herdr_client::protocol::{AgentHost, AgentPort, AgentStatus, PaneId, PromptWait};
 
 /// The reviewer's plugin, as `make install` installs it in the owner's Claude Code.
 const PLUGIN: &str = "progressive-reviewer@herdr-progressive-reviewer";
@@ -38,7 +38,7 @@ fn claude_code_takes_the_reviewer_s_prompts_through_herdr_core() {
     // herdr-core refuses to type in a terminal younger than its startup age limit until its
     // output settles, which the person's keys keep from happening: the turns before outlast it.
     the_user_s_prompt_goes_on_while_the_reviewer_s_waits(&agent, &hooked);
-    text_left_in_the_box_joins_the_prompt(&agent, &hooked);
+    text_left_in_the_box_holds_the_prompt(&agent, &hooked);
 }
 
 /// The user types a prompt of their own while the reviewer's waits for them to stop, and the
@@ -146,7 +146,8 @@ fn a_prompt_starts_the_agent(agent: &RealAgent) {
     agent.wait_for_prompt();
 }
 
-/// A question that waits on the user blocks the agent, and herdr-core types nothing then.
+/// A question that waits on the user shows no input line: the prompt waits until it is answered,
+/// and goes then.
 fn nothing_is_typed_while_a_question_waits(agent: &RealAgent) {
     agent
         .client
@@ -161,34 +162,53 @@ fn nothing_is_typed_while_a_question_waits(agent: &RealAgent) {
          user",
         |status| status == AgentStatus::Blocked,
     );
-    let refused = agent
-        .client
-        .submit_prompt(&agent.terminal, "Reply with only the word lime");
-    assert!(
-        matches!(&refused, Err(herdr_client::Error::NotTyped { reason }) if reason.contains("waits on its user")),
-        "{refused:?}"
+    let replies = agent.output("LIME");
+    let (waits, sender) = agent.send_telling_waits("Reply with only the word lime, in capitals");
+    assert_eq!(
+        waits.recv().unwrap(),
+        Some(PromptWait::NoInputLine),
+        "Assumption: Claude Code's question shows no input line. Its terminal shows:\n{}",
+        agent.screen()
     );
     agent.core.hc(&["keys", &agent.terminal.0, "esc"]);
+    sender.join().unwrap().unwrap();
+    agent.printed(
+        replies,
+        "Claude Code runs the prompt that waited for the question",
+    );
     agent.wait_for_prompt();
 }
 
-/// Text left in the input box joins the reviewer's prompt, which the hook blocks.
-fn text_left_in_the_box_joins_the_prompt(agent: &RealAgent, hooked: &HookedAgent) {
+/// Text left in the input box holds the reviewer's prompt, however long, and it goes alone once
+/// the box is cleared.
+fn text_left_in_the_box_holds_the_prompt(agent: &RealAgent, hooked: &HookedAgent) {
     let kiwi = "Reply with only the word kiwi, in capitals";
     let expectation = agent
         .hooks
         .expect_prompt(hooked, kiwi, BLOCKED, agent.others());
     let mut person = agent.core.person_at(&agent.terminal);
     person.types("half", PACE);
+    let (waits, sender) = agent.send_telling_waits(kiwi);
+    assert_eq!(
+        waits.recv().unwrap(),
+        Some(PromptWait::TypedText),
+        "Assumption: the client reads the person's text in Claude Code's input line. Its \
+         terminal shows:\n{}",
+        agent.screen()
+    );
+    // Past herdr-core's quiet pause after the person's last key, which alone holds a send.
+    thread::sleep(Duration::from_secs(6));
+    assert!(
+        agent.screen().contains("half"),
+        "the person's text stays in the box, with nothing typed over it"
+    );
+    person.erases_line();
     drop(person);
-    agent.client.submit_prompt(&agent.terminal, kiwi).unwrap();
+    sender.join().unwrap().unwrap();
     assert_eq!(
         expectation.wait(HOOK_LIMIT),
-        Some(Heard::Joined {
-            left: "half".into()
-        }),
-        "Assumption: Claude Code submits the text left in its input box and the prompt herdr-core \
-         typed as one. Its terminal shows:\n{}",
+        Some(Heard::Submitted),
+        "Assumption: the prompt goes alone once the box is cleared. Its terminal shows:\n{}",
         agent.screen()
     );
 }
@@ -203,6 +223,25 @@ struct RealAgent {
 }
 
 impl RealAgent {
+    /// Sends `text` to the agent on a thread of its own: the waits it tells as they come, and
+    /// its outcome.
+    fn send_telling_waits(
+        &self,
+        text: &'static str,
+    ) -> (
+        std::sync::mpsc::Receiver<Option<PromptWait>>,
+        thread::JoinHandle<herdr_client::Result<()>>,
+    ) {
+        let (client, terminal) = (self.client.clone(), self.terminal.clone());
+        let (told, waits) = std::sync::mpsc::channel();
+        let sender = thread::spawn(move || {
+            client.submit_prompt_telling_waits(&terminal, text, &mut |wait| {
+                let _ = told.send(wait);
+            })
+        });
+        (waits, sender)
+    }
+
     /// Starts the owner's Claude Code, on their own login and configuration, in [`folder`].
     fn start() -> Self {
         let core = PrivateCore::start();

@@ -4,7 +4,9 @@
 //! reaches the page.
 
 use review_explore_page::{CommandRefusal, ThreadsFeed, ThreadsPublisher};
-use review_threads::{AskedUnder, MessageId, Post, ReviewThreads, ThreadCommand, WakeupFailure};
+use review_threads::{
+    AskedUnder, MessageId, Post, ReviewThreads, ThreadCommand, WakeupFailure, WakeupNotice,
+};
 use review_types::ReviewUnit;
 use serde::Serialize;
 
@@ -135,7 +137,8 @@ impl SessionThreads {
             through,
             error: error.to_owned(),
         };
-        self.publisher.wakeup(Self::review(), Some(failure));
+        self.publisher
+            .wakeup(Self::review(), Some(WakeupNotice::Failed(failure)));
         true
     }
 

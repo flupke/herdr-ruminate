@@ -10,7 +10,7 @@ use review_source::{AnchorKind, DiffRangeAnchor, FrozenHunk};
 use review_thread_projection::{SharedThreadProjection, ThreadPlacement};
 use review_threads::{
     Draft, MessageId, ReviewThread, ReviewThreads, ThreadCommand, ThreadId, ThreadPaths,
-    ThreadSource, WakeupFailure,
+    ThreadSource, WakeupNotice,
 };
 use review_types::ReviewUnit;
 use ui_actions::Action;
@@ -36,24 +36,24 @@ pub(super) struct Comments {
     files: ThreadFiles,
     editor_height: u16,
     /// Shared with every viewer of the pane.
-    wakeup_failures: WakeupFailures,
+    wakeup_notices: WakeupNotices,
 }
 
-/// For each review, the latest wakeup for its pending comments that did not reach the agent,
-/// until another is on its way.
+/// For each review, the latest wakeup for its pending comments that waits to reach the agent or
+/// did not reach it, until another is on its way or it went.
 #[derive(Clone, Default)]
-pub(super) struct WakeupFailures(Rc<RefCell<HashMap<ReviewUnit, WakeupFailure>>>);
+pub(super) struct WakeupNotices(Rc<RefCell<HashMap<ReviewUnit, WakeupNotice>>>);
 
-impl WakeupFailures {
+impl WakeupNotices {
     /// Record what became of the latest wakeup for a review's pending comments; returns whether
     /// that changed what the review's threads show.
     pub(super) fn report(&self, event: &ThreadWakeupReported) -> bool {
-        let mut failures = self.0.borrow_mut();
-        match &event.failure {
-            Some(failure) => {
-                failures.insert(event.review_unit.clone(), failure.clone()) != Some(failure.clone())
+        let mut notices = self.0.borrow_mut();
+        match &event.notice {
+            Some(notice) => {
+                notices.insert(event.review_unit.clone(), notice.clone()) != Some(notice.clone())
             }
-            None => failures.remove(&event.review_unit).is_some(),
+            None => notices.remove(&event.review_unit).is_some(),
         }
     }
 }
@@ -116,10 +116,10 @@ impl CommentTarget {
 }
 
 impl Comments {
-    /// Comments editing the pane's shared `drafts`, showing its shared `wakeup_failures`.
+    /// Comments editing the pane's shared `drafts`, showing its shared `wakeup_notices`.
     pub(super) fn new(
         drafts: Rc<RefCell<Drafts>>,
-        wakeup_failures: WakeupFailures,
+        wakeup_notices: WakeupNotices,
         review: SharedThreadProjection,
     ) -> Self {
         Self {
@@ -133,16 +133,16 @@ impl Comments {
             unavailable: HashSet::new(),
             files: ThreadFiles::Review(review),
             editor_height: 5,
-            wakeup_failures,
+            wakeup_notices,
         }
     }
 
-    /// Why the latest wakeup for the comment of `thread` that waits for a reply did not reach
-    /// the agent, if it did not.
-    pub(super) fn wakeup_failure(&self, thread: &ReviewThread) -> Option<String> {
-        let failures = self.wakeup_failures.0.borrow();
-        let failure = failures.get(&self.book.as_ref()?.review_unit)?;
-        failure.covers(thread).then(|| failure.error.clone())
+    /// What the latest wakeup for the comment of `thread` that waits for a reply shows: why it
+    /// waits to reach the agent, or why it did not reach it, if either.
+    pub(super) fn wakeup_notice(&self, thread: &ReviewThread) -> Option<WakeupNotice> {
+        let notices = self.wakeup_notices.0.borrow();
+        let notice = notices.get(&self.book.as_ref()?.review_unit)?;
+        notice.covers(thread).then(|| notice.clone())
     }
 
     /// Whether the focus edits a reply in the pane's conversation view.

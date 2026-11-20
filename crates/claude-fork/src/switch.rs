@@ -152,12 +152,14 @@ impl Resume<'_> {
             ));
         };
         let command = format!("/resume {}", self.session);
-        let deadline = Instant::now() + self.limit;
         let expectation = hooks.expect_resume(&hooked, self.session, &resume_block(&command));
         self.pane
             .host
             .submit_prompt(self.pane.pane, &command)
             .map_err(|error| SwitchFailure::untyped(error.to_string()))?;
+        // The host may hold the command, for as long as the agent's input line shows text: the
+        // time the agent takes starts once it is typed.
+        let deadline = Instant::now() + self.limit;
         let late = |what: &str| SwitchFailure {
             error: format!(
                 "{what} the agent on the session {} within {} s",

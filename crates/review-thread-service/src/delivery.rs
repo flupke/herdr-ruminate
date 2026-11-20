@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use agent_hooks::{AgentHooks, Heard, OtherPrompts};
-use herdr_client::protocol::{Agent, AgentPort};
+use herdr_client::protocol::{Agent, AgentPort, PromptWait};
 
 use crate::{Input, PinnedAgent};
 
@@ -27,7 +27,8 @@ const BLOCKED: &str = "The progressive reviewer stopped this prompt while it typ
                        reviewer.";
 
 /// Submit `text` to `agent` and wait until it starts on it: as its `hooks` report the prompt,
-/// when the agent runs them, and otherwise as Herdr reports the agent's status. A host that
+/// when the agent runs them, and otherwise as Herdr reports the agent's status. `waits` hears
+/// why the host holds the prompt before it types it, each time that changes. A host that
 /// refuses the prompt typed nothing; any other failure may come after the host wrote the text,
 /// so it leaves the outcome unknown.
 fn prompt_agent(
@@ -35,6 +36,7 @@ fn prompt_agent(
     hooks: Option<&AgentHooks>,
     agent: &Agent,
     text: &str,
+    waits: &mut dyn FnMut(Option<PromptWait>),
 ) -> Result<(), PromptError> {
     let failure = |error: herdr_client::Error| match error {
         herdr_client::Error::AgentNotStarted { .. } => PromptError::NotStarted,
@@ -45,13 +47,16 @@ fn prompt_agent(
     };
     let Some((hooks, hooked)) = hooks.and_then(|hooks| Some((hooks, hooks.hooked(port, agent)?)))
     else {
-        return port.prompt_agent(&agent.pane_id, text).map_err(failure);
+        return port
+            .prompt_agent_telling_waits(&agent.pane_id, text, waits)
+            .map_err(failure);
     };
     // A host that types the prompt only once nobody types there may wait for seconds: the
     // user's own prompts go on meanwhile, when it holds none of the reviewer's text.
     let others = OtherPrompts::for_host(port);
     let expectation = hooks.expect_prompt(&hooked, text, BLOCKED, others);
-    port.submit_prompt(&agent.pane_id, text).map_err(failure)?;
+    port.submit_prompt_telling_waits(&agent.pane_id, text, waits)
+        .map_err(failure)?;
     match expectation.wait(HOOK_LIMIT) {
         Some(Heard::Submitted) => Ok(()),
         Some(Heard::Joined { left }) => Err(PromptError::Blocked { left }),
@@ -78,17 +83,22 @@ fn prompt_agent(
 /// What the courier calls with the outcome of one prompt, on its own thread.
 type Outcome = Box<dyn FnOnce(Result<(), PromptError>) + Send>;
 
+/// What the courier calls, on its own thread, with why the host holds a prompt before it types
+/// it, each time that changes, and `None` once it no longer does.
+type Waits = Box<dyn FnMut(Option<PromptWait>) + Send>;
+
 /// One prompt for the courier to send, and where its outcome goes.
 struct QueuedPrompt {
     agent: Agent,
     text: String,
     /// Set when the owner withdraws the prompt; one still waiting behind another is not sent.
     cancelled: Option<Arc<AtomicBool>>,
+    waits: Waits,
     outcome: Outcome,
 }
 
 impl QueuedPrompt {
-    fn send(self, port: &dyn AgentPort, hooks: Option<&AgentHooks>) {
+    fn send(mut self, port: &dyn AgentPort, hooks: Option<&AgentHooks>) {
         let withdrawn = self
             .cancelled
             .as_ref()
@@ -96,7 +106,7 @@ impl QueuedPrompt {
         let result = if withdrawn {
             Err(PromptError::Cancelled)
         } else {
-            prompt_agent(port, hooks, &self.agent, &self.text)
+            prompt_agent(port, hooks, &self.agent, &self.text, &mut self.waits)
         };
         (self.outcome)(result);
     }
@@ -313,10 +323,24 @@ impl Courier {
         cancelled: Option<Arc<AtomicBool>>,
         outcome: impl FnOnce(Result<(), PromptError>) + Send + 'static,
     ) {
+        self.send_telling_waits(agent, text, cancelled, |_| {}, outcome);
+    }
+
+    /// [`Self::send`], telling `waits` why the host holds the prompt before it types it, each
+    /// time that changes, and `None` once it no longer does.
+    pub(super) fn send_telling_waits(
+        &self,
+        agent: Agent,
+        text: String,
+        cancelled: Option<Arc<AtomicBool>>,
+        waits: impl FnMut(Option<PromptWait>) + Send + 'static,
+        outcome: impl FnOnce(Result<(), PromptError>) + Send + 'static,
+    ) {
         let parcel = Parcel::Prompt(Box::new(QueuedPrompt {
             agent,
             text,
             cancelled,
+            waits: Box::new(waits),
             outcome: Box::new(outcome),
         }));
         self.gate.queue();
@@ -659,7 +683,7 @@ mod tests {
         let port = herdr_client::memory::InMemoryAgents::default();
         port.refuse_prompts("it waits on its user");
 
-        let result = prompt_agent(&port, None, &agent, "Review x.rs");
+        let result = prompt_agent(&port, None, &agent, "Review x.rs", &mut |_| {});
 
         assert!(
             matches!(&result, Err(PromptError::Delivery(message)) if message.contains("(it waits on its user)")),

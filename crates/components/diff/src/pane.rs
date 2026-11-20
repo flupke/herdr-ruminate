@@ -63,7 +63,7 @@ impl DiffComponent {
             repository_root,
             palette,
             drafts: std::rc::Rc::default(),
-            wakeup_failures: crate::comments::WakeupFailures::default(),
+            wakeup_notices: crate::comments::WakeupNotices::default(),
             thread_projection,
         };
         let files = SourceViewer::new(&services, Role::Files, reviewable_files);
@@ -357,7 +357,7 @@ impl DiffComponent {
     }
 
     fn wakeup_reported(&mut self, event: &ThreadWakeupReported) {
-        if !self.services.wakeup_failures.report(event) {
+        if !self.services.wakeup_notices.report(event) {
             return;
         }
         for (_, viewer) in self.viewers_mut() {

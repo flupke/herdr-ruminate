@@ -125,7 +125,7 @@ struct Services {
     repository_root: PathBuf,
     palette: Palette,
     drafts: std::rc::Rc<RefCell<review_drafts::Drafts>>,
-    wakeup_failures: comments::WakeupFailures,
+    wakeup_notices: comments::WakeupNotices,
     thread_projection: SharedThreadProjection,
 }
 
@@ -194,7 +194,7 @@ impl SourceViewer {
             evidence: explore::ShownEvidence::default(),
             comments: comments::Comments::new(
                 std::rc::Rc::clone(&services.drafts),
-                services.wakeup_failures.clone(),
+                services.wakeup_notices.clone(),
                 services.thread_projection.clone(),
             ),
             thread_projection: services.thread_projection.clone(),

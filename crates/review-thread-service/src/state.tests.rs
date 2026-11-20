@@ -3,10 +3,12 @@
 use std::sync::{Arc, Mutex};
 
 use herdr_client::memory::{InMemoryAgents, SentPrompt};
-use herdr_client::protocol::{AgentSession, AgentStatus, TabId, WorkspaceId};
+use herdr_client::protocol::{AgentSession, AgentStatus, PromptWait, TabId, WorkspaceId};
 use review_mcp::{Operation, Response};
 use review_source::{AnchorKind, DiffRangeAnchor};
-use review_threads::{AskedUnder, MessageId, ReviewThread, ThreadId, WakeupFailure};
+use review_threads::{
+    AskedUnder, MessageId, ReviewThread, ThreadId, WakeupFailure, WakeupNotice, WakeupWait,
+};
 use tempfile::TempDir;
 use test_case::test_case;
 
@@ -23,7 +25,7 @@ struct Service {
     target: AgentTarget,
     errors: Arc<Mutex<Vec<String>>>,
     /// The outcome of each wakeup, as the worker published it.
-    wakeups: Arc<Mutex<Vec<Option<WakeupFailure>>>>,
+    wakeups: Arc<Mutex<Vec<Option<WakeupNotice>>>>,
     /// The messages the worker said the reviewer posted in a round's conversation.
     round_messages: Arc<Mutex<Vec<crate::RoundMessage>>>,
     seen_prompts: usize,
@@ -68,11 +70,11 @@ impl Service {
         let publish = move |event| match event {
             Event::RoundMessage(message) => heard.lock().unwrap().push(message),
             Event::Error(error) => published.lock().unwrap().push(error),
-            Event::Wakeup { failure, .. } => {
-                if let Some(failure) = &failure {
+            Event::Wakeup { notice, .. } => {
+                if let Some(WakeupNotice::Failed(failure)) = &notice {
                     published.lock().unwrap().push(failure.error.clone());
                 }
-                outcomes.lock().unwrap().push(failure);
+                outcomes.lock().unwrap().push(notice);
             }
             _ => {}
         };
@@ -218,7 +220,7 @@ impl Service {
         self.errors.lock().unwrap().clone()
     }
 
-    fn wakeup_outcomes(&self) -> Vec<Option<WakeupFailure>> {
+    fn wakeup_outcomes(&self) -> Vec<Option<WakeupNotice>> {
         self.wakeups.lock().unwrap().clone()
     }
 
@@ -670,10 +672,10 @@ fn a_wakeup_that_does_not_reach_the_agent_names_the_comments_it_left_waiting() {
         service.wakeup_outcomes(),
         [
             None,
-            Some(WakeupFailure {
+            Some(WakeupNotice::Failed(WakeupFailure {
                 through,
                 error: PromptError::NotStarted.to_string(),
-            })
+            }))
         ],
         "a wakeup on its way clears the failure, then its outcome reports it"
     );
@@ -686,13 +688,72 @@ fn a_wakeup_that_does_not_reach_the_agent_names_the_comments_it_left_waiting() {
 }
 
 #[test]
+fn a_wakeup_the_host_holds_names_why_until_it_goes() {
+    let mut service = Service::start();
+    service
+        .agents
+        .hold_prompts(&pane("first"), PromptWait::TypedText);
+    service.talk("round-7", "Why a lock here?", None);
+
+    only_wakeup(&service.poll());
+
+    let book = &service.state.books[&UNIT.into()];
+    let through = book.round_conversation("round-7").unwrap().messages[0].sequence();
+    assert_eq!(
+        service.wakeup_outcomes(),
+        [
+            None,
+            Some(WakeupNotice::Waiting(WakeupWait {
+                through,
+                reason: PromptWait::TypedText.to_string(),
+            })),
+            None,
+        ],
+        "a wakeup on its way, held for its reason, then on its way again"
+    );
+}
+
+#[test]
+fn a_wakeup_queued_behind_one_that_waits_keeps_saying_why() {
+    let mut service = Service::start();
+    service.talk("round-7", "Why a lock here?", None);
+    let (_, access) = only_wakeup(&service.poll());
+    let book = &service.state.books[&UNIT.into()];
+    let first = book.round_conversation("round-7").unwrap().messages[0].sequence();
+    // The first wakeup's send waits for the text in the agent's line.
+    let _ = service.state.input(Input::Notification {
+        token: access,
+        through: first,
+        news: NotificationNews::Waits(Some(PromptWait::TypedText)),
+    });
+
+    service.talk("round-7", "And this one?", None);
+    service.poll();
+
+    let book = &service.state.books[&UNIT.into()];
+    let second = book.round_conversation("round-7").unwrap().messages[1].sequence();
+    let waits = |through| {
+        Some(WakeupNotice::Waiting(WakeupWait {
+            through,
+            reason: PromptWait::TypedText.to_string(),
+        }))
+    };
+    let outcomes = service.wakeup_outcomes();
+    assert_eq!(
+        outcomes[outcomes.len() - 2..],
+        [waits(first), waits(second)],
+        "the second wakeup waits behind the first, for the same reason: {outcomes:?}"
+    );
+}
+
+#[test]
 fn a_wakeup_without_an_agent_to_receive_it_names_the_comments_it_left_waiting() {
     let mut service = Service::start();
     service.agents.remove_agent(&pane("first"));
     service.talk("round-7", "Anyone there?", None);
     assert!(service.poll().is_empty());
     let outcomes = service.wakeup_outcomes();
-    let [Some(failure)] = outcomes.as_slice() else {
+    let [Some(WakeupNotice::Failed(failure))] = outcomes.as_slice() else {
         panic!("one failed wakeup, got {outcomes:?}");
     };
     let book = &service.state.books[&UNIT.into()];
@@ -803,11 +864,9 @@ fn a_wakeup_to_a_codex_agent_is_confirmed_on_the_session_its_calls_named() {
         "the hook blocked the prompt"
     );
     let outcomes = service.wakeup_outcomes();
-    let failure = outcomes
-        .last()
-        .unwrap()
-        .as_ref()
-        .expect("the wakeup failed");
+    let Some(Some(WakeupNotice::Failed(failure))) = outcomes.last() else {
+        panic!("the wakeup failed: {outcomes:?}");
+    };
     assert!(
         failure.error.ends_with("The text left there: my words"),
         "{failure:?}"

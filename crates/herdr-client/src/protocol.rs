@@ -105,6 +105,39 @@ impl PaneSize {
     }
 }
 
+/// Why a prompt waits before the host types it in the agent's terminal: the host reads the
+/// agent's input line right before it types, and types nothing over text someone typed there,
+/// nor while it cannot tell what a key does there.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PromptWait {
+    /// The agent's input line shows text someone typed: the prompt goes once it is sent or
+    /// cleared.
+    TypedText,
+    /// The agent's screen shows no input line, as while it shows a dialog or a menu.
+    NoInputLine,
+    /// The host cannot read the input line of the agent, named as it reports itself.
+    UnreadAgent(String),
+}
+
+impl std::fmt::Display for PromptWait {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TypedText => formatter.write_str(
+                "the agent's input line shows text someone typed; it goes once that text is sent \
+                 or cleared",
+            ),
+            Self::NoInputLine => formatter.write_str(
+                "the agent's screen shows no input line, as while a dialog shows; it goes once \
+                 the input line is back and empty",
+            ),
+            Self::UnreadAgent(agent) => write!(
+                formatter,
+                "the reviewer cannot read the input line of {agent}, so it types nothing there"
+            ),
+        }
+    }
+}
+
 /// The agent host that review delivery talks to: it resolves the target agent,
 /// reports agent and process identity, and submits prompts.
 ///
@@ -131,6 +164,31 @@ pub trait AgentPort: Send + Sync {
     /// working: for a command of the agent's own, which starts no turn, or for a prompt whose
     /// submission the agent's hooks confirm.
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()>;
+
+    /// [`Self::prompt_agent`], telling `waits` why the prompt waits before the host types it,
+    /// each time that changes, and `None` once it no longer waits: a host that types it at once
+    /// never tells.
+    fn prompt_agent_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        let _ = waits;
+        self.prompt_agent(pane_id, text)
+    }
+
+    /// [`Self::submit_prompt`], telling `waits` why the prompt waits, as
+    /// [`Self::prompt_agent_telling_waits`] does.
+    fn submit_prompt_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        let _ = waits;
+        self.submit_prompt(pane_id, text)
+    }
 
     /// Whether the host's events tell each change of an agent's session
     /// ([`HerdrEvent::AgentSessionChanged`]): herdr-core's do, Herdr's do not, so a caller that
@@ -171,6 +229,24 @@ impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
 
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()> {
         (**self).submit_prompt(pane_id, text)
+    }
+
+    fn prompt_agent_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        (**self).prompt_agent_telling_waits(pane_id, text, waits)
+    }
+
+    fn submit_prompt_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        (**self).submit_prompt_telling_waits(pane_id, text, waits)
     }
 
     fn announces_sessions(&self) -> bool {

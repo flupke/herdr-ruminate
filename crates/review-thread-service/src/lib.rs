@@ -14,7 +14,7 @@ use std::thread::{self, JoinHandle};
 use herdr_client::protocol::{AgentPort, AgentTarget, HerdrEvent};
 use review_mcp::Endpoint;
 use review_store::ReviewStore;
-use review_threads::{MessageId, ThreadCommand, WakeupFailure};
+use review_threads::{MessageId, ThreadCommand, WakeupNotice};
 use review_types::ReviewUnit;
 
 pub use delivery::{
@@ -41,12 +41,12 @@ enum Input {
     /// is with the courier.
     #[cfg(any(test, feature = "flush"))]
     Flush(Sender<()>),
-    /// The outcome of the comment notification sent with access `token` for the comments
-    /// through sequence `through`.
-    Notified {
+    /// News of the comment notification sent with access `token` for the comments through
+    /// sequence `through`.
+    Notification {
         token: String,
         through: u64,
-        result: Result<(), PromptError>,
+        news: NotificationNews,
     },
     /// Record each comments wakeup from now on in a vision session's turn log.
     LogTurns(vision_turns::TurnLog),
@@ -54,6 +54,14 @@ enum Input {
     Withdrawn,
     Bus(BusInput),
     Stop,
+}
+
+/// What the worker hears of a comment notification on its way to the agent.
+enum NotificationNews {
+    /// Why it waits before the agent's host types it; `None` once it no longer waits.
+    Waits(Option<herdr_client::protocol::PromptWait>),
+    /// Its outcome.
+    Outcome(Result<(), PromptError>),
 }
 
 /// What the worker hears about herdr-bus, where it publishes what the user writes to agents.
@@ -74,10 +82,10 @@ pub enum Event {
     /// The reviewer posted a new message in the conversation of an Explore round.
     RoundMessage(RoundMessage),
     /// What became of the latest wakeup for the pending comments of `review_unit`: `None`
-    /// once one is on its way to the agent, or why one did not reach it.
+    /// once one is on its way to the agent, or why it waits to reach it, or why one did not.
     Wakeup {
         review_unit: ReviewUnit,
-        failure: Option<WakeupFailure>,
+        notice: Option<WakeupNotice>,
     },
     Error(String),
 }

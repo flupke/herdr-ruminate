@@ -66,9 +66,10 @@ under herdr-core, which wait on real turns) and reports it, so a regression that
 local guard is worth it only to say what was awaited. The polls: the contract check waits until Herdr reports
 the real agent on its session, which Herdr publishes no event for; the tests of the hc backend
 and the contract check under herdr-core type at a person's pace (`Person::types`), since
-herdr-core tells a person typing by the gaps between their keys, on its own clock, and the
-tests of the hc backend wait out herdr-core's hold of a person's unsent typing, which it ends
-on its own clock too (`PrivateCore::holding_unsent_typing_for` shortens it); the contract
+herdr-core tells a person typing by the gaps between their keys, on its own clock; the tests of
+the hc backend sleep past herdr-core's quiet pause, or its settling of a terminal that just
+started, to show that nothing was typed meanwhile, an absence no event tells, and wait until
+the test agent wrote a key to its `keys` file, which it tells no one else; the contract
 check under
 herdr-core waits until the reviewer's hook recorded the agent's session, which it tells no one,
 and presses Down until Claude Code's question about the folder takes it, since a TUI tells

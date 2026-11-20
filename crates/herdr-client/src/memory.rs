@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::protocol::{Agent, AgentPort, PaneId, PaneProcessInfo, SessionSnapshot};
+use crate::protocol::{Agent, AgentPort, PaneId, PaneProcessInfo, PromptWait, SessionSnapshot};
 use crate::{Error, Result};
 
 /// A prompt submitted to one agent pane.
@@ -35,6 +35,8 @@ struct Host {
     types_prompts_whole: bool,
     /// Why the host refuses each prompt before it types it, if it does.
     refusing: Option<String>,
+    /// Why the host holds each prompt to a pane before it types it, for a while.
+    holding: HashMap<PaneId, PromptWait>,
 }
 
 impl InMemoryAgents {
@@ -91,6 +93,22 @@ impl InMemoryAgents {
     /// a prompt without the reviewer's text go on while the reviewer waits for its own.
     pub fn type_prompts_whole(&self) {
         self.host().types_prompts_whole = true;
+    }
+
+    /// Make the host hold each prompt to `pane_id` for `wait` before it types it, as herdr-core's
+    /// client does while the agent's input line shows text: it tells the wait, then that it
+    /// ended, then types the prompt.
+    pub fn hold_prompts(&self, pane_id: &PaneId, wait: PromptWait) {
+        self.host().holding.insert(pane_id.clone(), wait);
+    }
+
+    /// Tells `waits` why the host holds the prompt to `pane_id`, then that it no longer does.
+    fn hold(&self, pane_id: &PaneId, waits: &mut dyn FnMut(Option<PromptWait>)) {
+        let wait = self.host().holding.get(pane_id).cloned();
+        if let Some(wait) = wait {
+            waits(Some(wait));
+            waits(None);
+        }
     }
 
     /// Make the host refuse each prompt before it types it, for `reason`, as herdr-core
@@ -162,6 +180,26 @@ impl AgentPort for InMemoryAgents {
             });
         }
         Ok(())
+    }
+
+    fn prompt_agent_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        self.hold(pane_id, waits);
+        self.prompt_agent(pane_id, text)
+    }
+
+    fn submit_prompt_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        self.hold(pane_id, waits);
+        self.submit_prompt(pane_id, text)
     }
 
     fn announces_sessions(&self) -> bool {

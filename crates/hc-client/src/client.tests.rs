@@ -11,10 +11,55 @@ use super::*;
 use crate::test_screen::Screen;
 
 /// A stand-in for herdr-core's socket: each connection reads one request, hands it to the test,
-/// and gets the lines `answer` gives for it, then stays open until the client closes it.
+/// and gets the lines `answer` gives for it, then stays open until the client closes it. A
+/// connection that turns framed to watch a terminal gets [`EMPTY_LINE`] painted, and nothing
+/// printed after it; neither reaches the test.
 struct FakeCore {
     _directory: tempfile::TempDir,
     requests: Receiver<Value>,
+}
+
+/// Claude Code's empty input line, as herdr-core paints it.
+const EMPTY_LINE: &str = "────\r\n❯\u{a0}\r\n────\r\n";
+
+/// A fake core whose agent `t3` is an idle Claude Code, whose sends `answer` answers.
+fn fake_core_sending(
+    answer: impl Fn(&Value) -> Vec<Value> + Send + Sync + 'static,
+) -> (HcClient, FakeCore) {
+    fake_core(move |request| match request["method"].as_str() {
+        Some("terminal.get") => vec![result(request, agent_terminal("idle"))],
+        _ => answer(request),
+    })
+}
+
+/// Writes one frame of herdr-core's framed connections.
+fn write_frame(
+    stream: &mut std::os::unix::net::UnixStream,
+    channel: u32,
+    kind: u8,
+    payload: &[u8],
+) {
+    let mut frame = channel.to_le_bytes().to_vec();
+    frame.push(kind);
+    frame.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_le_bytes());
+    frame.extend_from_slice(payload);
+    let _ = stream.write_all(&frame);
+}
+
+/// Answers a watch of a terminal on a connection turned framed: the attach, then `paint`.
+fn watch_terminal(
+    stream: &mut std::os::unix::net::UnixStream,
+    reader: &mut impl Read,
+    paint: &str,
+) {
+    let mut header = [0; 9];
+    reader.read_exact(&mut header).unwrap();
+    let mut payload = vec![0; u32::from_le_bytes(header[5..9].try_into().unwrap()) as usize];
+    reader.read_exact(&mut payload).unwrap();
+    let attach: Value = serde_json::from_slice(&payload).unwrap();
+    let attached = result(&attach, json!({"channel": 1}));
+    write_frame(stream, 0, 0, attached.to_string().as_bytes());
+    write_frame(stream, 1, 0, paint.as_bytes());
 }
 
 fn fake_core(
@@ -34,6 +79,13 @@ fn fake_core(
                 let mut line = String::new();
                 reader.read_line(&mut line).unwrap();
                 let request: Value = serde_json::from_str(&line).unwrap();
+                if request["method"] == "hello" {
+                    let hello = result(&request, json!({"framed": true}));
+                    let _ = writeln!(stream, "{hello}");
+                    watch_terminal(&mut stream, &mut reader, EMPTY_LINE);
+                    let _ = reader.read_to_end(&mut Vec::new());
+                    return;
+                }
                 let lines = answer(&request);
                 let _ = requests.send(request);
                 for line in lines {
@@ -125,11 +177,15 @@ fn another_refusal_is_an_error() {
 #[test]
 fn a_prompt_is_sent_as_typed_without_a_caller_to_tag_it() {
     let (client, core) =
-        fake_core(|request| vec![result(request, json!({"started": true, "turn": 1}))]);
+        fake_core_sending(|request| vec![result(request, json!({"started": true, "turn": 1}))]);
 
     client.prompt_agent(&pane(), "Review x.rs").unwrap();
 
-    let request = core.requests.recv().unwrap();
+    let request = core
+        .requests
+        .iter()
+        .find(|request| request["method"] == "terminal.send")
+        .unwrap();
     assert_eq!(request["method"], "terminal.send");
     assert_eq!(
         request["params"],
@@ -168,7 +224,7 @@ fn an_agent_that_blocked_on_its_user_after_a_prompt_started_on_it() {
 
 #[test]
 fn a_prompt_to_an_agent_that_waits_on_its_user_reaches_nothing_and_says_why() {
-    let (client, _core) = fake_core(|request| vec![refusal_of(request, "blocked")]);
+    let (client, _core) = fake_core_sending(|request| vec![refusal_of(request, "blocked")]);
 
     let error = client.submit_prompt(&pane(), "Review x.rs").unwrap_err();
 
@@ -180,7 +236,7 @@ fn a_prompt_to_an_agent_that_waits_on_its_user_reaches_nothing_and_says_why() {
 
 #[test]
 fn another_refused_send_reaches_nothing_with_herdr_core_s_reason() {
-    let (client, _core) = fake_core(|request| vec![refusal_of(request, "unavailable")]);
+    let (client, _core) = fake_core_sending(|request| vec![refusal_of(request, "unavailable")]);
 
     let error = client.prompt_agent(&pane(), "Review x.rs").unwrap_err();
 
@@ -192,7 +248,7 @@ fn another_refused_send_reaches_nothing_with_herdr_core_s_reason() {
 
 #[test]
 fn a_refused_send_of_a_kind_herdr_core_does_not_list_may_have_typed() {
-    let (client, _core) = fake_core(|request| vec![refusal_of(request, "internal")]);
+    let (client, _core) = fake_core_sending(|request| vec![refusal_of(request, "internal")]);
 
     let error = client.submit_prompt(&pane(), "Review x.rs").unwrap_err();
 
@@ -220,12 +276,15 @@ fn a_submitted_command_does_not_wait_for_the_agent_to_start() {
 
     client.submit_prompt(&pane(), "/resume s1").unwrap();
 
+    // Nothing asks whether the agent started once the send answered: the press of no key offered
+    // with the send may come on either side of it.
     let methods: Vec<Value> = core
         .requests
         .try_iter()
         .map(|request| request["method"].clone())
+        .filter(|method| method != "terminal.keys")
         .collect();
-    assert_eq!(methods, [json!("terminal.send")]);
+    assert_eq!(methods.last(), Some(&json!("terminal.send")));
 }
 
 #[test]

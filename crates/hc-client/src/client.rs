@@ -15,8 +15,8 @@ use herdr_app_focus::{AppHome, LAYOUT_DOCUMENT, Layout, ViewWatch};
 
 use herdr_client::client::{EventCanceller, Tie, read_line, write_json_line};
 use herdr_client::protocol::{
-    Agent, AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, PaneProcessInfo, SessionReport,
-    SessionSnapshot, TabId, WorkspaceId,
+    Agent, AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, PaneProcessInfo, PromptWait,
+    SessionReport, SessionSnapshot, TabId, WorkspaceId,
 };
 use herdr_client::{Error, Result};
 use serde::Deserialize;
@@ -28,12 +28,12 @@ use crate::focus::Focus;
 use crate::terminal::{SESSION_LABEL, Terminal, place_of, session_label};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long `terminal.send` may take: it waits until nobody typed in the terminal for about
-/// 3 seconds, however long someone types there, and from herdr-core 0.1.20 while their typing
-/// there is unsent, up to 60 s past their last key, then a few seconds more to tell whether the
-/// program went working. herdr-core 0.1.18 still types a send given up on, after the reviewer
-/// stopped waiting for its hook, while 0.1.20 cancels it: so the bound is one that nobody types
-/// up to without a pause.
+/// How long `terminal.send` may take once the client offered it on an empty input line: it
+/// waits until nobody typed in the terminal for about 3 seconds, however long someone types
+/// there, and, under a `draft_wait` that is not 0, while their typing there is unsent, up to 60 s
+/// past their last key, then a few seconds more to tell whether the program went working.
+/// herdr-core 0.1.20 and later cancel a send whose client gave up on it: so the bound is one
+/// that nobody types up to without a pause.
 const SEND_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -47,8 +47,6 @@ pub struct HcClient {
     socket_path: PathBuf,
     /// The home of the herdr-app screen whose focus the client follows.
     focus_home: Option<AppHome>,
-    /// How often a send to an agent looks whether unsent typing holds it.
-    look_every: Duration,
 }
 
 /// A refusal of herdr-core: `{code, message, data: {kind, hint}}`.
@@ -161,7 +159,6 @@ impl HcClient {
         Self {
             socket_path,
             focus_home: None,
-            look_every: unsent_typing::LOOK_EVERY,
         }
     }
 
@@ -174,13 +171,6 @@ impl HcClient {
             focus_home: Some(home),
             ..self
         }
-    }
-
-    /// The client, whose sends to an agent look every `look_every` whether unsent typing holds
-    /// them, in place of every few seconds: for a test, which waits on no production interval.
-    #[must_use]
-    pub fn looking_for_unsent_typing_every(self, look_every: Duration) -> Self {
-        Self { look_every, ..self }
     }
 
     /// A client of the core of the terminal this process runs in: herdr-core gives each of its
@@ -299,28 +289,18 @@ impl HcClient {
         }
     }
 
-    /// Pastes `text` into the terminal of `pane_id` and presses Enter. Sent without a caller,
-    /// so herdr-core types the text as it is, without the `<hc from="...">` tags it puts around
-    /// what one of its terminals sends another. The refusals `hc schema` lists typed
-    /// nothing ([`untyped`]). A client that follows a window's focus ends meanwhile the unsent
-    /// typing that herdr-core may hold the send behind, once nobody may be typing there
-    /// ([`unsent_typing`]): without a window, nobody types in a terminal through it.
-    fn send(&self, pane_id: &PaneId, text: &str) -> Result<Sent> {
-        let send = || match self.response(
-            "terminal.send",
-            &json!({"terminal": pane_id.0, "text": text}),
-            SEND_TIMEOUT,
-        )? {
-            Ok(result) => parse(result, "terminal.send"),
-            Err(error) => match untyped(&error) {
-                Some(reason) => Err(Error::NotTyped { reason }),
-                None => Err(refusal("terminal.send", error)),
-            },
-        };
-        if self.focus_home.is_none() {
-            return send();
-        }
-        self.send_past_unsent_typing(pane_id, send)
+    /// Pastes `text` into the terminal of `pane_id` and presses Enter, once the agent's input
+    /// line there reads empty, telling `waits` why it waits until then ([`line_wait`]). Sent
+    /// without a caller, so herdr-core types the text as it is, without the `<hc from="...">`
+    /// tags it puts around what one of its terminals sends another. The refusals `hc schema`
+    /// lists typed nothing ([`untyped`]).
+    fn send(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<Sent> {
+        self.send_on_empty_line(pane_id, text, waits)
     }
 
     /// Calls `method` with `params`, and parses its result; herdr-core's refusal is an error.
@@ -337,7 +317,16 @@ impl HcClient {
         params: &Value,
         timeout: Duration,
     ) -> Result<std::result::Result<Value, ApiError>> {
-        let mut socket = self.connect(Some(timeout))?;
+        self.request_on(self.connect(Some(timeout))?, method, params)
+    }
+
+    /// Calls `method` with `params` on `socket`, a connection of its own, and returns its answer.
+    fn request_on(
+        &self,
+        mut socket: UnixStream,
+        method: &'static str,
+        params: &Value,
+    ) -> Result<std::result::Result<Value, ApiError>> {
         let id = REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let request = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
         write_json_line(&mut socket, &request, method, &self.socket_path)?;
@@ -578,10 +567,23 @@ impl AgentPort for HcClient {
         Ok(terminal.process_info())
     }
 
+    fn prompt_agent(&self, pane_id: &PaneId, text: &str) -> Result<()> {
+        self.prompt_agent_telling_waits(pane_id, text, &mut |_| {})
+    }
+
+    fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()> {
+        self.submit_prompt_telling_waits(pane_id, text, &mut |_| {})
+    }
+
     /// herdr-core tells whether the agent went working within a few seconds; an agent that
     /// blocked on its user at once started too, as Herdr's wait judges it.
-    fn prompt_agent(&self, pane_id: &PaneId, text: &str) -> Result<()> {
-        let sent = self.send(pane_id, text)?;
+    fn prompt_agent_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        let sent = self.send(pane_id, text, waits)?;
         if sent.started != Some(false) {
             return Ok(());
         }
@@ -599,8 +601,13 @@ impl AgentPort for HcClient {
         })
     }
 
-    fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()> {
-        self.send(pane_id, text).map(|_| ())
+    fn submit_prompt_telling_waits(
+        &self,
+        pane_id: &PaneId,
+        text: &str,
+        waits: &mut dyn FnMut(Option<PromptWait>),
+    ) -> Result<()> {
+        self.send(pane_id, text, waits).map(|_| ())
     }
 
     /// herdr-core tells each change of a terminal's labels, the session label's included.
@@ -609,7 +616,7 @@ impl AgentPort for HcClient {
     }
 
     /// `terminal.send` types only once nobody typed for about 3 s, and holds the keys pressed
-    /// while it types.
+    /// while it types; the client offers it only on an empty input line.
     fn types_prompts_whole(&self) -> bool {
         true
     }
@@ -704,8 +711,10 @@ impl AgentHost for HcClient {
     }
 }
 
-#[path = "unsent_typing.rs"]
-mod unsent_typing;
+#[path = "line_wait.rs"]
+mod line_wait;
+#[path = "screen_watch.rs"]
+mod screen_watch;
 
 #[cfg(test)]
 #[path = "client.tests.rs"]

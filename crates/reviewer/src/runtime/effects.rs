@@ -564,14 +564,14 @@ fn publish_thread_event(messages: &ApplicationEventSender, event: comments::Even
         comments::Event::Posted(event) => {
             let _ = messages.send(event);
         }
-        // The threads it covered show the failure, beside their Retry agent.
+        // The threads it covers show why it waits, or why it failed beside their Retry agent.
         comments::Event::Wakeup {
             review_unit,
-            failure,
+            notice,
         } => {
             let _ = messages.send(ui_events::ThreadWakeupReported {
                 review_unit,
-                failure,
+                notice,
             });
         }
         comments::Event::RoundMessage(_) => {}
