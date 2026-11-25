@@ -150,6 +150,12 @@ pub struct ReviewerAnswer {
 }
 
 impl ReviewerAnswer {
+    /// Whether the answer to a question sends the agent back to the drawing board, in place of a
+    /// choice: a reply to the conclusion reached there stays there, but sends no one back.
+    pub fn sends_to_drawing_board(&self) -> bool {
+        self.drawing_board && self.question.is_some()
+    }
+
     /// Whether the answer answers `question`, in that version.
     pub(crate) fn answers(&self, question: &Question) -> bool {
         self.question.as_ref() == Some(question)

@@ -184,11 +184,36 @@ fn back_at_the_drawing_board_a_reply_to_the_conclusion_goes_on_the_bus_marked_so
     let reply = harness.reply_to_conclusion("And ask @David about the queue.");
 
     let on_bus = harness.words_on_bus(&bus);
-    assert_eq!(on_bus.len(), 1, "Back to the drawing board has no text");
+    assert_eq!(on_bus.len(), 1, "sent back with no comment, it has no text");
     assert_eq!(on_bus[0].id.to_string(), reply.answer.unwrap().id);
     assert_eq!(on_bus[0].data["text"], "And ask @David about the queue.");
     assert_eq!(on_bus[0].data["drawing_board"], true);
     assert_eq!(on_bus[0].data.get("question"), None);
+}
+
+#[test]
+fn the_reason_typed_for_back_to_the_drawing_board_goes_on_the_bus_with_its_question() {
+    let directory = tempfile::tempdir().unwrap();
+    let bus = directory.path().join("bus.db");
+    let mut harness = Harness::start();
+    harness.publish_on_bus(&bus);
+    harness.capture();
+    let first = harness.request(None);
+    let access = harness.turn(&first);
+    assert!(applied(harness.submit(&access, question(&first, 1))));
+
+    let (back, _) = harness.answer_with(AnswerInput {
+        text: "One queue per conversation.".into(),
+        drawing_board: true,
+        ..AnswerInput::default()
+    });
+
+    let on_bus = harness.words_on_bus(&bus);
+    assert_eq!(on_bus.len(), 1);
+    assert_eq!(on_bus[0].id.to_string(), back.answer.unwrap().id);
+    assert_eq!(on_bus[0].data["text"], "One queue per conversation.");
+    assert_eq!(on_bus[0].data["drawing_board"], true);
+    assert_eq!(on_bus[0].data["question"], "q1");
 }
 
 #[test]

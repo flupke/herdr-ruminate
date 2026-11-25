@@ -44,6 +44,21 @@ export function kept(key) {
 }
 
 /**
+ * What is typed under `key`: the text of the box that keeps it, when the page has one, else the
+ * kept draft; `null` when there is neither. A browser that keeps nothing still has the box's.
+ * @param {string} key
+ * @returns {string | null}
+ */
+export function typed(key) {
+  for (const box of document.querySelectorAll('[data-draft]')) {
+    if ((box instanceof HTMLTextAreaElement || box instanceof HTMLInputElement) && box.dataset.draft === key) {
+      return box.value;
+    }
+  }
+  return kept(key);
+}
+
+/**
  * Keeps `value` under `key` for the tab, or forgets it with `null`.
  * @param {string} key
  * @param {string | null} value

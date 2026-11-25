@@ -1031,16 +1031,45 @@ fn at_drawing_board(
     comparison: &Comparison,
     setup: impl FnOnce(&mut Exploration),
 ) -> TurnInstructions {
+    sent_back_with(comparison, setup, "")
+}
+
+/// The turn after the reviewer sent the agent back to the drawing board with the comment
+/// `comment`.
+fn sent_back_with(
+    comparison: &Comparison,
+    setup: impl FnOnce(&mut Exploration),
+    comment: &str,
+) -> TurnInstructions {
     let mut exploration = Exploration::new(Arc::new(comparison.clone()));
     setup(&mut exploration);
     let mut request = exploration.request(None, None).unwrap();
     request.answer = Some(ReviewerAnswer {
         option: None,
-        text: String::new(),
+        text: comment.into(),
         drawing_board: true,
         ..answer(&request)
     });
     prepared(&request, comparison)
+}
+
+#[test]
+fn the_comment_that_sends_the_agent_back_to_the_drawing_board_is_the_reviewer_s_reason() {
+    let comparison = comparison();
+    let reason = "One queue per conversation.\nThe global queue reorders replies.";
+
+    let turn = sent_back_with(&comparison, |_| {}, reason);
+    let data = file(&turn, "turn.md").unwrap();
+
+    let heading = format!("{}:", crate::input::DRAWING_BOARD_REASON);
+    assert!(data.contains(&format!("{heading}\n{reason}\n")), "{data}");
+    assert!(!data.contains("Comment:"), "{data}");
+    let blank = sent_back_with(&comparison, |_| {}, " \n");
+    let blank = file(&blank, "turn.md").unwrap();
+    assert!(
+        !blank.contains(&heading),
+        "white space is no reason: {blank}"
+    );
 }
 
 #[test]

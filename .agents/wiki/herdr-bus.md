@@ -12,7 +12,7 @@ What goes on it, by the `place` of its `data`, with the review (`review`) and th
 | `place` | The text | Its `id` | Its `to` |
 |---|---|---|---|
 | `thread` | a review comment, in a review thread or a round conversation (`thread`) | the thread message's ID | the pane the next delivery pass picks for the wakeup (`State::prepare_notification`), or `null` when none takes it |
-| `answer` | an Explore answer's comment, with its `question` and `choice`, or a reply to the conclusion (no `question`); `drawing_board` when it replies at the drawing board | the answer's ID | the pane of the agent the round selected for the turn |
+| `answer` | an Explore answer's comment, with its `question` and `choice`, or a reply to the conclusion (no `question`); `drawing_board` when it sends the agent back to the drawing board, or replies there | the answer's ID | the pane of the agent the round selected for the turn |
 | `implementation` | the lines the user wrote or changed in the list of Implement or Post review; none when they changed nothing | the request's delivery ID | the same |
 | `start` | the user's name, given at Start for someone else's change | the kickoff's request | the same |
 
@@ -20,7 +20,8 @@ What goes on it, by the `place` of its `data`, with the review (`review`) and th
   no UUID, as in a thread message saved by an older reviewer, goes as a `UUIDv5` of it.
 - The Explore session publishes when the round saves a new turn (`ExploreSession::deliver_turn`)
   or an implementation request (`ExploreSession::implement`); a Retry publishes nothing again.
-  Back to the drawing board has no text, and a choice without a comment publishes nothing.
+  Back to the drawing board publishes its comment, the reviewer's reason, when one was typed;
+  without one, as a choice without a comment, it publishes nothing.
 - One thread, the thread service worker's, writes the bus file; the Explore session hands it its
   words through `PromptSender::publish_words`. A bus that fails never holds up the post or the
   prompt: the failure shows as a toast, and the next text opens the bus again. A text sent while

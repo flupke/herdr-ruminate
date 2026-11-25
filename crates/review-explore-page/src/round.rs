@@ -551,6 +551,8 @@ pub struct Answered {
     pub option: Option<String>,
     /// The request of the agent's turn the answer replied to.
     pub in_reply_to: String,
+    /// Whether the answer sent the agent back to the drawing board, in place of a choice.
+    pub drawing_board: bool,
 }
 
 /// A stage, and a revision that changes with every published stage. A page that shows the
@@ -706,6 +708,7 @@ impl RoundSnapshot {
                 Some(_) => {
                     latest.answered.question == answered.question
                         && latest.answered.option == answered.option
+                        && latest.answered.drawing_board == answered.drawing_board
                 }
                 None => {
                     latest.answered.question.is_none()

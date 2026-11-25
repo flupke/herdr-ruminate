@@ -2,14 +2,17 @@
 // asking and lists the changes the design needs, which the reviewer edits and implements on the
 // conclusion. The question's panel and the design screen offer it as a button that a first click
 // turns into its red confirmation, with what follows under it, and Escape turns back; the
-// masthead's menu shows the same confirmation in place of its entries. All send the same request.
+// masthead's menu shows the same confirmation in place of its entries. All send the same request,
+// with the comment typed in the answer's box, wherever that box is: the agent reads it as the
+// reviewer's reason. The box keeps its draft, so Cancel answer finds the comment in it again.
 
 /** @import { QuestionView } from "./types.ts" */
 
+import { typedComment } from './answer-comment.js';
 import { h } from './dom.js';
 
 const HINT =
-  "The agent stops asking and lists the changes the design needs, for you to edit on the conclusion. Acting on the conclusion reopens the lines this round marked reviewed, for a new round on the new code; until then, Cancel answer takes it back.";
+  "The agent stops asking and lists the changes the design needs, for you to edit on the conclusion. Your comment, if you typed one, goes with it as your reason. Acting on the conclusion reopens the lines this round marked reviewed, for a new round on the new code; until then, Cancel answer takes it back.";
 
 const CONFIRM = 'Confirm: back to the drawing board';
 
@@ -36,7 +39,7 @@ export function drawingBoard(question) {
     { class: 'button secondary block', type: 'button', onclick: () => arm() },
     'Back to the drawing board…',
   );
-  const form = h('form', { class: 'drawing-board', 'data-method': 'answer' }, fields(question), ask);
+  const form = drawingBoardForm(question, ask);
   const arm = () => {
     const confirm = h('button', { class: 'button danger block', type: 'submit' }, CONFIRM);
     shown = [confirm, h('p', { class: 'hint' }, HINT)];
@@ -56,17 +59,25 @@ export function drawingBoard(question) {
 /** The confirmation, which answers `question`: in the menu, in place of its entries.
  * @param {QuestionView} question */
 export function drawingBoardConfirmation(question) {
-  return h(
-    'form',
-    { class: 'drawing-board', 'data-method': 'answer' },
-    fields(question),
+  return drawingBoardForm(
+    question,
     h('p', { class: 'hint' }, HINT),
     h('button', { class: 'button danger', type: 'submit' }, CONFIRM),
   );
 }
 
-/** What Back to the drawing board sends: the question it answers, and that it is no answer.
- * @param {QuestionView} question */
-function fields(question) {
-  return [answerFields(question), h('input', { type: 'hidden', name: 'drawing_board', value: 'true' })];
+/** The form of Back to the drawing board, with `children`: it sends the question it answers, that
+ * it is no answer, and the comment typed for the question.
+ * @param {QuestionView} question
+ * @param {...HTMLElement} children */
+function drawingBoardForm(question, ...children) {
+  const form = h(
+    'form',
+    { class: 'drawing-board', 'data-method': 'answer' },
+    answerFields(question),
+    h('input', { type: 'hidden', name: 'drawing_board', value: 'true' }),
+    children,
+  );
+  form.addEventListener('formdata', (event) => event.formData.set('comment', typedComment(question)));
+  return form;
 }

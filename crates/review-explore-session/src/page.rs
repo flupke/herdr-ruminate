@@ -588,5 +588,6 @@ pub(crate) fn answered(answer: &ReviewerAnswer) -> Answered {
             .map(|question| (question.id.clone(), question.version)),
         option: answer.option.as_ref().map(|option| option.id.clone()),
         in_reply_to: answer.in_reply_to.clone(),
+        drawing_board: answer.sends_to_drawing_board(),
     }
 }

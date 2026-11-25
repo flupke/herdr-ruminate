@@ -124,6 +124,7 @@ impl<R: Rounds> Actions<'_, R> {
                 question: Some((params.question, params.version)),
                 option: params.choice,
                 in_reply_to: String::new(),
+                drawing_board: params.drawing_board,
             };
             return repeat(shown.repeats(&answered, &comment), action);
         }

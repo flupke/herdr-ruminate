@@ -21,12 +21,13 @@
 /** @import { Children } from "./dom.js" */
 /** @import { Turn } from "./turn.js" */
 
+import { takeOverComment } from './answer-comment.js';
 import { DOORS, doorChip } from './chips.js';
 import { choiceCards } from './choices.js';
 import { citationsSection } from './citations.js';
 import { disclosure } from './disclosure.js';
 import { h, keyOf, markdown, Region, setRenderedMarkdown } from './dom.js';
-import { keep, keepDraft, kept } from './drafts.js';
+import { keepDraft } from './drafts.js';
 import { answerFields, drawingBoard } from './drawing-board.js';
 import { SEND_KEYS_LABEL, sendsOnKeys } from './send-keys.js';
 import { turnStrip } from './turn.js';
@@ -127,13 +128,6 @@ function revisionNotice(reasonHtml) {
   );
 }
 
-/** The key of the comment typed for `version` of the question.
- * @param {QuestionView} question
- * @param {number} version */
-function draftKey(question, version) {
-  return `comment:${question.round ?? ''}:${question.id}:${version}`;
-}
-
 /**
  * What the reader reads of a question, on the question screen and on an earlier question's: the
  * eyebrow that names it ("QUESTION 2"), with the door's chip and `more`, the question as the
@@ -188,12 +182,9 @@ function panel(question) {
   const revealed = question.recommendation === 'shown_after_pick';
   const door = question.door ? DOORS[question.door].name : 'This question';
   const sendLabel = revealed ? 'Confirm answer' : 'Send answer';
-  const draft = draftKey(question, question.version);
   // A revised question keeps the comment typed for the version it replaced, under its own key,
   // so that a second revision keeps it too.
-  const from = question.revision ? draftKey(question, question.revision.replaced_version) : null;
-  const replaced = from === null ? null : kept(from);
-  if (replaced !== null && kept(draft) === null) keep(draft, replaced);
+  const { key: draft, from } = takeOverComment(question);
   const box = sendsOnKeys(
     keepDraft(
       h('textarea', { class: 'comment', id: 'comment', name: 'comment', rows: 3, placeholder: `${sendLabel}: ${SEND_KEYS_LABEL}` }),

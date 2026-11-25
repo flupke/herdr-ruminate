@@ -527,6 +527,7 @@ impl Session {
                 question,
                 option: picked.map(|alternative| alternative.id.clone()),
                 in_reply_to: self.turn_id(),
+                drawing_board,
             },
         });
         turn_answer

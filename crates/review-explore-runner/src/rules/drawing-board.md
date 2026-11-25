@@ -9,9 +9,10 @@ it changes.
 ## Steps
 
 1. Disregard each Cancelled answer and your turn after it, as if neither happened.
-2. Gather what the round said against the design: the reviewer's answers and comments, and
-   the round conversation's messages. Read the source until you can say what each change
-   touches.
+2. Gather what the round said against the design: first why the reviewer sends you back, when
+   `turn.md` gives it in their words, which the changes answer before anything else; then the
+   reviewer's earlier answers and comments, and the round conversation's messages. Read the
+   source until you can say what each change touches.
 3. Conclude with submit_conclusion:
    - `summary`: what the design gets wrong, and the design it moves to, in a few plain
      sentences that a reviewer who comes back from other work follows without the round's

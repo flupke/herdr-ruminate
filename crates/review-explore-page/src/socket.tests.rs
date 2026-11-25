@@ -128,6 +128,7 @@ impl Owner {
                         question: Some((answer.question, answer.version)),
                         option: answer.input.option,
                         in_reply_to: "turn-1".into(),
+                        drawing_board: answer.input.drawing_board,
                     },
                 });
                 ("answer", Some(working("turn-2")))
@@ -565,6 +566,7 @@ fn answer_to(question: &str) -> LatestAnswer {
             question: Some((question.into(), 1)),
             option: Some("keep".into()),
             in_reply_to: "turn-1".into(),
+            drawing_board: false,
         },
     }
 }
@@ -1063,7 +1065,7 @@ async fn a_blind_questions_first_pick_shows_its_recommendation_and_is_kept_once(
 }
 
 #[tokio::test]
-async fn back_to_the_drawing_board_keeps_no_first_pick_and_is_sent_once() {
+async fn back_to_the_drawing_board_keeps_no_first_pick_carries_the_comment_and_is_sent_once() {
     let owner = Owner::new(asking(question("q1", "one_way")));
     let address = serve(owner.clone()).await;
     let mut socket = Upgrade::of(address).connect(address).await.unwrap();
@@ -1077,8 +1079,8 @@ async fn back_to_the_drawing_board_keeps_no_first_pick_and_is_sent_once() {
     next(&mut socket).await;
     assert_eq!(next(&mut socket).await["result"]["applied"], true);
     let sent_back = json!({
-        "round": ROUND, "question": "q1", "version": 1, "choice": null, "comment": "",
-        "drawing_board": true
+        "round": ROUND, "question": "q1", "version": 1, "choice": null,
+        "comment": "One queue per conversation.", "drawing_board": true
     });
 
     request(
@@ -1103,6 +1105,40 @@ async fn back_to_the_drawing_board_keeps_no_first_pick_and_is_sent_once() {
     assert_eq!(answers.len(), 1);
     assert!(answers[0].drawing_board);
     assert_eq!(answers[0].first_pick, None);
+    assert_eq!(answers[0].text, "One queue per conversation.");
+}
+
+#[tokio::test]
+async fn back_to_the_drawing_board_with_the_comment_of_the_answer_that_went_through_is_no_repeat() {
+    let owner = Owner::new(asking(question("q1", "two_way")));
+    let address = serve(owner.clone()).await;
+    let mut socket = Upgrade::of(address).connect(address).await.unwrap();
+    next(&mut socket).await;
+    let commented = json!({
+        "round": ROUND, "question": "q1", "version": 1, "choice": null,
+        "comment": "One queue per conversation."
+    });
+    request(
+        &mut socket,
+        json!({ "id": 1, "method": "answer", "params": commented }),
+    )
+    .await;
+    next(&mut socket).await;
+    assert_eq!(next(&mut socket).await["result"]["applied"], true);
+    let sent_back = json!({
+        "round": ROUND, "question": "q1", "version": 1, "choice": null,
+        "comment": "One queue per conversation.", "drawing_board": true
+    });
+
+    request(
+        &mut socket,
+        json!({ "id": 2, "method": "answer", "params": sent_back }),
+    )
+    .await;
+
+    let reply = next(&mut socket).await;
+    assert_eq!(reply["error"]["code"], 409, "{reply}");
+    assert_eq!(lock(&owner.answers).len(), 1);
 }
 
 #[tokio::test]

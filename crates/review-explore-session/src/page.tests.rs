@@ -524,6 +524,26 @@ fn an_answer_from_the_page_is_saved_and_prompted_as_one_from_the_pane() {
 }
 
 #[test]
+fn back_to_the_drawing_board_from_the_page_prompts_its_comment_as_the_reviewer_s_reason() {
+    let mut harness = Harness::start();
+    harness.ask_first_question();
+    let sent_back = AnswerInput {
+        text: "One queue per conversation.".into(),
+        drawing_board: true,
+        ..AnswerInput::default()
+    };
+
+    assert_eq!(harness.answer_on_page("q1", 1, sent_back), Ok(()));
+
+    let prompt = harness.delivered_prompt();
+    assert!(prompt.contains("One queue per conversation.\n"), "{prompt}");
+    assert!(
+        !prompt.contains("Comment:"),
+        "a reason, not a comment: {prompt}"
+    );
+}
+
+#[test]
 fn a_second_answer_from_another_page_or_after_the_pane_is_refused() {
     let mut harness = Harness::start();
     harness.ask_first_question();

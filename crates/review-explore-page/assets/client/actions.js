@@ -24,7 +24,8 @@ const CALLS = {
       version: Number(text(data, 'version')),
       choice: optional(data, 'choice'),
       comment: optional(data, 'comment') ?? '',
-      // Back to the drawing board answers with this field, and with no choice or comment.
+      // Back to the drawing board answers with this field, with no choice, and with the comment
+      // typed in the answer's box as the reviewer's reason (drawing-board.js).
       drawing_board: optional(data, 'drawing_board') === 'true',
       number: number(data, 'number'),
     },

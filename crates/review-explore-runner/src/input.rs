@@ -25,6 +25,10 @@ pub(super) struct Round<'a> {
     pub(super) notes: Option<&'a str>,
 }
 
+/// The heading of the comment of an answer that sends the agent back to the drawing board.
+pub(crate) const DRAWING_BOARD_REASON: &str =
+    "Why the reviewer sends you back to the drawing board, in their words";
+
 /// Text quoted line by line, so none of its lines can pass for a field of
 /// the prompt.
 pub(super) struct Quoted<'a>(pub(super) &'a str);
@@ -147,9 +151,15 @@ impl TurnInput<'_> {
             )?;
             writeln!(output, "\nSelected option:\n{}", option.text)?;
         }
-        // White space is no comment.
+        // White space is no comment. The comment of the answer that sends the agent back to the
+        // drawing board says why; a reply to the conclusion there stays a comment.
         if !answer.text.trim().is_empty() {
-            writeln!(output, "\nComment:\n{}", answer.text)?;
+            let heading = if answer.sends_to_drawing_board() {
+                DRAWING_BOARD_REASON
+            } else {
+                "Comment"
+            };
+            writeln!(output, "\n{heading}:\n{}", answer.text)?;
         }
         Ok(())
     }

@@ -114,7 +114,8 @@ authorizing those tasks and their validation. Delivery confirmation means the re
 sent, not that implementation has finished.
 
 Back to the drawing board ([ADR 0008](../adr/0008-send-a-design-disagreement-back-to-the-drawing-board.md))
-is an answer to the question that waits, with `drawing_board` set and no choice: its turn gets
+is an answer to the question that waits, with `drawing_board` set and no choice, and the comment
+typed in the answer's box, which `turn.md` gives as the reviewer's reason: its turn gets
 `drawing-board.md` in place of `next-turn.md` and `conclusion.md`, and the tool takes only a
 conclusion with a list to implement, an empty quiz, no interpretation and no review marks. A
 Reply to that conclusion, from the pane, stays at the drawing board under the same rules. The
