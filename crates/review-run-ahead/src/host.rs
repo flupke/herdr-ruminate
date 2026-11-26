@@ -1,6 +1,3 @@
-//! The interface to the agent whose session run-ahead forks: Claude Code or Codex. What differs
-//! between agents sits behind it, so the Explore session does not know which agent it drives.
-
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -13,26 +10,19 @@ use serde_json::{Map, Value};
 
 use crate::record::TokenUsage;
 
-/// Receives each status the host reports for a watched agent.
 pub type StatusReport = Box<dyn Fn(AgentStatus) + Send + Sync>;
 
-/// Watches an agent while it lives: dropping it stops the watch.
 pub struct PaneWatch {
     _stop: Box<dyn Send>,
 }
 
 impl PaneWatch {
-    /// A watch that `stop` ends when it is dropped.
     pub fn new(stop: impl Send + 'static) -> Self {
         Self {
             _stop: Box::new(stop),
         }
     }
 
-    /// Reports to `report` each status `host` gives the agent of `pane`, on a thread of its
-    /// own, until the watch is dropped. When the host drops the subscription, it reports the
-    /// agent working, then subscribes again after `resubscribe`: the agent may have worked
-    /// meanwhile, and the status that follows tells where it stands.
     pub fn host(
         host: &Arc<dyn AgentHost>,
         pane: &PaneId,
@@ -64,7 +54,6 @@ impl PaneWatch {
     }
 }
 
-/// Ends a status watch when dropped.
 struct CancelOnDrop(EventCanceller);
 
 impl Drop for CancelOnDrop {
@@ -79,33 +68,25 @@ impl std::fmt::Debug for PaneWatch {
     }
 }
 
-/// What one host keeps of a fork, or of where forks start, which only that host reads: Claude
-/// Code's process, transcript directory and command; a Codex fork's daemon and turn. Run-ahead
-/// holds it, and saves a fork's in the fork's record, at the record's top level, so that a
-/// reopened reviewer's host finds it there.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct HostFields(Map<String, Value>);
 
 impl HostFields {
-    /// The field `name`, when it holds a `T`.
     pub fn get<T: DeserializeOwned>(&self, name: &str) -> Option<T> {
         T::deserialize(self.0.get(name)?).ok()
     }
 
-    /// Whether the field `name` is set.
     pub fn has(&self, name: &str) -> bool {
         self.0.contains_key(name)
     }
 
-    /// Sets the field `name` to `value`.
     pub fn set(&mut self, name: &str, value: impl Serialize) {
         if let Ok(value) = serde_json::to_value(value) {
             self.0.insert(name.to_owned(), value);
         }
     }
 
-    /// These fields, with those of `more` on top.
     #[must_use]
     pub fn with(mut self, more: Self) -> Self {
         self.0.extend(more.0);
@@ -113,32 +94,21 @@ impl HostFields {
     }
 }
 
-/// Where forks of an agent's session start from: the session and its last conversation entry
-/// when they were taken, and what the host needs to start forks that read the agent's prompt
-/// cache.
 #[derive(Clone, Debug)]
 pub struct ForkPoint {
-    /// The agent's session, which each fork copies.
     pub session: String,
-    /// The session's last conversation entry, by ID: a later one means the session moved.
     pub entry: Option<String>,
-    /// The model the session last answered with, which forks use, when the host knows it.
     pub model: Option<String>,
-    /// What the host needs to start forks from here.
     pub host: HostFields,
 }
 
-/// A fork's session and the fields its host keeps of it, owned.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OwnedFork {
-    /// The fork's session, which the host chose.
     pub session: String,
-    /// What the host keeps of the fork.
     pub host: HostFields,
 }
 
 impl OwnedFork {
-    /// The fork `trace` names.
     pub fn of(trace: ForkTrace<'_>) -> Self {
         Self {
             session: trace.session.to_owned(),
@@ -146,7 +116,6 @@ impl OwnedFork {
         }
     }
 
-    /// What stops the fork and removes what it left.
     pub fn trace(&self) -> ForkTrace<'_> {
         ForkTrace {
             session: &self.session,
@@ -155,51 +124,38 @@ impl OwnedFork {
     }
 }
 
-/// One fork to start.
 #[derive(Clone, Copy, Debug)]
 pub struct ForkStart<'a> {
     pub point: &'a ForkPoint,
     pub fork: ForkTrace<'a>,
 }
 
-/// How a fork ended.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ForkEnd {
-    /// How it ended, in the host's words, with the end of its error output if it had one.
     pub exit: String,
-    /// The tokens of its own requests, as far as it reported them.
     pub usage: TokenUsage,
-    /// Whether its turn ended by itself.
     pub finished: bool,
 }
 
-/// What a host needs to stop a fork, switch to it and remove what it left: its session and the
-/// fields the host keeps of it.
 #[derive(Clone, Copy, Debug)]
 pub struct ForkTrace<'a> {
     pub session: &'a str,
     pub host: &'a HostFields,
 }
 
-/// The switch of the pane's agent to a fork's session.
 #[derive(Clone, Copy, Debug)]
 pub struct SwitchTo<'a> {
-    /// The pane whose agent switches.
     pub pane: &'a PaneId,
-    /// The fork whose session the agent resumes.
     pub fork: ForkTrace<'a>,
 }
 
-/// Why the pane's agent was not switched to a fork's session.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SwitchFailure {
     pub error: String,
-    /// Whether the agent was told to resume the fork's session: it may run it then.
     pub typed: bool,
 }
 
 impl SwitchFailure {
-    /// A move that failed for `error` before the agent was told to resume the session.
     pub fn untyped(error: impl Into<String>) -> Self {
         Self {
             error: error.into(),
@@ -207,8 +163,6 @@ impl SwitchFailure {
         }
     }
 
-    /// The text left in the agent's input box joined the typed `/resume` into one prompt, which
-    /// the reviewer's hook blocked: neither ran, and the agent did not move.
     fn joined() -> Self {
         Self::untyped(
             "text in the agent's input box joined the /resume, so the reviewer stopped both; \
@@ -216,8 +170,6 @@ impl SwitchFailure {
         )
     }
 
-    /// The reviewer's hook blocked `prompt`, submitted while the agent ran `command`, a
-    /// `/resume`: text left in the input box joined the command, or another prompt came.
     pub fn blocked(prompt: &str, command: &str) -> Self {
         if prompt.contains(command) {
             Self::joined()
@@ -226,8 +178,6 @@ impl SwitchFailure {
         }
     }
 
-    /// Another prompt reached the agent while it resumed the session, which the reviewer's hook
-    /// blocked: the resume may still run.
     fn prompt_meanwhile() -> Self {
         Self {
             error: "a prompt reached the agent while it resumed the session, and the reviewer \
@@ -238,8 +188,6 @@ impl SwitchFailure {
     }
 }
 
-/// Why the reviewer's hook blocks a prompt submitted while the agent runs `command`, a
-/// `/resume`: text left in the input box joined it.
 pub fn resume_block(command: &str) -> String {
     format!(
         "The progressive reviewer stopped this prompt: it typed `{command}` while text waited \
@@ -248,41 +196,23 @@ pub fn resume_block(command: &str) -> String {
     )
 }
 
-/// What run-ahead needs from the agent in the pane.
 pub trait ForkHost: Send + Sync {
-    /// Reports to `report` each status Herdr gives the agent of `pane`, until the returned watch
-    /// is dropped.
     fn watch(&self, pane: &PaneId, report: StatusReport) -> PaneWatch;
 
-    /// The session `agent` runs, as the host knows it; `None` when it knows none.
     fn session(&self, agent: &Agent) -> Option<String>;
 
-    /// Why `agent` runs without the hooks that tell run-ahead what it does, in words the
-    /// reviewer reads, such as an agent started before the reviewer's plugin was installed, or
-    /// with the plugin disabled; `None` when it runs them. Run-ahead is off for it until it
-    /// restarts. An agent run-ahead cannot fork anyway has none to miss.
     fn unhooked(&self, agent: &Agent) -> Option<String>;
 
-    /// Whether the host can move `agent` to another session: it hears the agent's hooks.
     fn can_move(&self, agent: &Agent) -> bool;
 
-    /// Why run-ahead never forks `agent`, whatever it tries: the agent is not one it forks, or
-    /// the platform, the agent or the reviewer lacks what forks need. `None` when it may fork
-    /// it.
     fn unforkable(&self, agent: &Agent) -> Option<String>;
 
-    /// Where forks of `agent`'s session start from now, or why they could not be taken.
     fn point(&self, agent: &Agent) -> Result<ForkPoint, String>;
 
-    /// The last conversation entry of the session `point` was taken from, as it is now.
     fn last_entry(&self, point: &ForkPoint) -> Option<String>;
 
-    /// Makes the session of one fork of `point`, where nothing runs yet: run-ahead records it
-    /// before the fork takes its turn.
     fn create(&self, point: &ForkPoint) -> Result<OwnedFork, String>;
 
-    /// Has the fork `start.fork` take its turn on `prompt`; `ended` gets how it ended. Returns
-    /// the fields the host keeps of it from now on, besides those it made it with.
     fn start(
         &self,
         start: ForkStart<'_>,
@@ -290,27 +220,14 @@ pub trait ForkHost: Send + Sync {
         ended: Box<dyn FnOnce(ForkEnd) + Send>,
     ) -> Result<HostFields, String>;
 
-    /// Stops the fork `fork` if it still runs, then deletes its session, on a thread of its own;
-    /// `done` runs once both are done.
     fn discard(&self, fork: ForkTrace<'_>, done: Box<dyn FnOnce() + Send>);
 
-    /// Switches the agent of `switch.pane` to the session of the fork `switch.fork`, on a
-    /// thread of its own. Once the fork's submit has its answer, or the fork ended, it stops
-    /// the fork and keeps its session; then, with the agent idle, it has the agent resume the
-    /// fork's session, and waits until it hears that the agent did and is ready for a prompt. A
-    /// prompt submitted to the agent meanwhile, such as text left in its input box that the
-    /// resume joined, is blocked and fails the switch. `done` gets the agent as Herdr then
-    /// reports it, or why the switch failed.
     fn switch(
         &self,
         switch: SwitchTo<'_>,
         done: Box<dyn FnOnce(Result<Agent, SwitchFailure>) + Send>,
     );
 
-    /// Has the agent of `pane`, idle, which may run the session of the fork `from`, resume the
-    /// session `session`, on a thread of its own, and waits as [`ForkHost::switch`] does once
-    /// the fork stopped: it puts the agent back on the session its forks were taken from.
-    /// `done` gets the agent as Herdr then reports it, or why it was not put back.
     fn resume(
         &self,
         pane: &PaneId,
@@ -319,6 +236,5 @@ pub trait ForkHost: Send + Sync {
         done: Box<dyn FnOnce(Result<Agent, SwitchFailure>) + Send>,
     );
 
-    /// Adds `line` to run-ahead's log, which says what the forks did.
     fn log(&self, line: &str);
 }

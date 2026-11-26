@@ -1,13 +1,3 @@
-//! A bare answer whose fork has not submitted its turn yet: the fork's turn is the answer's,
-//! and the session waits for it, while the pane and the page say that the agent finishes a turn
-//! it started while the reviewer was thinking. Once the fork submits, the answer is checked
-//! again, as at the answer, and the pane's agent switches to the fork at once (`switch.rs`),
-//! before the fork's process ends: the next question shows only once the agent runs the fork's
-//! session, so the reviewer's next answer reaches that session. Stop waiting, a fork that ends
-//! without its turn, or a check that fails sends the answer to the agent in the pane, which
-//! takes the turn from the start. No prompt is held meanwhile: one that reaches the agent moves
-//! its session, and the check at the fork's submit then sends the answer to the agent.
-
 use review_explore::TurnRequest;
 use review_run_ahead::{DiscardReason, ForkPoint, PlainReason, TurnPath};
 
@@ -17,24 +7,17 @@ use super::{Asked, TakenFork};
 use crate::ExploreSession;
 use crate::turn::SavedTurn;
 
-/// A bare answer that waits for the fork of its choice to submit its turn.
 pub(super) struct Finishing {
-    /// The question the reviewer answered, and when the agent asked it.
     pub(super) asked: Asked,
     pub(super) asked_at_ms: u64,
-    /// The reviewer's answer's turn, as saved.
     pub(super) turn: SavedTurn,
-    /// Where the forks were taken from, and when: the fork started its turn then.
     pub(super) point: ForkPoint,
     pub(super) taken_at_ms: u64,
-    /// The fork, and the files its prompt names.
     pub(super) fork: TakenFork,
     pub(super) files: ForkFiles,
 }
 
 impl ExploreSession {
-    /// The answer of `finishing` waits for its fork: its turn is the agent's from now on, and the
-    /// front ends hear since when the fork works on it. Returns the path the answer's turn takes.
     pub(super) fn wait_for_fork(&mut self, finishing: Finishing) -> TurnPath {
         let request = &finishing.turn.request;
         self.state.prompt = None;
@@ -54,8 +37,6 @@ impl ExploreSession {
         TurnPath::Prepared { session }
     }
 
-    /// When the fork that the turn `request` waits for, or switches to after waiting, started
-    /// its turn, in milliseconds since the epoch.
     pub(crate) fn run_ahead_finishing_since(&self, request: &str) -> Option<u64> {
         if let Some(finishing) = &self.run_ahead.finishing
             && finishing.turn.request.request == request
@@ -69,8 +50,6 @@ impl ExploreSession {
             .and_then(Switching::finishing_since)
     }
 
-    /// The fork the answer waits for may have submitted its turn: once it did, the answer is
-    /// checked again, and the pane's agent continues as the fork, or takes the turn itself.
     pub(super) fn run_ahead_fork_submitted(&mut self) {
         let Some(finishing) = self
             .run_ahead
@@ -117,8 +96,6 @@ impl ExploreSession {
         }
     }
 
-    /// The fork `session` ended: when the answer waits for it, it ended without its turn, and
-    /// the answer goes to the agent in the pane.
     pub(super) fn run_ahead_waited_fork_ended(&mut self, session: &str) {
         let Some(finishing) = self
             .run_ahead
@@ -127,15 +104,10 @@ impl ExploreSession {
         else {
             return;
         };
-        // Its end counted as a failure of run-ahead already.
         self.discard_finishing_fork(&finishing, DiscardReason::Answered);
         self.answer_to_agent(&finishing.asked, finishing.turn, PlainReason::NoTurn);
     }
 
-    /// Stop waiting: when the answer waits for its fork, the fork is discarded; when the agent
-    /// switches to the fork that it waited for, the switch is undone once it ends. Either way the
-    /// answer's turn is returned, for the caller to send to the agent in the pane once the stop
-    /// is recorded: it waits for the agent to settle when it must.
     pub(crate) fn run_ahead_stop_waiting(&mut self) -> Option<TurnRequest> {
         const STOPPED: &str = "the reviewer stopped waiting for the fork: the answer goes to the \
                                agent in the pane";
@@ -162,8 +134,6 @@ impl ExploreSession {
         Some(request)
     }
 
-    /// Discards the fork the answer waits for, once the answer no longer waits: the reviewer
-    /// cancelled it, reset the round or left it.
     pub(super) fn run_ahead_withdraw_finishing(&mut self) {
         let Some(finishing) = self.run_ahead.finishing.take_if(|finishing| {
             let request = &finishing.turn.request;
@@ -178,8 +148,6 @@ impl ExploreSession {
         );
     }
 
-    /// Discards the fork `finishing` waits for, for the first of `reasons`, records the answer's
-    /// path for the second, and logs `line`.
     fn drop_finishing(
         &mut self,
         finishing: &Finishing,
@@ -193,7 +161,6 @@ impl ExploreSession {
         self.record_plain_after(&finishing.asked, &finishing.turn.request.request, path);
     }
 
-    /// Discards the fork `finishing` waits for, for `reason`.
     fn discard_finishing_fork(&mut self, finishing: &Finishing, reason: DiscardReason) {
         self.discard_forks(
             &finishing.asked.round,
@@ -202,8 +169,6 @@ impl ExploreSession {
         );
     }
 
-    /// The answer's turn `turn` to the question `asked`, which waited for its fork, goes to the
-    /// agent in the pane after all, for `reason`.
     fn answer_to_agent(&mut self, asked: &Asked, turn: SavedTurn, reason: PlainReason) {
         self.run_ahead.host.log(&format!(
             "{}: the answer goes to the agent in the pane: {reason:?}",

@@ -1,8 +1,3 @@
-//! The sessions of the standalone server. Each stands in for the review tool's Explore session:
-//! it owns one round, behind its own token, moves it to the step its controller asks for, and
-//! takes the answers, the starts, the implementation requests and the quiz answers the reviewer
-//! sends from the page.
-
 use change_references::ChangeReferences;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -33,88 +28,46 @@ use crate::tally::SessionMarks;
 
 #[derive(Clone)]
 pub(crate) struct Sessions {
-    /// What the agent of every session posts.
     data: &'static dyn RoundData,
-    /// The clock of every session.
     clock: Clock,
     open: Arc<Mutex<Vec<Session>>>,
 }
 
 struct Session {
     token: Token,
-    /// When things happen: when the reviewer starts a round, and when a turn goes out.
     clock: Clock,
-    /// The reviewer's answer the agent's latest turn carries, if any.
     turn_answer: Option<Box<SentAnswer>>,
-    /// When the latest attempt of the agent's latest turn went out, in milliseconds since the
-    /// epoch.
     sent_at_ms: Option<u64>,
-    /// Names the session's rounds, so that no two sessions' rounds have the same identity.
     id: String,
-    /// What the agent posts.
     data: &'static dyn RoundData,
     round: RoundPublisher,
-    /// The rounds the session started so far.
     rounds: usize,
-    /// Whether the latest round is running: the reviewer has not reset it.
     running: bool,
-    /// The questions the agent asked so far.
     asked: usize,
-    /// The stage of the agent's latest question, which a cancelled answer brings back.
     latest_question: Option<RoundStage>,
-    /// Whether the agent's latest turn posted the conclusion.
     concluded: bool,
-    /// The answers the reviewer sent from the page, in order.
     answers: Vec<PostedAnswer>,
-    /// The diagram errors the page reported, each once, as the review tool saves them with
-    /// their question.
     diagram_errors: Vec<DiagramError>,
-    /// The rounds the reviewer started from the page, in order.
     starts: Vec<SentStart>,
-    /// The lists to be implemented that the reviewer sent from the page, in order.
     implementations: Vec<String>,
-    /// What the reviewer answered of the conclusion's quiz, once the agent concluded with one.
     quiz: Option<QuizAnswers>,
-    /// The agent's turns the session asked for so far, which name each turn.
     turns: usize,
-    /// The attempts to reach the agent so far, of a turn or an implementation request, which
-    /// name each attempt.
     attempts: usize,
-    /// The starts the session offered so far, which name each start.
     offers: usize,
-    /// The reviewer's answers of the latest round that were not cancelled, in the pane or from
-    /// the page, in order, as the page shows them: the latest one may be cancelled.
     answered: Vec<LatestAnswer>,
-    /// The same answers, as the conclusion lists them in "Your decisions".
     decisions: Vec<Decision>,
-    /// The questions of the same answers, as the rail opens them once the agent took each
-    /// answer up, with their citations.
     answered_questions: Vec<(EarlierQuestion, Arc<[Citation]>)>,
-    /// How many of `answered_questions` the agent took up: it posted its next question or the
-    /// conclusion after them, so they are done steps of the rail.
     taken_up: usize,
-    /// The lines each of the same answers marked.
     answer_marks: Vec<QuestionMarks>,
-    /// The lines the reviewer marked by hand in the change.
     marked_by_hand: u64,
-    /// The other actions the reviewer took on the page, by name, in order.
     actions: Vec<String>,
-    /// The review threads, which hold the conversation of each of the session's rounds.
     threads: SessionThreads,
-    /// Whether another reviewer saved a newer round of the review since: the reviewer can only
-    /// Reset this one.
     earlier: bool,
-    /// How the session's page follows the round.
     page: PageLink,
-    /// The past rounds of the session, newest first: two of other changes, saved before it
-    /// opened, then each round the reviewer reset.
     past: Vec<PastRound>,
-    /// Publishes the list of the past rounds to the session's page.
     past_list: PastRoundsPublisher,
 }
 
-/// What the page shows of a session's round besides its stage, which the round the session
-/// publishes borrows.
 struct RoundParts {
     id: String,
     review: ReviewUnit,
@@ -124,14 +77,12 @@ struct RoundParts {
 }
 
 impl RoundParts {
-    /// The round of `session` with these parts.
     fn round<'a>(&'a self, session: &'a Session) -> PublishedRound<'a> {
         PublishedRound {
             id: &self.id,
             review_unit: &self.review,
             design: (session.asked > 0).then_some(&self.design),
             changed_files: session.data.change().0.len(),
-            // The latest start from the page says who wrote the change.
             author: if session.starts.last().is_some_and(|start| start.others) {
                 review_explore::ChangeAuthor::Other
             } else {
@@ -145,8 +96,6 @@ impl RoundParts {
     }
 }
 
-/// The clock of the sessions: the time now, or always the same time, so that two gallery runs
-/// draw the same page.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Clock {
     Real,
@@ -154,7 +103,6 @@ pub(crate) enum Clock {
 }
 
 impl Clock {
-    /// The time now by this clock, in milliseconds since the epoch.
     fn now_ms(self) -> u64 {
         match self {
             Self::Real => review_explore::now_ms(),
@@ -162,9 +110,6 @@ impl Clock {
         }
     }
 
-    /// `threads` with each message stamped by this clock. The review threads stamp a message
-    /// with the time it was posted; a fixed clock stamps it a second after the one before it,
-    /// starting at its fixed time, so that two runs draw the same times.
     pub(crate) fn stamped(self, threads: &ReviewThreads) -> ReviewThreads {
         let mut threads = threads.clone();
         if let Self::Fixed = self {
@@ -174,56 +119,42 @@ impl Clock {
     }
 }
 
-/// A minute, in milliseconds.
 const MINUTE_MS: u64 = 60 * 1_000;
 
-/// The time of a fixed clock, in milliseconds since the epoch: the gallery's pages stand 42
-/// seconds after it (`tests/explore-page/gallery/gallery.ts`).
 const FIXED_NOW_MS: u64 = 1_791_000_000_000;
 
-/// How a session's page follows its round.
 #[derive(Default)]
 enum PageLink {
-    /// It shows each change.
     #[default]
     Following,
-    /// It no longer follows the round, as a page whose socket does not get the tool's messages,
-    /// until it sends an action; the round may have moved to `unseen` meanwhile.
-    Held { unseen: Option<Box<RoundStage>> },
-    /// The reviewer is restarting: the page cannot open its socket.
+    Held {
+        unseen: Option<Box<RoundStage>>,
+    },
     Away,
 }
 
-/// An answer the reviewer sent from the page, as a test reads it back.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct PostedAnswer {
     question: String,
     version: u32,
     choice: Option<String>,
     comment: String,
-    /// The choice picked first on a blind question; left out when there was none.
     #[serde(skip_serializing_if = "Option::is_none")]
     first_pick: Option<String>,
-    /// Whether it sent the agent back to the drawing board; left out when not.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     drawing_board: bool,
 }
 
-/// A round the reviewer started from the page, as a test reads it back.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct SentStart {
     challenger: bool,
-    /// Whether someone else wrote the change; left out when not.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     others: bool,
-    /// The reviewer's name, for someone else's change; left out when none.
     #[serde(skip_serializing_if = "Option::is_none")]
     reviewer: Option<String>,
 }
 
 impl Session {
-    /// A session `id` behind `token` whose agent posts `data` and asked `asked` questions, which
-    /// published nothing yet.
     fn new(
         id: String,
         token: Token,
@@ -269,13 +200,10 @@ impl Session {
         }
     }
 
-    /// The identity of the session's latest round.
     fn round_id(&self) -> String {
         format!("{}-{}", self.id, self.rounds)
     }
 
-    /// Publishes `stage` of the latest round, with the design once the agent asked its first
-    /// question, and the reviewer's latest answer, which the reviewer may cancel.
     fn publish(&mut self, stage: RoundStage) {
         if let PageLink::Held { unseen } = &mut self.page {
             *unseen = Some(Box::new(stage));
@@ -287,7 +215,6 @@ impl Session {
         self.round.publish_counted(round, stage, tally);
     }
 
-    /// What the page shows of the latest round besides its stage, at `stage`.
     fn parts(&self, stage: &RoundStage) -> RoundParts {
         let (mut earlier, earlier_citations): (Vec<_>, Vec<_>) = self.answered_questions
             [..self.taken_up]
@@ -307,7 +234,6 @@ impl Session {
         let overview = RoundOverview {
             decisions: self.decisions.clone(),
             earlier,
-            // The agent's first turn gives the glossary with the design.
             glossary: if self.asked > 0 {
                 self.data.glossary()
             } else {
@@ -332,7 +258,6 @@ impl Session {
         }
     }
 
-    /// Keeps the latest round, at the stage it stands at, as a past round, saved now.
     fn save_past(&mut self) {
         let past = self.past_at(
             self.data.review(),
@@ -343,8 +268,6 @@ impl Session {
         self.list_past();
     }
 
-    /// The latest round, at the stage it stands at, as a past round of the change `review`,
-    /// whose pull request and tickets are `references`, saved at `saved_at_ms`.
     fn past_at(
         &self,
         review: ReviewName,
@@ -352,7 +275,6 @@ impl Session {
         saved_at_ms: u64,
     ) -> PastRound {
         let mut stage = self.stage();
-        // A past round asks nothing of its quiz, as the review tool shows a saved round.
         if let RoundStage::Conclusion { quiz, .. } = &mut stage {
             quiz.takes_answers = false;
         }
@@ -367,8 +289,6 @@ impl Session {
         )
     }
 
-    /// Publishes the list of the session's past rounds, grouped by change in the order of their
-    /// newest rounds, as the review tool lists them.
     fn list_past(&self) {
         let mut changes: Vec<PastChange> = Vec::new();
         for past in &self.past {
@@ -393,7 +313,6 @@ impl Session {
         self.past_list.publish(changes);
     }
 
-    /// How much of the change the review marks cover while the round is at `stage`.
     fn tally(&self, stage: &RoundStage) -> MarkTally {
         let waiting = match stage {
             RoundStage::Question {
@@ -412,7 +331,6 @@ impl Session {
         .tally()
     }
 
-    /// The stage the round is at, which a held page may not show yet.
     fn stage(&self) -> RoundStage {
         match &self.page {
             PageLink::Held {
@@ -422,7 +340,6 @@ impl Session {
         }
     }
 
-    /// The page follows the round again: it shows the stage the round moved to meanwhile.
     fn release(&mut self) {
         if let PageLink::Held { unseen } = std::mem::take(&mut self.page)
             && let Some(stage) = unseen
@@ -431,8 +348,6 @@ impl Session {
         }
     }
 
-    /// The reviewer restarts: the page's socket closes, and the page cannot open another one
-    /// until the reviewer is back. The round stays where it is.
     fn restart(&mut self) {
         let stage = self.stage();
         let feed = self.round.subscribe();
@@ -446,8 +361,6 @@ impl Session {
         self.publish(stage);
     }
 
-    /// Takes the reviewer's answer to the agent's latest question, and returns it as the agent's
-    /// next turn carries it.
     fn take_answer(&mut self, answer: AnswerTaken<'_>) -> SentAnswer {
         let (alternatives, question) = match &self.latest_question {
             Some(RoundStage::Question { question, .. }) => (
@@ -474,7 +387,6 @@ impl Session {
             marked: MarkCounts::default(),
             marks_problem: None,
         };
-        // The drawing board applies no marks: the code will change.
         let no_marks = QuestionMarks::default();
         if let Some(RoundStage::Question {
             question,
@@ -494,14 +406,12 @@ impl Session {
                 number,
                 question: (**question).clone(),
                 answer: Some(kept),
-                // What the agent records, once it takes the answer up.
                 recorded: AgentRecord::default(),
                 marks: vec![TurnMarks {
                     reviewed: marks.reviewed.clone(),
                     not_relevant: marks.not_relevant.clone(),
                     ..TurnMarks::default()
                 }],
-                // How many answers follow it is counted when the round is published.
                 cancel: Some(CancelFrom {
                     answer: format!("answer-{}", self.answered.len() + 1),
                     later: 0,
@@ -533,8 +443,6 @@ impl Session {
         turn_answer
     }
 
-    /// The agent's turn that posted `stage` took up the answers it follows: their questions
-    /// are done steps of the rail, with what the agent recorded of each.
     fn take_up_answers(&mut self, stage: &RoundStage) {
         let response = stage.response();
         for (record, _) in &mut self.answered_questions[self.taken_up..] {
@@ -547,7 +455,6 @@ impl Session {
         self.taken_up = self.answered_questions.len();
     }
 
-    /// Forgets the questions and answers of the round that no longer runs.
     fn forget_round(&mut self) {
         self.asked = 0;
         self.answered.clear();
@@ -561,8 +468,6 @@ impl Session {
         self.earlier = false;
     }
 
-    /// The agent works on the turn that `step` asks for: after the reviewer's answer in the
-    /// pane, or the kickoff.
     fn turn_after(&mut self, step: Step) -> RoundStage {
         let answer = match step {
             Step::Answer {
@@ -576,31 +481,26 @@ impl Session {
         self.new_turn(answer)
     }
 
-    /// The agent works on a new turn, which carries the reviewer's `answer`, if any.
     fn new_turn(&mut self, answer: Option<SentAnswer>) -> RoundStage {
         self.turns += 1;
         self.turn_answer = answer.map(Box::new);
         self.attempt_again()
     }
 
-    /// The latest turn goes out to the agent again, which works on it.
     fn attempt_again(&mut self) -> RoundStage {
         self.attempts += 1;
         self.sent_at_ms = Some(self.clock.now_ms());
         self.working()
     }
 
-    /// The identity of the latest attempt to reach the agent.
     fn attempt(&self) -> String {
         format!("attempt-{}", self.attempts)
     }
 
-    /// The start the session offers while no round runs.
     fn offered_start(&self) -> String {
         format!("{}-start-{}", self.id, self.offers)
     }
 
-    /// No round is running: the session offers its next start.
     fn no_round(&mut self) -> RoundStage {
         self.offers += 1;
         RoundStage::NoRound {
@@ -608,7 +508,6 @@ impl Session {
         }
     }
 
-    /// The agent works on the latest turn.
     fn working(&self) -> RoundStage {
         RoundStage::AgentWorking {
             request: self.turn_id(),
@@ -619,7 +518,6 @@ impl Session {
         }
     }
 
-    /// The agent is not working on the latest turn, for `interruption`.
     fn interrupted(&self, interruption: Interruption) -> RoundStage {
         RoundStage::Interrupted {
             request: Some(self.turn_id()),
@@ -633,10 +531,6 @@ impl Session {
         format!("turn-{}", self.turns)
     }
 
-    /// The stage that `step` moves the round to; `question`, when given, is the question the
-    /// agent posts instead of the next fixed one. `None` when the round cannot take the step:
-    /// the agent asked no question whose answer could be cancelled, or no implementation request
-    /// is being sent.
     fn stage_after(&mut self, step: Step, question: Option<Question>) -> Option<RoundStage> {
         Some(match step {
             Step::Question { .. } | Step::Revise => self.posted(step, question)?,
@@ -656,9 +550,6 @@ impl Session {
         })
     }
 
-    /// The question the agent posts in `step`: its next one, or its revision of the latest;
-    /// `question`, or the data set's next question when `None`. `None` when the step revises no
-    /// question.
     fn posted(&mut self, step: Step, question: Option<Question>) -> Option<RoundStage> {
         let Step::Question { path } = step else {
             return self.revised(question?);
@@ -674,8 +565,6 @@ impl Session {
         Some(stage)
     }
 
-    /// The latest question, which the agent replaced with its version `question` from the
-    /// round's conversation; `None` when the round asks no question.
     fn revised(&mut self, question: Question) -> Option<RoundStage> {
         let mut stage = self.latest_question.clone()?;
         let RoundStage::Question {
@@ -693,7 +582,6 @@ impl Session {
                     .into(),
                 replaced: asked.version,
             }),
-            // The revision came from the round conversation, not from run-ahead.
             path: None,
             ..response.clone()
         };
@@ -702,7 +590,6 @@ impl Session {
         Some(stage)
     }
 
-    /// The stage after `event`, outside the agent's turns.
     fn after_round_event(&mut self, event: RoundEvent) -> RoundStage {
         match event {
             RoundEvent::Reset => self.no_round(),
@@ -726,8 +613,6 @@ impl Session {
         }
     }
 
-    /// The question the answer `answer` answered, asked again once the reviewer cancelled that
-    /// answer with every answer after it. `None` when the session has no such answer.
     fn question_after_cancel_answers_from(&mut self, answer: &str) -> Option<RoundStage> {
         let index = self.answered.iter().position(|kept| kept.id == answer)?;
         if index + 1 == self.answered.len() {
@@ -763,8 +648,6 @@ impl Session {
         Some(stage)
     }
 
-    /// The agent's latest question, asked again once the reviewer cancelled its answer: the
-    /// reviewer has seen its recommendation. `None` when the agent asked none.
     fn question_after_cancel_answer(&mut self) -> Option<RoundStage> {
         let mut stage = self.latest_question.clone()?;
         self.answered.pop();
@@ -782,8 +665,6 @@ impl Session {
         Some(stage)
     }
 
-    /// The conclusion with its implementation request once `step` happened to it: the pane
-    /// sent one, or the agent received the one the session sends.
     fn implementation_stage(&self, step: Step) -> Option<RoundStage> {
         match step {
             Step::Implement => Some(self.conclusion(Some(PageImplementation {
@@ -797,7 +678,6 @@ impl Session {
         }
     }
 
-    /// The implementation request of the conclusion the round shows, if any.
     fn implementation(&self) -> Option<PageImplementation> {
         match self.stage() {
             RoundStage::Conclusion { implementation, .. } => implementation,
@@ -805,15 +685,11 @@ impl Session {
         }
     }
 
-    /// The stage once the prompt the session sends ended as `outcome`, without the agent working
-    /// on it: the conclusion's request, while the session sends one, or else the agent's next
-    /// turn.
     fn prompt_unworked(&self, outcome: PromptOutcome) -> RoundStage {
         self.finish_sending(outcome.implementation())
             .unwrap_or_else(|| self.interrupted(outcome.interruption()))
     }
 
-    /// The conclusion's request, which the session is sending, with the outcome `state`.
     fn finish_sending(&self, state: ImplementationState) -> Option<RoundStage> {
         let sending = self
             .implementation()
@@ -826,23 +702,16 @@ impl Session {
         })))
     }
 
-    /// The fixed conclusion, with `implementation` and, when the agent concluded with one, its
-    /// quiz.
     fn conclusion(&self, implementation: Option<PageImplementation>) -> RoundStage {
         self.data
             .conclusion_stage(implementation, self.quiz.clone())
     }
 }
 
-/// An answer the reviewer gives to the agent's latest question.
 #[derive(Clone, Copy)]
 enum AnswerTaken<'a> {
-    /// In the pane, which picks the first choice, with no comment.
     InPane,
-    /// The recommended choice, after a first pick of another, with no comment.
     AfterFirstPick,
-    /// From the page: the choice picked, by ID, if any, the comment, the choice picked first on
-    /// a blind question, and whether it sent the agent back to the drawing board instead.
     FromPage {
         choice: Option<&'a str>,
         comment: &'a str,
@@ -852,8 +721,6 @@ enum AnswerTaken<'a> {
 }
 
 impl<'a> AnswerTaken<'a> {
-    /// The choice kept among `alternatives`, if any, the comment, and the choice picked first;
-    /// an answer in the pane has the comment `pane_comment`.
     fn kept(
         self,
         alternatives: &'a [Alternative],
@@ -887,22 +754,15 @@ impl<'a> AnswerTaken<'a> {
     }
 }
 
-/// How a prompt the session sends ends without the agent working on it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum PromptOutcome {
-    /// It could not be delivered.
     NotSent,
-    /// The agent did not start on it.
     NotStarted,
-    /// The reviewer reopened the review before the prompt was sent.
     ReopenedBeforeSending,
-    /// The reviewer reopened the review while the prompt was being delivered: whether the agent
-    /// received it is unknown.
     ReopenedWhileSending,
 }
 
 impl PromptOutcome {
-    /// What becomes of the conclusion's implementation request.
     fn implementation(self) -> ImplementationState {
         match self {
             Self::NotSent => ImplementationState::NotSent(NOT_DELIVERED.into()),
@@ -912,7 +772,6 @@ impl PromptOutcome {
         }
     }
 
-    /// Why the agent is not working on its next turn.
     fn interruption(self) -> Interruption {
         match self {
             Self::NotSent => Interruption::Failed(NOT_DELIVERED.into()),
@@ -923,21 +782,14 @@ impl PromptOutcome {
     }
 }
 
-/// When the standalone agent receives an implementation request, in milliseconds since the
-/// epoch: always the same time, so that two gallery runs draw the same page.
 const SENT_AT_MS: u64 = 1_790_000_000_000;
 
-/// Why the standalone server's prompts cannot be delivered.
 const NOT_DELIVERED: &str = "The selected agent is no longer available";
 
-/// The lines the reviewer marks by hand at a time.
 const HAND_MARKED_LINES: u64 = 3;
 
-/// Why the standalone server cannot save the reviewer's rounds.
 const STORAGE_FAILURE: &str = "No space left on device (os error 28)";
 
-/// A reply of the agent wider than the chat at its narrowest: a table of five columns and a
-/// block of code with long lines, between paragraphs of prose that wrap.
 const WIDE_CHAT_REPLY: &str = "Each caller of `flush`, with what it sends and when the reviewer \
 sees the notification:
 
@@ -955,8 +807,6 @@ if self.policy.is_idle(now.duration_since(last)) && !self.waiting.is_empty() { s
 
 A reply is saved to its thread before any of them runs, so a crash loses the notification only.";
 
-/// A reply of the agent that holds a sequence diagram of five participants, wider than the chat
-/// at its narrowest, between paragraphs of prose.
 const DIAGRAM_CHAT_REPLY: &str = "What happens when a reply arrives while the pane is closing:
 
 ```mermaid
@@ -978,8 +828,6 @@ sequenceDiagram
 The tick never runs after the pane closes: `close_threads` sends whatever waits.";
 
 impl Session {
-    /// Takes one of the page's actions that recover or close the round, as the review tool
-    /// would. The page already refused one its round no longer offers.
     fn recover(&mut self, recovery: &Recovery) -> Result<(), CommandRefusal> {
         let (name, stage) = match recovery {
             Recovery::Stop(Waiting::Start(_)) => ("stop", Some(self.no_round())),
@@ -1013,7 +861,6 @@ impl Session {
         Ok(())
     }
 
-    /// The conclusion with its implementation request sent again, as it is.
     fn resend_implementation(&mut self) -> RoundStage {
         self.attempts += 1;
         let attempt = self.attempt();
@@ -1029,7 +876,6 @@ impl Session {
 }
 
 impl Session {
-    /// Takes a command the page sent, which the page checked against the round already.
     fn take(&mut self, command: PageCommand) -> Result<(), CommandRefusal> {
         match command {
             PageCommand::Answer(answer) => {
@@ -1050,7 +896,6 @@ impl Session {
                 let stage = self.new_turn(Some(sent));
                 self.publish(stage);
             }
-            // The page keeps the pick; the round still asks the question, which the page checked.
             PageCommand::Pick { .. } => {}
             PageCommand::DiagramFailed(error) => {
                 if !self.diagram_errors.contains(&error) {
@@ -1087,7 +932,6 @@ impl Session {
         Ok(())
     }
 
-    /// Saves the reviewer's quiz `response`.
     fn take_quiz(&mut self, response: QuizResponse) -> Result<(), CommandRefusal> {
         let answers = self.quiz.as_mut().ok_or(CommandRefusal::Stale)?;
         answers
@@ -1099,59 +943,32 @@ impl Session {
     }
 }
 
-/// What happens to the page of a session, outside its round.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum PageChange {
-    /// The page no longer follows the round, until it sends an action.
     Hold,
-    /// The reviewer restarts: the page's socket closes, and it cannot open another one.
     Restart,
-    /// The reviewer is back: the page opens its socket again.
     Back,
 }
 
-/// What happens next in a session's round.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
-    /// The agent posts its next question, from a turn that took the path `path`.
     Question { path: RunAheadPath },
-    /// The agent revises the open question from the round's conversation: the question of the
-    /// step's body, a higher version, takes its place with a fixed reason.
     Revise,
-    /// The reviewer answered: the agent works on its next turn. The answer keeps the
-    /// question's first choice, as one in the pane does; or, `after_first_pick`, the choice the
-    /// agent recommends (its first choice when it recommends none) after a first pick of another
-    /// choice, as a blind question on the page records it.
     Answer { after_first_pick: bool },
-    /// The prompt the session sends ends without the agent working on it: the conclusion's
-    /// implementation request, while the session sends one, or else the agent's next turn.
     Prompt(PromptOutcome),
-    /// The reviewer cancels the latest answer in the pane: its question waits again.
     Cancel,
-    /// The agent stops before its next turn.
     Interrupt,
-    /// The agent concludes the round, with a quiz when `quiz`.
     Conclude { quiz: bool },
-    /// The reviewer implements the conclusion in the pane, and the agent receives the request.
     Implement,
-    /// The agent receives the conclusion's implementation request that the session sends.
     Deliver,
-    /// The tool sent the kickoff of the round the reviewer started: the agent works on its first
-    /// turn.
     Kickoff,
-    /// The reviewer or the review tool changes the round outside the agent's turns.
     Round(RoundEvent),
 }
 
-/// The path of the turn that posts a question, as run-ahead took it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RunAheadPath {
-    /// Run-ahead did not watch the question the turn answers.
     Unwatched,
-    /// A fork took the turn while the reviewer thought about the answer, and the agent
-    /// continued as it.
     Prepared,
-    /// The agent took the turn itself: the fork of the answer's choice ended without it.
     NoTurn,
 }
 
@@ -1169,22 +986,15 @@ impl RunAheadPath {
     }
 }
 
-/// What the reviewer or the review tool does to a session's round outside the agent's turns.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RoundEvent {
-    /// The reviewer resets the round: no round is running.
     Reset,
-    /// The round the reviewer started could not start: no round is running.
     FailStart,
-    /// Another reviewer saved a newer round of the review: this one stays where it is, and
-    /// offers only Reset.
     Earlier,
-    /// The review tool cannot save the reviewer's rounds any more.
     FailStorage,
 }
 
 impl Step {
-    /// Each step by the name of its control route.
     const NAMES: [(&str, Self); 21] = [
         (
             "question",
@@ -1248,7 +1058,6 @@ impl Step {
 }
 
 impl Sessions {
-    /// No session yet; the agent of each posts `data`.
     pub(crate) fn new(data: &'static dyn RoundData, clock: Clock) -> Self {
         Self {
             data,
@@ -1257,9 +1066,6 @@ impl Sessions {
         }
     }
 
-    /// Opens a session behind `token` whose agent asked `asked` questions: it shows the latest,
-    /// or the agent works on its first one. Its agent posts `data`, or the server's data set.
-    /// The rounds of other changes that its data set saved before it are its past rounds.
     pub(crate) fn open(&self, token: Token, asked: usize, data: Option<&'static dyn RoundData>) {
         let data = data.unwrap_or(self.data);
         let id = format!("session-{}", self.lock().len() + 1);
@@ -1280,9 +1086,6 @@ impl Sessions {
         self.lock().push(session);
     }
 
-    /// Moves the round of the session behind `token` one step; `question`, when given, is the
-    /// question the agent posts instead of the next fixed one. Returns false when no session
-    /// has that token, or when the round cannot take the step.
     pub(crate) fn step(&self, token: &str, step: Step, question: Option<Question>) -> bool {
         let mut sessions = self.lock();
         let Some(session) = find(&mut sessions, token) else {
@@ -1303,7 +1106,6 @@ impl Sessions {
             }
             session.forget_round();
         } else if !session.running {
-            // A running stage after none starts the session's next round.
             session.rounds += 1;
         }
         session.running = running;
@@ -1311,9 +1113,6 @@ impl Sessions {
         true
     }
 
-    /// The reviewer changes the review marks of the session behind `token`, so that `block` says
-    /// why no round can start, or with `None` that one can. The round stays where it is. Returns
-    /// false when no session has that token.
     pub(crate) fn block_starts(&self, token: &str, block: Option<StartBlock>) -> bool {
         let mut sessions = self.lock();
         let Some(session) = find(&mut sessions, token) else {
@@ -1323,24 +1122,18 @@ impl Sessions {
         true
     }
 
-    /// The reviewer marks lines of the change by hand, in the session behind `token`: the
-    /// page hears the marks at once, whatever the round's stage. Returns false when no session
-    /// has that token.
     pub(crate) fn mark_by_hand(&self, token: &str) -> bool {
         let mut sessions = self.lock();
         let Some(session) = find(&mut sessions, token) else {
             return false;
         };
         session.marked_by_hand += HAND_MARKED_LINES;
-        // A held page hears the marks with the round's next stage.
         if !matches!(session.page, PageLink::Held { .. }) {
             session.round.tally(session.tally(&session.stage()));
         }
         true
     }
 
-    /// Holds the page of the session behind `token`, restarts its reviewer, or brings the
-    /// reviewer back, as `change` says. Returns false when no session has that token.
     pub(crate) fn change_page(&self, token: &str, change: PageChange) -> bool {
         let mut sessions = self.lock();
         let Some(session) = find(&mut sessions, token) else {
@@ -1354,66 +1147,45 @@ impl Sessions {
         true
     }
 
-    /// Whether `token` opens a session whose reviewer is restarting.
     pub(crate) fn away(&self, token: &str) -> bool {
         find(&mut self.lock(), token).is_some_and(|session| matches!(session.page, PageLink::Away))
     }
 
-    /// The rounds the reviewer started from the page of the session behind `token`, or `None`
-    /// when no session has that token.
     pub(crate) fn starts(&self, token: &str) -> Option<Vec<SentStart>> {
         find(&mut self.lock(), token).map(|session| session.starts.clone())
     }
 
-    /// The answers the reviewer sent from the page of the session behind `token`, or `None`
-    /// when no session has that token.
     pub(crate) fn answers(&self, token: &str) -> Option<Vec<PostedAnswer>> {
         find(&mut self.lock(), token).map(|session| session.answers.clone())
     }
 
-    /// The lists to be implemented that the reviewer sent from the page of the session behind
-    /// `token`, or `None` when no session has that token.
     pub(crate) fn implementations(&self, token: &str) -> Option<Vec<String>> {
         find(&mut self.lock(), token).map(|session| session.implementations.clone())
     }
 
-    /// Takes a command the page sent for the session behind `token`. The page already refused
-    /// an answer to a question its round no longer asks, a start while a round runs, and an
-    /// Implement its conclusion no longer offers. An answer that reaches the session is kept,
-    /// and the agent works on its next turn; a start is kept, and the round is starting; an
-    /// implementation request is kept, and the session sends it.
     fn command(&self, token: &str, command: PageCommand) -> Result<(), CommandRefusal> {
         let mut sessions = self.lock();
         let session = find(&mut sessions, token).ok_or(CommandRefusal::Stale)?;
         let held = matches!(session.page, PageLink::Held { .. });
         if held && !matches!(command, PageCommand::DiagramFailed(_)) {
-            // The page acted on the round as it showed it, which the round moved past.
             session.release();
             return Err(CommandRefusal::Stale);
         }
         session.take(command)
     }
 
-    /// The other actions the reviewer took on the page of the session behind `token`, by name,
-    /// in order, or `None` when no session has that token.
     pub(crate) fn actions(&self, token: &str) -> Option<Vec<String>> {
         find(&mut self.lock(), token).map(|session| session.actions.clone())
     }
 
-    /// What the reviewer answered of the quiz of the session behind `token`, nothing when its
-    /// round has no quiz, or `None` when no session has that token.
     pub(crate) fn quiz(&self, token: &str) -> Option<QuizAnswers> {
         find(&mut self.lock(), token).map(|session| session.quiz.clone().unwrap_or_default())
     }
 
-    /// The diagram errors the page of the session behind `token` reported, or `None` when no
-    /// session has that token.
     pub(crate) fn diagram_errors(&self, token: &str) -> Option<Vec<DiagramError>> {
         find(&mut self.lock(), token).map(|session| session.diagram_errors.clone())
     }
 
-    /// Carries out a thread command the page sent for the session behind `token`, which writes
-    /// the conversation of its round.
     fn thread_command(&self, token: &str, command: ThreadCommand) -> Result<(), CommandRefusal> {
         let mut sessions = self.lock();
         let session = find(&mut sessions, token).ok_or(CommandRefusal::Stale)?;
@@ -1423,24 +1195,18 @@ impl Sessions {
         session.threads.take(command)
     }
 
-    /// The agent replies to the reviewer's latest message in the conversation of the latest
-    /// round of the session behind `token`. Returns false when no session has that token, or
-    /// when that conversation has no message.
     pub(crate) fn agent_replies(&self, token: &str) -> bool {
         self.reply_with(token, |session| session.data.chat_reply())
     }
 
-    /// The agent replies, as `agent_replies` does, with `WIDE_CHAT_REPLY`.
     pub(crate) fn agent_replies_wide(&self, token: &str) -> bool {
         self.reply_with(token, |_| WIDE_CHAT_REPLY)
     }
 
-    /// The agent replies, as `agent_replies` does, with `DIAGRAM_CHAT_REPLY`.
     pub(crate) fn agent_replies_with_diagram(&self, token: &str) -> bool {
         self.reply_with(token, |_| DIAGRAM_CHAT_REPLY)
     }
 
-    /// The agent replies with the text `reply` gives for the session behind `token`.
     fn reply_with(&self, token: &str, reply: impl FnOnce(&Session) -> &'static str) -> bool {
         let mut sessions = self.lock();
         let Some(session) = find(&mut sessions, token) else {
@@ -1451,20 +1217,15 @@ impl Sessions {
         session.threads.agent_replies(&round, text)
     }
 
-    /// The wakeup for the reviewer's waiting messages of the session behind `token` did not
-    /// reach the agent. Returns false when no session has that token, or no message waits.
     pub(crate) fn messages_not_delivered(&self, token: &str) -> bool {
         find(&mut self.lock(), token)
             .is_some_and(|session| session.threads.not_delivered(NOT_DELIVERED))
     }
 
-    /// The messages the reviewer sent from the page of the session behind `token`, or `None`
-    /// when no session has that token.
     pub(crate) fn messages(&self, token: &str) -> Option<Vec<SentMessage>> {
         find(&mut self.lock(), token).map(|session| session.threads.sent())
     }
 
-    /// The past round `id` of the session behind `token`, or `None` when it has none.
     fn past_round(&self, token: &str, id: &str) -> Option<PastRound> {
         find(&mut self.lock(), token)?
             .past
@@ -1510,8 +1271,6 @@ impl Rounds for Sessions {
     }
 }
 
-/// The rounds of other changes saved before the session `session` opened, newest first, as
-/// `data` lists them, the quiz of a concluded one answered.
 fn past_rounds(session: &str, clock: Clock, data: &'static dyn RoundData) -> Vec<PastRound> {
     data.saved_rounds()
         .iter()
@@ -1542,8 +1301,6 @@ fn past_rounds(session: &str, clock: Clock, data: &'static dyn RoundData) -> Vec
                     prefix: saved.revision.0.to_owned(),
                     rest: saved.revision.1.to_owned(),
                 },
-                // A past round's masthead links to no Linear issue: its references link its
-                // tickets.
                 issues: Vec::new(),
                 ..data.review()
             };

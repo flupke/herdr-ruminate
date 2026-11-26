@@ -1,15 +1,9 @@
-//! What the reviewer saves in the round from the Explore page, beside the turns: the diagrams
-//! the page could not draw, and the answers to a conclusion's quiz.
-
 use review_explore::ExploreRound;
 use review_explore_page::CommandRefusal;
 
 use crate::ExploreSession;
 
 impl ExploreSession {
-    /// Saves `change` to the round the session shows. `change` returns whether it changed the
-    /// round, or why it refuses: a refusal is stale, since the page may show a round the
-    /// reviewer has left since.
     pub(crate) fn save_from_page(
         &mut self,
         change: impl FnOnce(&mut ExploreRound) -> Result<bool, String>,

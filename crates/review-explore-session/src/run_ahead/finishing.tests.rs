@@ -1,12 +1,6 @@
-//! A bare answer whose fork has not submitted its turn yet: the answer waits for the fork, and
-//! continues as it once it submits, or goes to the agent in the pane.
-
 use super::*;
 
 impl Harness {
-    /// Asks the first question with a fork for each choice, and answers it with "keep" and no
-    /// comment before its fork submitted. Returns the answer's turn, the fork's session and the
-    /// turn the fork was told, and the session of the other fork.
     fn answer_before_the_fork_submits(&mut self) -> (TurnRequest, String, TurnRequest, String) {
         self.ask(RunAhead::Every);
         let saved = self.forks_saved();
@@ -19,8 +13,6 @@ impl Harness {
         (request, fork, told, other)
     }
 
-    /// The turns the pane heard wait for their fork, by request, with when the fork started
-    /// each, since the test last read the session's events.
     fn finishing_heard(&self) -> Vec<(String, u64)> {
         let mut heard = Vec::new();
         while let Ok(event) = self.events.try_recv() {
@@ -189,7 +181,6 @@ fn after_cancelling_the_answer_that_waits_the_agent_revises_the_question_with_it
     let (first, access) = harness.ask(RunAhead::Every);
     let request = harness.post_answer(Some("keep"), "");
 
-    // The answer renewed the access, but waits for its fork: no prompt brought the new one.
     harness.session.handle(Input::Command(Command::CancelAnswer(
         request.answer.unwrap().id,
     )));

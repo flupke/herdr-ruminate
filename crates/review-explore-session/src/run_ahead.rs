@@ -1,25 +1,3 @@
-//! Run-ahead in the Explore session.
-//!
-//! While a question waits and the reviewer's settings turn run-ahead on, the session watches
-//! the agent that asked it. Once that agent is idle, the session forks its session once per
-//! choice the setting names. Each fork gets the prompt the agent would get after that answer,
-//! with an access value of its own, and takes a normal turn. Its request and its answer have
-//! the identities reserved for its choice while the question waits, which the round gives the
-//! reviewer's answer that picks that choice: the agent and the round name each answer alike. The
-//! session checks what a fork submits as it checks the agent's turns, keeps it for the fork's
-//! choice beside the round, and shows it to nobody. When that agent works on something else
-//! while the question waits and its session moves, the forks are taken again. A message the
-//! reviewer posts in the round conversation discards them at once, and they are taken again
-//! once the talk has been quiet for a minute (`talk.rs`).
-//!
-//! When the reviewer's answer is exactly the one a fork was told, and the fork submitted its
-//! turn, the pane's agent continues as that fork: it resumes the fork's session, then the
-//! fork's turn becomes the round's (`answer.rs`, `switch.rs`). Every other answer goes to the
-//! agent in the pane, as without run-ahead, and the session records why. Every fork the pane's
-//! agent does not continue as is stopped and its transcript deleted once its question no
-//! longer waits and when the reviewer closes; a reopened reviewer does the same for the forks a
-//! stopped one left.
-
 mod answer;
 mod calls;
 mod clean;
@@ -46,140 +24,95 @@ use crate::{ExploreSession, Input};
 
 pub use talk::TALK_QUIET;
 
-/// An event of run-ahead's own threads, in the session's input order.
 #[derive(Debug)]
 pub struct RunAheadInput(Event);
 
 #[derive(Debug)]
 enum Event {
-    /// Herdr reported `status` for the agent the question `generation` watches.
     Status {
         generation: u64,
         status: AgentStatus,
     },
-    /// The fork `session` of the round `round` ended.
     Ended {
         round: RoundKey,
         session: String,
         end: ForkEnd,
     },
-    /// The fork `session` of the round `round` is stopped and its transcript deleted.
-    Cleaned { round: RoundKey, session: String },
-    /// The switch of the pane's agent for the turn `request` of the round `round` ended: the
-    /// agent as Herdr reports it on the fork's session, or why it failed.
+    Cleaned {
+        round: RoundKey,
+        session: String,
+    },
     Switched {
         round: RoundKey,
         request: String,
         result: Box<Result<Agent, SwitchFailure>>,
     },
-    /// The pane's agent, which may have run the session of the fork `fork` of the round
-    /// `round`, was put on the session the round needs, or why not.
     Settled {
         round: RoundKey,
         fork: String,
         result: Box<Result<Agent, SwitchFailure>>,
     },
-    /// The quiet wait numbered `number` of the reviewer's talk in the round conversation passed.
-    Quiet { number: u64 },
+    Quiet {
+        number: u64,
+    },
 }
 
-/// The round a fork belongs to: its review and its instance.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RoundKey {
     unit: ReviewUnit,
     instance: String,
 }
 
-/// What the session keeps of run-ahead between inputs.
 pub(crate) struct RunAheadState {
     host: Arc<dyn ForkHost>,
-    /// This reviewer, as the forks it starts record it.
     reviewer: ProcessStamp,
-    /// Counts the questions watched, so that a status from an earlier watch is ignored.
     generation: u64,
-    /// The question that waits, and its forks.
     armed: Option<Armed>,
-    /// The access values and the sessions of the forks discarded: their calls are refused.
     discarded: HashSet<String>,
-    /// The bare answer that waits for the fork of its choice to submit its turn.
     finishing: Option<finishing::Finishing>,
-    /// The switch of the pane's agent to the fork an answer chose, while it runs.
     switching: Option<switch::Switching>,
-    /// The pane's agent being put on the session the round needs, after a switch that did not
-    /// end with the round taking the fork's turn, while it runs.
     settling: Option<settle::Settling>,
-    /// The forks, by session, whose session the agent was not put back from without the
-    /// reviewer asking: run-ahead does not try again by itself, a prompt to the agent does.
     settle_failed: HashSet<String>,
-    /// The forks, by session, whose session this reviewer saw the agent leave, though their
-    /// record could not be saved to say so.
     left_unrecorded: HashSet<String>,
-    /// A turn saved while the switch or the settling runs, and its attempt: its prompt goes out
-    /// once it ends.
     held: Option<crate::turn::SavedTurn>,
-    /// The path each turn of the session's round took after an answer to a question run-ahead
-    /// watched, by request, as the reviewer is shown it.
     paths: BTreeMap<String, TurnPath>,
-    /// How long a closing reviewer waits for its forks to stop.
     close_wait: std::time::Duration,
-    /// How long the reviewer's talk in the round's conversation stays quiet before the forks
-    /// are taken again.
     talk_quiet: std::time::Duration,
-    /// Counts the quiet waits started, so that the end of one stopped since is ignored.
     quiet_waits: u64,
-    /// Why run-ahead is not available for the rounds' agent, as the pane was told last.
     unavailable: Option<String>,
 }
 
-/// A question that waits, and the agent watched for its forks.
 struct Armed {
     generation: u64,
     asked: Asked,
-    /// When the agent's turn asked the question, in milliseconds since the epoch: when the
-    /// round knows it, else when the session began to watch the question.
     asked_at_ms: u64,
     _watch: PaneWatch,
-    /// The forks taken, once the agent was idle.
     taken: Option<Taken>,
-    /// Whether the agent worked since the forks were taken.
     worked: bool,
-    /// Why no fork could be taken, as last logged.
     refusal: Option<String>,
-    /// Whether a refusal to take the forks counted as a failure of run-ahead: one counts once
-    /// per question, however often it repeats.
     refusal_counted: bool,
-    /// The reviewer's talk with the agent in the round's conversation, while it keeps the forks
-    /// from being taken.
     talk: Option<talk::Talk>,
-    /// The identities reserved for each choice whose forks were taken, by choice.
     reserved: BTreeMap<String, ReservedIds>,
 }
 
-/// A question run-ahead watches, in its round, and the agent that asked it.
 #[derive(Clone)]
 struct Asked {
     round: RoundKey,
     question: Question,
-    /// Its number on the reviewer's screens, for the log.
     number: Option<usize>,
-    /// The pane of the agent that asked it.
     pane: PaneId,
 }
 
 impl Asked {
-    /// How the log names the question.
     fn label(&self) -> String {
         label(self.number)
     }
 }
 
-/// How the log names the question numbered `number` on the reviewer's screens.
 fn label(number: Option<usize>) -> String {
     number.map_or_else(|| "Q?".to_owned(), |number| format!("Q{number}"))
 }
 
-/// The identities of the reviewer's answer that picks a prepared choice, and of its turn: the
-/// forks of the choice are told them, and the round saves that answer under them.
 #[derive(Clone, Debug)]
 struct ReservedIds {
     request: String,
@@ -194,7 +127,6 @@ impl ReservedIds {
         }
     }
 
-    /// Gives `request` and its answer these identities.
     fn apply(&self, request: &mut TurnRequest) {
         request.request.clone_from(&self.request);
         if let Some(answer) = &mut request.answer {
@@ -203,32 +135,22 @@ impl ReservedIds {
     }
 }
 
-/// The forks of one question, taken from one point of the agent's session.
 struct Taken {
     point: ForkPoint,
-    /// When they were taken, in milliseconds since the epoch: what the reviewer wrote in the
-    /// round's conversation from then on, the forks know nothing of.
     at_ms: u64,
     forks: Vec<TakenFork>,
-    /// The files the forks' prompts name, which live as long as the forks.
     files: take::ForkFiles,
 }
 
-/// One fork taken for the question that waits: it runs, or ran.
 #[derive(Clone)]
 struct TakenFork {
     session: String,
     access: String,
     choice: String,
-    /// The turn the fork was told, as if the reviewer had picked its choice, and its
-    /// instructions.
     request: TurnRequest,
     turn: TurnInstructions,
-    /// What the fork's host keeps of it.
     host: HostFields,
-    /// The turn the fork submitted, kept for its choice.
     kept: Option<InterviewUpdate>,
-    /// Whether its process ended.
     ended: bool,
 }
 
@@ -254,22 +176,15 @@ impl RunAheadState {
         }
     }
 
-    /// The paths of the turns of the session's round are now `paths`, as a restored round
-    /// records them.
     pub(crate) fn paths_again(&mut self, paths: BTreeMap<String, TurnPath>) {
         self.paths = paths;
     }
 
-    /// The path each turn of the session's round took after an answer to a question run-ahead
-    /// watched, by request.
     pub(crate) fn turn_paths(&self) -> &BTreeMap<String, TurnPath> {
         &self.paths
     }
 
-    /// The fork that made a call with `access`, from the session `session` when the call names
-    /// one, and its round, among those of the question that waits, the one an answer waits for
-    /// and the one the pane's agent is switching to. A call that names a fork's session, as
-    /// Codex's do, is that fork's, whatever access it gives.
+    // Codex's calls name their session.
     fn fork_of_call(&self, access: &str, session: Option<&str>) -> Option<(&TakenFork, &RoundKey)> {
         let waiting = self.armed.as_ref().into_iter().flat_map(|armed| {
             armed
@@ -292,8 +207,6 @@ impl RunAheadState {
             .find(|(fork, _)| fork.access == access || session == Some(fork.session.as_str()))
     }
 
-    /// The fork `session`, among those of the question that waits and the one an answer waits
-    /// for.
     fn fork_mut(&mut self, session: &str) -> Option<&mut TakenFork> {
         let waiting = self
             .armed
@@ -306,7 +219,6 @@ impl RunAheadState {
             .find(|fork| fork.session == session)
     }
 
-    /// Logs `line` about the question that waits, or the one whose answer waits for its fork.
     fn log(&self, line: &str) {
         let asked = self
             .armed
@@ -319,7 +231,6 @@ impl RunAheadState {
 }
 
 impl TakenFork {
-    /// What stops the fork and removes what it left.
     fn trace(&self) -> review_run_ahead::ForkTrace<'_> {
         review_run_ahead::ForkTrace {
             session: &self.session,
@@ -329,8 +240,6 @@ impl TakenFork {
 }
 
 impl Armed {
-    /// The identities reserved for the choice of `request`, when it answers this question in
-    /// its round with a choice whose forks were taken.
     fn reserved_for(&self, request: &TurnRequest) -> Option<&ReservedIds> {
         if self.asked.round.instance != request.instance {
             return None;
@@ -357,8 +266,6 @@ impl Armed {
 }
 
 impl ExploreSession {
-    /// Watches the question that waits for forks, and drops the forks of a question that no
-    /// longer waits. Runs after every input.
     pub(crate) fn run_ahead_reconcile(&mut self) {
         self.run_ahead_withdraw_finishing();
         let waiting = self.question_for_forks();
@@ -387,21 +294,16 @@ impl ExploreSession {
         }
     }
 
-    /// Whether the session moves the pane's agent to another session: a switch or a settling
-    /// runs.
     #[cfg(test)]
     pub(crate) fn moves_agent(&self) -> bool {
         self.run_ahead.switching.is_some() || self.run_ahead.settling.is_some()
     }
 
-    /// A closing reviewer waits `wait` for its forks to stop, in place of six seconds.
     #[cfg(test)]
     pub(crate) fn wait_on_close(&mut self, wait: std::time::Duration) {
         self.run_ahead.close_wait = wait;
     }
 
-    /// Tells the pane why run-ahead is not available for the rounds' agent, or that it is,
-    /// when that changed.
     fn run_ahead_available(&mut self, unavailable: Option<String>) {
         if self.run_ahead.unavailable != unavailable {
             self.run_ahead.unavailable.clone_from(&unavailable);
@@ -411,8 +313,6 @@ impl ExploreSession {
         }
     }
 
-    /// Shows the reviewer the path `path` the turn `request` of `round` took: the pane and the
-    /// page say it with the turn, when the reviewer can use it.
     fn show_path(&mut self, round: &RoundKey, request: &str, path: TurnPath) {
         self.run_ahead
             .paths
@@ -424,8 +324,6 @@ impl ExploreSession {
         });
     }
 
-    /// The question of the session's round that waits for the reviewer, when the round may
-    /// still change.
     fn question_for_forks(&self) -> Option<(RoundKey, Question)> {
         if self.state.storage_error.is_some() || self.state.historical {
             return None;
@@ -439,7 +337,6 @@ impl ExploreSession {
         Some((key, question))
     }
 
-    /// Changes the record of the forks of `round` with `change`.
     fn update_forks<T>(
         &self,
         round: &RoundKey,
@@ -449,7 +346,6 @@ impl ExploreSession {
             .update_forks(&round.unit, &round.instance, change)
     }
 
-    /// Watches the agent that asked `question`; takes its forks at once when it is idle.
     fn run_ahead_arm(&mut self, round: RoundKey, question: Question) {
         let Some(agent) = self.round_agent() else {
             return;
@@ -471,8 +367,6 @@ impl ExploreSession {
         let asked_at_ms = saved
             .and_then(|round| asked_at_ms(round, &question))
             .unwrap_or_else(review_explore::now_ms);
-        // A message the agent has not replied to yet, posted while it took the turn that asks the
-        // question, starts a talk; an older one does not hold the forks of every later question.
         let since_ms = saved
             .and_then(|round| asking_started_ms(round, &question))
             .unwrap_or(asked_at_ms);
@@ -514,7 +408,7 @@ impl ExploreSession {
         });
         self.run_ahead
             .log("the question waits; its forks start once the agent is idle");
-        // The watch reports changes only: the agent may be idle already.
+        // Herdr reports status changes only: the agent may be idle already.
         if self
             .agents
             .get_agent(&agent.pane_id)
@@ -526,7 +420,6 @@ impl ExploreSession {
         }
     }
 
-    /// The agent the round's turns go to: the one pinned, else the one selected.
     fn round_agent(&mut self) -> Option<Agent> {
         if let Some(agent) = self
             .state
@@ -539,7 +432,6 @@ impl ExploreSession {
         self.target.resolve(&*self.agents).ok().flatten()
     }
 
-    /// Follows an event of run-ahead's threads.
     pub(crate) fn run_ahead_input(&mut self, input: RunAheadInput) {
         match input.0 {
             Event::Status { generation, status } => self.run_ahead_status(generation, status),
@@ -563,9 +455,6 @@ impl ExploreSession {
         }
     }
 
-    /// The watched agent's `status`: its first idle takes the forks; an idle after work that
-    /// moved its session, or after a write to its transcript, takes them again. While the reviewer talks in the round's conversation,
-    /// its idle after its reply starts the quiet wait instead, and its work stops it.
     fn run_ahead_status(&mut self, generation: u64, status: AgentStatus) {
         let Some(armed) = self
             .run_ahead
@@ -589,8 +478,8 @@ impl ExploreSession {
             self.run_ahead_idle();
             return;
         };
-        // A transcript that moved without work holds what the agent wrote of its turn after it
-        // reported it ended, as Claude Code does under herdr-core, after forks taken at once.
+        // Claude Code under herdr-core writes the end of its turn to its transcript after it
+        // reports the turn ended.
         let worked = std::mem::take(&mut armed.worked);
         let moved = self.run_ahead.host.last_entry(&taken.point) != taken.point.entry
             || worked
@@ -610,20 +499,16 @@ impl ExploreSession {
     }
 }
 
-/// Where the agent of a pane goes: back to a session it ran before the fork whose session it
-/// may run, or to a fork's session.
 enum Move {
     Resume { session: String, from: OwnedFork },
     Switch(OwnedFork),
 }
 
 impl Move {
-    /// The switch to the fork `trace` names.
     fn switch(trace: review_run_ahead::ForkTrace<'_>) -> Self {
         Self::Switch(OwnedFork::of(trace))
     }
 
-    /// The move back to `session`, from the fork `from` names.
     fn resume(session: String, from: review_run_ahead::ForkTrace<'_>) -> Self {
         Self::Resume {
             session,
@@ -631,9 +516,6 @@ impl Move {
         }
     }
 
-    /// Moves the agent of `pane` through `host`, on a thread of its own, once the prompt the
-    /// courier was sending to `pane` when `hold` began, if any, is sent: nothing else is typed in
-    /// the pane meanwhile, and the session's thread does not wait. `done` gets the outcome.
     fn start_once_drained(
         self,
         host: &Arc<dyn ForkHost>,
@@ -658,7 +540,6 @@ impl Move {
     }
 }
 
-/// The request of the agent's turn that asked `question` in `round`.
 fn asking_request<'a>(
     round: &'a review_explore::ExploreRound,
     question: &Question,
@@ -671,8 +552,6 @@ fn asking_request<'a>(
     Some(&turn.update.request)
 }
 
-/// When the prompt of the agent's turn that asked `question` went out, in milliseconds since the
-/// epoch, when `round` knows it.
 fn asking_started_ms(round: &review_explore::ExploreRound, question: &Question) -> Option<u64> {
     round
         .turns
@@ -680,8 +559,6 @@ fn asking_started_ms(round: &review_explore::ExploreRound, question: &Question) 
         .started_at_ms
 }
 
-/// When the agent's turn that asked `question` was saved in `round`, in milliseconds since the
-/// epoch, when the round knows when its prompt went out and how long the agent took.
 fn asked_at_ms(round: &review_explore::ExploreRound, question: &Question) -> Option<u64> {
     let started = asking_started_ms(round, question)?;
     let elapsed = round

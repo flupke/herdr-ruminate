@@ -1,20 +1,11 @@
-//! What a prompt says about the unreviewed lines: where their diffs are.
-
 use std::fmt;
 use std::path::PathBuf;
 
-/// The changed lines of a checkpoint that no review mark covers, as a
-/// prompt gives them: the directory holding their numbered diffs, each
-/// named like its source file.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Unreviewed {
     pub directory: PathBuf,
-    /// How many files still have unreviewed lines.
     pub files: usize,
-    /// The index file naming the diffs that could not sit at their source
-    /// path, when there are any.
     pub index: Option<PathBuf>,
-    /// What the agent should know about the lines.
     pub notice: Option<String>,
 }
 

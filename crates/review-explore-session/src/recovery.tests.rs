@@ -1,6 +1,3 @@
-//! Restoring saved rounds after a restart, repairing damaged records and retrying
-//! interrupted deliveries, through the session interface over a temporary directory.
-
 use review_explore::{DispatchState, ExplorePage, ExploreViewState, ImplementationState};
 use ui_events::ExploreProgress;
 
@@ -196,7 +193,6 @@ fn retry_after_uncertain_delivery_sends_the_same_answer_once_more() {
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, question(&first, 1))));
     let (request, _) = harness.answer("Keep it, delivered or not.");
-    // The process stopped after starting the prompt, before saving its outcome.
     harness.damage(|round| {
         round.turns.get_mut(&request.request).unwrap().state = DispatchState::Attempting;
     });
@@ -336,7 +332,6 @@ fn implementation_delivery_states_survive_restart_without_replaying() {
 fn a_request_an_earlier_process_left_queued_stays_paused_while_another_is_sent() {
     let mut harness = Harness::start();
     harness.conclude();
-    // An earlier process saved a request for the first conclusion and never sent it.
     let earlier = harness
         .exploration()
         .implementation("Earlier task".into())
@@ -366,7 +361,6 @@ fn a_request_an_earlier_process_left_queued_stays_paused_while_another_is_sent()
         .handle(Input::Command(Command::Implement(request.clone())));
     let sent = harness.next::<ui_events::ExploreImplementationSaved>().0;
 
-    // Another front end saves the round while the request is on its way.
     harness.damage(|round| round.revision += 1);
     harness.session.handle(Input::StorageChanged);
 

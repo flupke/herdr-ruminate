@@ -32,7 +32,6 @@ fn turn() -> TurnInstructions {
     )
 }
 
-/// The directory of the index the prompt names.
 fn directory(prompt: &str) -> PathBuf {
     let index = prompt
         .split_whitespace()

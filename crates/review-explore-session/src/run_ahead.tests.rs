@@ -1,6 +1,3 @@
-//! Run-ahead in the session, with a fake agent host: which forks start, what their prompts
-//! carry, what a fork may submit, and when forks are discarded.
-
 use std::collections::HashMap;
 use std::sync::{Condvar, Mutex};
 
@@ -18,51 +15,34 @@ use super::*;
 #[path = "run_ahead/finishing.tests.rs"]
 mod finishing;
 
-/// An agent host that starts no process: it records the forks it is asked to start and
-/// discard, and lets a test end them, report the agent's status and move its session. A fork
-/// it discards stops at once, unless the test holds the stops.
 #[derive(Clone, Default)]
 pub(super) struct FakeForks {
     host: Arc<Mutex<FakeHost>>,
-    /// Signalled each time the agent is asked to switch or to resume a session, and each time
-    /// a stop is held.
     changed: Arc<Condvar>,
 }
 
 #[derive(Default)]
 struct FakeHost {
-    /// The last conversation entry of the agent's session, as it is now.
     entry: Option<String>,
-    /// The session the host knows the agent on, when it is not the one Herdr reports.
     session: Option<String>,
-    /// How many forks it made.
     created: u32,
     started: Vec<(String, String)>,
     ended: HashMap<String, Box<dyn FnOnce(ForkEnd) + Send>>,
     discarded: Vec<String>,
-    /// Whether a discarded fork keeps running until the test lets it stop.
     hold_stops: bool,
-    /// The stops held, and where each reports that its fork stopped.
     stopping: Vec<Box<dyn FnOnce() + Send>>,
     reports: Vec<StatusReport>,
     log: Vec<String>,
-    /// Whether the agent runs without the reviewer's hooks.
     unhooked: bool,
-    /// Whether the host hears no agent's hooks, and so moves no agent.
     deaf: bool,
-    /// Why no fork can be taken of the agent's session, when it cannot.
     point_refusal: Option<String>,
-    /// Why run-ahead never forks the agent, when it does not.
     unforkable: Option<String>,
-    /// The switches asked, by the session of their fork, and where each reports its end.
     switches: Vec<(String, SwitchDone)>,
-    /// The sessions the agent was asked to resume, and where each reports its end.
     resumes: Vec<(String, SwitchDone)>,
 }
 
 type SwitchDone = Box<dyn FnOnce(Result<Agent, SwitchFailure>) + Send>;
 
-/// The sessions of `moves`, in order.
 fn sessions(moves: &[(String, SwitchDone)]) -> Vec<String> {
     moves.iter().map(|(session, _)| session.clone()).collect()
 }
@@ -72,33 +52,27 @@ impl FakeForks {
         self.host.lock().unwrap()
     }
 
-    /// The forks started, as (session, prompt), oldest first.
     fn started(&self) -> Vec<(String, String)> {
         self.host().started.clone()
     }
 
-    /// The sessions of the forks discarded, in order.
     fn discarded(&self) -> Vec<String> {
         self.host().discarded.clone()
     }
 
-    /// The agent's session moves: its last conversation entry is now `entry`.
     fn move_session(&self, entry: &str) {
         self.host().entry = Some(entry.into());
     }
 
-    /// The host knows the agent on the session `session`, whatever Herdr reports.
     fn know_session(&self, session: &str) {
         self.host().session = Some(session.into());
     }
 
-    /// Herdr reports `status` for the watched agent.
     fn report(&self, status: AgentStatus) {
         let host = self.host();
         (host.reports.last().expect("the agent is watched"))(status);
     }
 
-    /// The fork `session` ends, its turn done.
     fn end(&self, session: &str) {
         let ended = self.host().ended.remove(session).expect("the fork runs");
         ended(ForkEnd {
@@ -113,7 +87,6 @@ impl FakeForks {
         });
     }
 
-    /// The fork `session` ends without its turn done, as `exit` says.
     fn end_as(&self, session: &str, exit: &str, finished: bool) {
         let ended = self.host().ended.remove(session).expect("the fork runs");
         ended(ForkEnd {
@@ -127,32 +100,26 @@ impl FakeForks {
         self.host().log.clone()
     }
 
-    /// The agent runs without the reviewer's hooks from now on.
     fn unhook(&self) {
         self.host().unhooked = true;
     }
 
-    /// The host hears no agent's hooks from now on.
     fn deafen(&self) {
         self.host().deaf = true;
     }
 
-    /// Run-ahead never forks the agent from now on, for `why`, as a Codex agent.
     fn unfork(&self, why: &str) {
         self.host().unforkable = Some(why.into());
     }
 
-    /// No fork can be taken of the agent's session from now on, for `why`.
     fn refuse_points(&self, why: &str) {
         self.host().point_refusal = Some(why.into());
     }
 
-    /// Whether the forks discarded from now on keep running until the test lets them stop.
     fn hold_stops(&self, hold: bool) {
         self.host().hold_stops = hold;
     }
 
-    /// Waits until `count` stops are held, then lets those forks stop.
     fn finish_stopping(&self, count: usize) {
         let stopping = std::mem::take(
             &mut self
@@ -166,8 +133,6 @@ impl FakeForks {
         }
     }
 
-    /// Waits until `moves` of the host holds a move: the session starts each move on a thread
-    /// of its own. Gives up after ten seconds, for a test that fails.
     fn wait_for(&self, moves: fn(&mut FakeHost) -> &mut Vec<(String, SwitchDone)>) {
         drop(
             self.changed
@@ -178,28 +143,22 @@ impl FakeForks {
         );
     }
 
-    /// The sessions of the forks the agent was asked to switch to, in order, once it was asked
-    /// to switch.
     fn switches(&self) -> Vec<String> {
         self.wait_for(|host| &mut host.switches);
         sessions(&self.host().switches)
     }
 
-    /// The latest switch ends with `result`.
     fn finish_switch(&self, result: Result<Agent, SwitchFailure>) {
         self.wait_for(|host| &mut host.switches);
         let (_, done) = self.host().switches.pop().expect("a switch runs");
         done(result);
     }
 
-    /// The sessions the agent was asked to resume, outside a switch, in order, once it was
-    /// asked to resume one.
     fn resumes(&self) -> Vec<String> {
         self.wait_for(|host| &mut host.resumes);
         sessions(&self.host().resumes)
     }
 
-    /// The latest resume ends with `result`.
     fn finish_resume(&self, result: Result<Agent, SwitchFailure>) {
         self.wait_for(|host| &mut host.resumes);
         let (_, done) = self.host().resumes.pop().expect("a resume runs");
@@ -317,7 +276,6 @@ impl ForkHost for FakeForks {
 }
 
 impl Harness {
-    /// Starts a round with run-ahead as `run_ahead`, whose agent asks its first question.
     fn ask(&mut self, run_ahead: RunAhead) -> (TurnRequest, String) {
         self.store.save_explore_run_ahead(run_ahead).unwrap();
         self.capture();
@@ -327,21 +285,18 @@ impl Harness {
         (first, access)
     }
 
-    /// Hands the session every input its threads left.
     fn pump(&mut self) {
         while let Ok(input) = self.inbox.try_recv() {
             self.session.handle(input);
         }
     }
 
-    /// The forks saved beside the round.
     fn forks_saved(&self) -> RoundForks {
         self.store
             .load_round_forks(&self.unit, &self.exploration().instance)
             .unwrap()
     }
 
-    /// Submits `operation` as the fork `session`, with the access its prompt granted.
     fn submit_as_fork(&mut self, session: &str, operation: Operation) -> Result<Response, String> {
         let access = fork_line(&self.fork_prompt(session), "Explore review access: ");
         self.submit(&access, operation)
@@ -356,7 +311,6 @@ impl Harness {
             .1
     }
 
-    /// The turn the fork `session` was told, as its prompt names it.
     fn fork_request(&self, session: &str) -> TurnRequest {
         let prompt = self.fork_prompt(session);
         let mut exploration = self.exploration().clone();
@@ -591,7 +545,6 @@ fn a_call_that_names_a_fork_s_session_is_the_fork_s_whatever_access_it_gives() {
     let request = harness.fork_request(&session);
     let before = harness.saved();
 
-    // A Codex fork that gives the access value its history holds, the agent's.
     let kept = harness.submit_from(&pane_access, question(&request, 2), true, Some(&session));
 
     assert_eq!(shown(kept), (true, Some("Q2".into())));
@@ -669,7 +622,6 @@ fn forks_taken_before_the_agent_wrote_the_end_of_its_turn_are_taken_again_at_its
     harness.ask(RunAhead::Every);
     let first: Vec<_> = harness.forks.started();
 
-    // Claude Code under herdr-core writes the end of its turn after it reported idle.
     harness.forks.move_session("the-turn-s-end");
     harness.forks.report(AgentStatus::Idle);
     harness.pump();
@@ -687,7 +639,6 @@ fn forks_are_taken_again_when_the_agent_worked_and_its_session_moved() {
     harness.ask(RunAhead::Every);
     let first: Vec<_> = harness.forks.started();
 
-    // Work that leaves the session where it was takes nothing again.
     harness.forks.report(AgentStatus::Working);
     harness.forks.report(AgentStatus::Idle);
     harness.pump();
@@ -710,7 +661,6 @@ fn forks_are_taken_again_when_the_agent_worked_and_its_session_moved() {
             .all(|fork| discarded_for(fork) == Some(DiscardReason::SessionMoved))
     );
     assert!(saved.forks[2..].iter().all(|fork| fork.discarded.is_none()));
-    // Each choice's fork is told the same request and answer as before.
     let identities = |prompt: &str| {
         (
             fork_line(prompt, "Selected option ID: "),
@@ -757,7 +707,6 @@ fn a_closing_reviewer_discards_its_forks_and_waits_for_them_to_stop() {
     harness.ask(RunAhead::Every);
     harness.forks.hold_stops(true);
     let forks = harness.forks.clone();
-    // The forks stop once the closing reviewer asked both to.
     let stopper = std::thread::spawn(move || forks.finish_stopping(2));
 
     harness.reopen();
@@ -798,7 +747,6 @@ fn a_reopened_reviewer_discards_the_forks_a_stopped_reviewer_left_and_not_a_live
     harness.ask(RunAhead::Every);
     let unit = harness.unit.clone();
     let instance = harness.exploration().instance.clone();
-    // Two forks as reviewers left them that never discarded them: one stopped, one runs.
     let gone = ProcessStamp {
         pid: u32::MAX - 1,
         started: 1,
@@ -832,12 +780,9 @@ fn a_reopened_reviewer_discards_the_forks_a_stopped_reviewer_left_and_not_a_live
     assert_eq!(saved.forks[1].discarded, None);
 }
 
-/// A process other than the test's own that runs until it is dropped, as another reviewer that
-/// still runs.
 struct RunningProcess(std::process::Child);
 
 impl RunningProcess {
-    /// Starts a process that waits for input the test never writes.
     fn start() -> Self {
         Self(
             std::process::Command::new("cat")
@@ -876,7 +821,6 @@ fn a_fork_s_prompt_lists_the_unreviewed_lines_as_the_answer_leaves_them_and_mark
     let Operation::SubmitQuestion(mut update) = question(&answer, 2) else {
         unreachable!("a question");
     };
-    // Once answered, the second question marks the whole change reviewed.
     update.reviewed = vec![
         serde_json::from_value(
             serde_json::json!({"path": "reviewed.rs", "side": "new", "lines": null}),
@@ -927,8 +871,6 @@ fn turning_run_ahead_off_discards_the_forks_at_the_next_input() {
 }
 
 impl Harness {
-    /// Answers the latest question with `choice` and the comment `text`, as the reviewer, and
-    /// returns the saved turn; no prompt is awaited.
     fn post_answer(&mut self, choice: Option<&str>, text: &str) -> TurnRequest {
         let request = self.request(Some(AnswerInput {
             option: choice.map(str::to_owned),
@@ -938,7 +880,6 @@ impl Harness {
         self.post_turn(&request)
     }
 
-    /// The fork for `choice`, by session, submits the next question for its turn.
     fn fork_submits(&mut self, choice: &str) -> (String, TurnRequest) {
         let saved = self.forks_saved();
         let session = saved
@@ -955,21 +896,16 @@ impl Harness {
         (session, request)
     }
 
-    /// Whether no prompt reached the agent in the pane beyond those the test read, once every
-    /// prompt sent so far went out or is held.
     fn no_prompt_sent(&self) -> bool {
         self.threads.prompt_sender().flush();
         self.agents.prompts().len() == self.delivered
     }
 
-    /// Whether the agent was asked neither to switch nor to resume a session, and the session
-    /// does not move it.
     fn nothing_moved(&self) -> bool {
         let host = self.forks.host();
         !self.session.moves_agent() && host.switches.is_empty() && host.resumes.is_empty()
     }
 
-    /// The agent in the pane, on the session `session`.
     fn agent_on(&self, session: &str) -> Agent {
         let mut agent = agent();
         agent.agent_session.as_mut().unwrap().value = session.to_owned();
@@ -977,15 +913,10 @@ impl Harness {
         agent
     }
 
-    /// The path the latest answer's turn took, as saved beside the round.
     fn latest_path(&self) -> TurnPath {
         self.forks_saved().answers.last().unwrap().path.clone()
     }
 
-    /// The paths of turns the pane heard of since the test last read the session's events, by
-    /// request, oldest first.
-    /// What the pane was told of run-ahead's availability since the test last read the
-    /// session's events, in order.
     fn availability_heard(&mut self) -> Vec<Option<String>> {
         let mut heard = std::mem::take(&mut self.run_ahead_unavailable);
         while let Ok(event) = self.events.try_recv() {
@@ -1006,8 +937,6 @@ impl Harness {
         heard
     }
 
-    /// The agent in the pane takes the turn `request` that the plain chain sent it, and posts
-    /// the next question; returns the path the page shows with it.
     fn agent_takes(&mut self, request: &TurnRequest) -> Option<TurnPath> {
         let prompt = self.delivered_prompt();
         assert!(prompt.contains(&format!("Explore request: {}\n", request.request)));
@@ -1032,8 +961,6 @@ impl Harness {
         response.path
     }
 
-    /// The reviewer writes `text` in the round's conversation, under the first question;
-    /// returns the conversation and the message.
     fn write_in_chat(&self, text: &str) -> (review_threads::ThreadId, review_threads::MessageId) {
         let instance = self.exploration().instance.clone();
         let post = review_threads::Post::to_round(
@@ -1055,9 +982,6 @@ impl Harness {
 }
 
 impl Harness {
-    /// The reviewer writes `text` in the round's conversation, under the first question, and the
-    /// session hears of it as the thread service tells it; returns the conversation and the
-    /// message.
     fn say_in_chat(&mut self, text: &str) -> (review_threads::ThreadId, review_threads::MessageId) {
         let (conversation, message) = self.write_in_chat(text);
         self.session
@@ -1069,7 +993,6 @@ impl Harness {
         (conversation, message)
     }
 
-    /// The agent replies to `message` in `conversation`.
     fn reply_in_chat(
         &self,
         conversation: &review_threads::ThreadId,
@@ -1090,8 +1013,6 @@ impl Harness {
             .unwrap();
     }
 
-    /// The agent takes the turn the reviewer's `message` in `conversation` woke it for: it
-    /// works, replies, its session moves to `entry`, and it is idle again.
     fn agent_replies(
         &mut self,
         conversation: &review_threads::ThreadId,
@@ -1106,7 +1027,6 @@ impl Harness {
     }
 }
 
-/// The turn the agent submits with `operation`.
 fn turn_of(operation: &Operation) -> InterviewUpdate {
     crate::submission::update_of(operation).unwrap()
 }
@@ -1183,8 +1103,6 @@ fn a_bare_answer_whose_fork_submitted_switches_the_agent_to_it_and_takes_its_tur
         "the page says the turn was prepared"
     );
 
-    // The agent continues as the fork: its access holds until its next prompt, from the
-    // fork's session only.
     assert!(
         !shown(harness.submit(&fork_access, question(&request, 2))).0,
         "the same turn again changes nothing"
@@ -1200,9 +1118,6 @@ fn a_bare_answer_whose_fork_submitted_switches_the_agent_to_it_and_takes_its_tur
     assert!(applied(harness.submit(&access, question(&next, 3))));
 }
 
-/// The reviewer answers, after `setup`, as it returns: with the choice and the comment it
-/// returns, which the fork for "keep" was not told exactly. The answer goes to the agent in the
-/// pane, and the round records `reason`.
 fn an_answer_the_fork_was_not_told_exactly_goes_to_the_agent_and_the_reason_is_recorded(
     reason: &PlainReason,
     setup: impl FnOnce(&mut Harness) -> (Option<&'static str>, &'static str),
@@ -1232,7 +1147,6 @@ fn an_answer_the_fork_was_not_told_exactly_goes_to_the_agent_and_the_reason_is_r
             .contains(&(request.request.clone(), path.clone())),
         "{reason:?}: the pane hears why"
     );
-    // The agent in the pane gets the answer, takes the turn, and the page says why with it.
     if *reason != PlainReason::AgentBusy {
         assert_eq!(harness.agent_takes(&request), Some(path), "{reason:?}");
     }
@@ -1342,7 +1256,6 @@ fn an_answer_after_the_session_the_host_knows_moved_goes_to_the_agent() {
     an_answer_the_fork_was_not_told_exactly_goes_to_the_agent_and_the_reason_is_recorded(
         &PlainReason::SessionMoved,
         |harness| {
-            // Herdr still reports the agent where the forks were taken.
             harness.forks.know_session("resumed-elsewhere");
             (Some("keep"), "")
         },
@@ -1354,7 +1267,6 @@ fn a_bare_answer_uses_its_fork_while_the_host_knows_the_agent_where_the_forks_we
     let mut harness = Harness::start();
     harness.ask(RunAhead::Every);
     let (fork, _) = harness.fork_submits("keep");
-    // Herdr reports another pane's session for the agent, as it can under a shared daemon.
     let forked_from = harness.forks.session(&agent()).unwrap();
     harness.forks.know_session(&forked_from);
     harness.agent_on("another-pane-s-session");
@@ -1414,7 +1326,6 @@ fn an_answer_after_the_unreviewed_lines_changed_goes_to_the_agent() {
 
 #[test]
 fn an_answer_whose_choice_has_no_fork_yet_says_why() {
-    // The agent was still working when the question came.
     let mut harness = Harness::start();
     harness
         .store
@@ -1443,7 +1354,6 @@ fn an_answer_whose_choice_has_no_fork_yet_says_why() {
 
 #[test]
 fn an_answer_whose_choice_the_setting_does_not_fork_says_why() {
-    // The setting prepares the recommended choice only.
     let mut harness = Harness::start();
     harness
         .store
@@ -1484,7 +1394,6 @@ fn a_message_in_the_chat_discards_every_fork_at_once_and_none_is_taken_before_th
     harness.ask(RunAhead::Every);
     let (submitted, _) = harness.fork_submits("keep");
     let first: Vec<_> = harness.forks.started();
-    // A message in another round's conversation changes nothing here.
     harness
         .session
         .handle(Input::RoundMessage(review_thread_service::RoundMessage {
@@ -1509,7 +1418,6 @@ fn a_message_in_the_chat_discards_every_fork_at_once_and_none_is_taken_before_th
             .iter()
             .all(|fork| discarded_for(fork) == Some(DiscardReason::ChatMessage))
     );
-    // The agent works on something else and its session moves, but it did not reply yet.
     harness.forks.report(AgentStatus::Working);
     harness.forks.move_session("before-the-reply");
     harness.forks.report(AgentStatus::Idle);
@@ -1535,12 +1443,10 @@ fn a_talk_of_several_messages_takes_one_set_of_forks_once_it_was_quiet() {
     let (conversation, message) = harness.say_in_chat("Why does the policy exist?");
     harness.agent_replies(&conversation, &message, "first-reply");
     assert!(harness.session.quiet_wait_runs());
-    // A new message before the wait passed starts it again, from the agent's next reply.
     let (_, message) = harness.say_in_chat("And for old drafts?");
     assert!(!harness.session.quiet_wait_runs());
     harness.agent_replies(&conversation, &message, "second-reply");
     assert!(harness.session.quiet_wait_runs());
-    // Work of the agent stops the wait too; its next idle starts it again.
     harness.forks.report(AgentStatus::Working);
     harness.pump();
     assert!(!harness.session.quiet_wait_runs());
@@ -1557,7 +1463,6 @@ fn a_talk_of_several_messages_takes_one_set_of_forks_once_it_was_quiet() {
     harness.session.end_quiet_wait();
 
     assert_eq!(harness.forks.started().len(), first * 2);
-    // Once taken, the forks stay while the agent's session stays where the talk left it.
     harness.forks.report(AgentStatus::Working);
     harness.forks.report(AgentStatus::Idle);
     harness.pump();
@@ -1579,7 +1484,6 @@ fn a_message_the_agent_has_not_replied_to_when_the_question_comes_holds_the_fork
     harness.capture();
     let first = harness.request(None);
     let access = harness.turn(&first);
-    // The reviewer writes while the agent takes the turn that asks the question.
     let (conversation, message) = harness.say_in_chat("Why does the policy exist?");
 
     assert!(applied(harness.submit(&access, question(&first, 1))));
@@ -1600,7 +1504,6 @@ fn a_message_posted_before_the_question_s_turn_does_not_hold_its_forks() {
         .unwrap();
     harness.capture();
     let first = harness.request(None);
-    // A message the agent never replied to, from before the turn that asks the question.
     harness.write_in_chat("Anything to add?");
     let before = review_explore::now_ms() - 1_000;
     harness
@@ -1627,7 +1530,6 @@ fn the_forks_are_taken_again_once_the_quiet_wait_passed_after_the_agent_s_reply(
 
     harness.agent_replies(&conversation, &message, "after-the-talk");
 
-    // The quiet wait passes on a thread of its own, and tells the session through its inbox.
     while harness.forks.started().len() == first {
         let input = harness.inbox.recv().unwrap();
         harness.session.handle(input);
@@ -1642,8 +1544,6 @@ fn after_a_talk_in_the_chat_forks_taken_again_hold_it_and_a_bare_answer_uses_one
     let first = harness.forks.started();
     let (conversation, message) = harness.say_in_chat("Why does the policy exist?");
     harness.agent_replies(&conversation, &message, "after-the-talk");
-    // The talk is older than the forks taken next: one taken in the same millisecond as a
-    // message cannot be told apart from it.
     let before = review_explore::now_ms() - 1;
     harness
         .store
@@ -1672,7 +1572,6 @@ fn after_a_talk_in_the_agent_s_pane_forks_taken_again_hold_it_and_a_bare_answer_
     let first = harness.forks.started();
     harness.fork_submits("keep");
 
-    // The reviewer talks with the agent in its pane: it works, and its session moves.
     harness.forks.report(AgentStatus::Working);
     harness.forks.move_session("after-the-talk");
     harness.forks.report(AgentStatus::Idle);
@@ -1689,7 +1588,6 @@ fn after_a_talk_in_the_agent_s_pane_forks_taken_again_hold_it_and_a_bare_answer_
 #[test]
 fn a_fork_s_turn_carries_the_round_s_data_so_an_answer_still_switches_to_it() {
     let mut harness = Harness::start();
-    // Notes are part of the round's data, which every turn and every fork's turn carries.
     harness.write_reviewer_notes("Name commits by their subject.");
     harness.ask(RunAhead::Every);
     let (fork, _) = harness.fork_submits("keep");
@@ -1763,7 +1661,6 @@ fn a_reopened_reviewer_shows_the_prepared_turn_and_keeps_the_session_the_agent_r
     harness.pump();
     let instance = harness.exploration().instance.clone();
     let unit = harness.unit.clone();
-    // As a reviewer that stopped left it.
     harness
         .store
         .lock_explore(&unit)
@@ -1776,8 +1673,6 @@ fn a_reopened_reviewer_shows_the_prepared_turn_and_keeps_the_session_the_agent_r
         })
         .unwrap();
     harness.pump();
-    // The closing reviewer waits for the forks of the next question to stop, which the fake
-    // stops at once.
 
     let restored = harness.reopen();
 
@@ -1852,8 +1747,6 @@ fn a_turn_saved_while_the_agent_switches_waits_for_it_to_go_back_and_then_reache
 }
 
 impl Harness {
-    /// Answers bare with `choice`, whose fork submitted, so that the agent switches to that
-    /// fork; returns the fork's session and the answer's turn.
     fn answer_while_prepared(&mut self, choice: &str) -> (String, TurnRequest) {
         self.ask(RunAhead::Every);
         let (fork, _) = self.fork_submits(choice);
@@ -1862,24 +1755,20 @@ impl Harness {
         (fork, request)
     }
 
-    /// The record of the fork `session`.
     fn fork_record(&self, session: &str) -> ForkRecord {
         self.forks_saved().fork(session).cloned().unwrap()
     }
 
-    /// Retries the turn `request` as the reviewer.
     fn retry(&mut self, request: &TurnRequest) {
         self.session
             .handle(Input::Command(Command::Retry(Box::new(request.clone()))));
     }
 
-    /// Whether `prompt` is the one of the turn `request`.
     fn is_prompt_of(prompt: &str, request: &TurnRequest) -> bool {
         prompt.contains(&format!("Explore request: {}\n", request.request))
     }
 }
 
-/// The failure of a switch whose resume Herdr did not confirm in time.
 fn unconfirmed() -> SwitchFailure {
     SwitchFailure {
         error: "Herdr did not report the agent on the fork's session".into(),
@@ -1909,7 +1798,6 @@ fn a_switch_that_failed_once_the_resume_was_typed_puts_the_agent_back_before_ret
         "the fork's session may be the agent's until it is back"
     );
 
-    // The reviewer retries before the agent is back: the answer waits for it.
     harness.retry(&request);
     assert!(harness.no_prompt_sent());
     harness.agent_on(&fork);
@@ -1989,7 +1877,6 @@ fn an_agent_restarted_without_the_hooks_gets_the_retried_prompt_without_being_pu
 
     harness.retry(&request);
 
-    // A move back would hold the prompt until it ended.
     assert!(Harness::is_prompt_of(&harness.delivered_prompt(), &request));
     let record = harness.fork_record(&fork);
     assert!(
@@ -2081,7 +1968,6 @@ fn a_reset_while_the_agent_switches_puts_it_back() {
 fn a_reopened_reviewer_puts_back_an_agent_left_switching_before_its_answer_goes_out() {
     let mut harness = Harness::start();
     let (fork, _) = harness.answer_while_prepared("keep");
-    // The reviewer stops while the agent switches, which Herdr never confirms.
     harness.forks.host().switches.clear();
 
     let restored = harness.reopen();
@@ -2108,7 +1994,6 @@ fn a_reopened_reviewer_keeps_the_agent_on_a_fork_whose_turn_the_round_took() {
     let (fork, request) = harness.answer_while_prepared("keep");
     harness.forks.finish_switch(Ok(harness.agent_on(&fork)));
     harness.pump();
-    // As a reviewer that stopped once the fork's turn was saved, before it recorded the switch.
     let instance = harness.exploration().instance.clone();
     harness
         .store
@@ -2196,8 +2081,6 @@ fn after_a_prepared_turn_the_agent_reconsiders_the_answer_by_the_id_its_fork_was
     );
     harness.exploration = Some(harness.saved().exploration);
 
-    // The reviewer comments the next question; the agent, on the fork's session, takes the
-    // turn and reconsiders the decision of the prepared turn's answer.
     let (next, access) = harness.answer("Keep it, but the first decision needs another look.");
     let Operation::SubmitQuestion(mut update) = question(&next, 3) else {
         unreachable!("a question");
@@ -2275,7 +2158,6 @@ fn no_prompt_of_the_thread_service_reaches_the_agent_while_it_switches_or_goes_b
     let mut harness = Harness::start();
     let (fork, _) = harness.answer_while_prepared("keep");
     let prompts = harness.threads.prompt_sender();
-    // A round conversation's wakeup goes through the same courier as this prompt.
     let (first, _first) = prompts.send(
         review_thread_service::PinnedAgent::new(agent()),
         "A wakeup during the switch".into(),
@@ -2302,8 +2184,6 @@ fn no_prompt_of_the_thread_service_reaches_the_agent_while_it_switches_or_goes_b
     );
 }
 
-/// The fork for "keep" fails as `fail` makes it, which `failure` names: its choice is not
-/// prepared, and the answer that picks it runs the plain chain.
 fn a_fork_that_fails_leaves_its_choice_unprepared_and_its_answer_runs_the_plain_chain(
     failure: &str,
     fail: impl FnOnce(&mut Harness, &TurnRequest, &str),
@@ -2443,7 +2323,6 @@ fn too_many_forks_failing_in_a_row_stops_run_ahead_for_the_round_with_a_notice()
     );
 }
 
-/// Run-ahead fails as `fail` makes it, which `failure` names: the round counts one failure.
 fn a_failure_of_run_ahead_s_own_counts_once(failure: &str, fail: impl FnOnce(&mut Harness)) {
     let mut harness = Harness::start();
 
@@ -2491,7 +2370,6 @@ fn a_refusal_to_take_forks_is_a_failure_once_per_question() {
         harness.forks.refuse_points("unknown option --frobnicate");
         harness.ask(RunAhead::Every);
 
-        // Each idle of the agent tries again, and is refused again.
         harness.forks.report(AgentStatus::Working);
         harness.forks.report(AgentStatus::Idle);
         harness.pump();
@@ -2567,7 +2445,6 @@ fn a_refusal_to_take_forks_that_repeats_on_every_question_stops_run_ahead_with_o
         ));
     }
     assert_eq!(harness.forks_saved().halted_at_ms, None);
-    // The last question comes while the agent still works: run-ahead tries once it is idle.
     let (request, access) = harness.answer("");
     let mut working = agent();
     working.agent_status = AgentStatus::Working;
@@ -2625,7 +2502,6 @@ fn switches_that_fail_on_every_question_stop_run_ahead_though_each_fork_kept_a_t
             break;
         }
         assert_eq!(harness.forks_saved().halted_at_ms, None, "{failure}");
-        // Retry sends the answer to the agent in the pane, which asks the next question.
         harness.retry(&request);
         let access = fork_line(&harness.delivered_prompt(), "Explore review access: ");
         assert!(applied(
@@ -2837,9 +2713,7 @@ fn after_cancelling_an_answer_the_agent_switched_for_it_revises_with_the_forks_a
         request.answer.unwrap().id,
     )));
 
-    // The round the switch committed went out before the test read it.
     while harness.events.try_recv().is_ok() {}
-    // The agent runs the fork's session, whose latest prompt is the fork's.
     assert!(
         harness
             .submit(&access, revised_first_question(&first))

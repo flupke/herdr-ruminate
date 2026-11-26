@@ -1,7 +1,3 @@
-//! The session keeps the mark tally of the change right as review marks change during a round:
-//! an answer applies its marks, a cancelled answer gives them back, and marks made by hand or
-//! by Jev reach it through `marks_changed`.
-
 use review_explore::NotRelevantMark;
 use review_explore_page::RoundStage;
 use review_explore_tally::{MarkTally, MarkedLines, Marker, PendingLines, Share, WholeFile};
@@ -11,15 +7,12 @@ use review_types::MarkAuthor;
 use super::*;
 
 impl Harness {
-    /// The reviewer's change holds three added lines.
     fn three_lines() -> Self {
         let harness = Self::start();
         harness.files.write("reviewed.rs", b"one\ntwo\nthree\n");
         harness
     }
 
-    /// Mark the added lines `added` (zero-based) as `author`, then tell the session as the
-    /// reviewer's worker does.
     fn mark_lines(&mut self, added: &[u32], author: &MarkAuthor) {
         let tracker = review_state::ReviewTracker::new(self.repository.clone(), self.store.clone());
         let snapshot = complete_repository_snapshot(&self.repository);
@@ -35,7 +28,6 @@ impl Harness {
     }
 }
 
-/// The first question, which finds the first line not relevant once it is answered.
 fn first_question(request: &TurnRequest) -> Operation {
     let Operation::SubmitQuestion(mut update) = question(request, 1) else {
         unreachable!("a question");
@@ -50,7 +42,6 @@ fn first_question(request: &TurnRequest) -> Operation {
     Operation::SubmitQuestion(update)
 }
 
-/// The second question, which marks the second line reviewed once it is answered.
 fn second_question(request: &TurnRequest) -> Operation {
     let Operation::SubmitQuestion(mut update) = question(request, 2) else {
         unreachable!("a question");
@@ -72,7 +63,6 @@ fn the_mark_tally_follows_an_answer_and_its_cancellation() {
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, first_question(&first))));
 
-    // The question waits: its answer would mark one line not relevant.
     let waiting = harness.session.mark_tally();
     assert_eq!(waiting.change.changed.lines_added, 3);
     assert_eq!(waiting.change.marked, MarkedLines::default());
@@ -87,14 +77,12 @@ fn the_mark_tally_follows_an_answer_and_its_cancellation() {
     let gain = waiting.gain.expect("a question waits");
     assert_eq!((gain.before.percent, gain.after.percent), (0, 33));
 
-    // The answer applies the marks; the agent works, and no question waits.
     let (answered, access) = harness.answer("Keep it.");
     let working = harness.session.mark_tally();
     assert_eq!(working.change.marked.not_relevant, 1);
     assert_eq!(working.change.left, 2);
     assert_eq!(working.gain, None);
 
-    // The next question would mark another line reviewed.
     assert!(applied(harness.submit(&access, second_question(&answered))));
     let next = harness.session.mark_tally();
     assert_eq!(next.change.marked.not_relevant, 1);
@@ -108,7 +96,6 @@ fn the_mark_tally_follows_an_answer_and_its_cancellation() {
         }
     );
 
-    // Cancelling the answer gives its marks back, and the first question waits again.
     let answer = answered.answer.unwrap().id;
     harness
         .session
@@ -203,7 +190,6 @@ fn cancelling_an_answer_gives_a_binary_file_back_to_who_had_marked_it() {
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, question(&first, 1))));
     let (answered, access) = harness.answer("Keep it.");
-    // The answer takes the binary file over from Jev.
     let Operation::SubmitConclusion(mut conclusion) = conclusion(&answered, CONCLUSION) else {
         unreachable!("a conclusion");
     };
@@ -268,11 +254,9 @@ fn the_page_hears_what_answering_the_waiting_question_adds_as_marks_change() {
     };
     assert_eq!(shares(&harness), Some((0, 33)));
 
-    // A line marked by hand while the question waits counts before and after the answer.
     harness.mark_lines(&[1], &MarkAuthor::Reviewer);
     assert_eq!(shares(&harness), Some((33, 66)));
 
-    // Once the question has its answer, none waits.
     harness.answer("Keep it.");
     assert_eq!(shares(&harness), None);
 }
@@ -285,7 +269,6 @@ fn the_page_hears_the_mark_tally_as_marks_change_during_a_round() {
     let first = harness.request(None);
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, first_question(&first))));
-    // The question waits: the page hears what its answer marks with the question.
     let waiting = harness
         .page
         .tally()
@@ -293,7 +276,6 @@ fn the_page_hears_the_mark_tally_as_marks_change_during_a_round() {
     assert_eq!(waiting.change.pending.not_relevant, 1);
     assert!(waiting.gain.is_some());
 
-    // A run of Jev and a mark by hand reach the page while the question waits.
     harness.mark_lines(&[1], &MarkAuthor::Jev);
     harness.mark_lines(&[2], &MarkAuthor::Reviewer);
     assert_eq!(
@@ -305,7 +287,6 @@ fn the_page_hears_the_mark_tally_as_marks_change_during_a_round() {
         })
     );
 
-    // The answer applies its marks, which the page hears with the agent at work.
     harness.answer("Keep it.");
     assert_eq!(
         marked(&harness),
@@ -328,7 +309,6 @@ fn implementing_at_the_drawing_board_reopens_every_line_the_round_marked_and_giv
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, first_question(&first))));
     let (answered, access) = harness.answer("Keep it.");
-    // The second answer takes over the second line, which the reviewer marked by hand.
     let Operation::SubmitQuestion(mut takes_over) = second_question(&answered) else {
         unreachable!("a question");
     };
@@ -347,7 +327,6 @@ fn implementing_at_the_drawing_board_reopens_every_line_the_round_marked_and_giv
     assert!(applied(
         harness.submit(&access, drawing_board_conclusion(&request))
     ));
-    // Until Implement, Cancel answer may still take the drawing board back: the marks stay.
     assert_eq!(harness.session.mark_tally().change.left, 1);
     let conclusion = harness.conclusion_request();
 
@@ -401,7 +380,6 @@ fn an_answer_marks_the_files_whose_diff_did_not_change_since_the_round_started()
     assert!(applied(
         harness.submit(&access, Operation::SubmitQuestion(update))
     ));
-    // A comment above the lines the question names moves them down.
     harness.files.write("edited.rs", b"// note\nalpha\nbeta\n");
     harness.mark_lines(&[], &MarkAuthor::Reviewer);
 
@@ -450,7 +428,6 @@ fn a_turn_written_while_a_file_had_changed_marks_nothing_there_once_it_is_back()
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, question(&first, 1))));
     let (answered, access) = harness.answer("Keep it.");
-    // The agent reads edited.rs while a comment moves its lines, and names them so.
     harness.files.write("edited.rs", b"// note\nalpha\nbeta\n");
     let Operation::SubmitQuestion(mut update) = question(&answered, 2) else {
         unreachable!("a question");
@@ -467,7 +444,6 @@ fn a_turn_written_while_a_file_had_changed_marks_nothing_there_once_it_is_back()
     assert!(applied(
         harness.submit(&access, Operation::SubmitQuestion(update))
     ));
-    // Then the comment goes: the diff of edited.rs is the round's again.
     harness.files.write("edited.rs", b"alpha\nbeta\n");
     harness.mark_lines(&[], &MarkAuthor::Reviewer);
 
@@ -484,7 +460,6 @@ fn a_turn_written_while_a_file_had_changed_marks_nothing_there_once_it_is_back()
     };
     assert_eq!(marked("reviewed.rs"), Some(2));
     assert_eq!(marked("edited.rs"), Some(0));
-    // The turn after the answer says so above its question.
     assert!(applied(harness.submit(&access, question(&second, 3))));
     let stage = harness.page.stage();
     assert_eq!(
@@ -503,10 +478,8 @@ fn a_prompt_written_while_a_file_had_changed_marks_nothing_there_once_it_is_back
     let first = harness.request(None);
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, question(&first, 1))));
-    // The prompt after the answer numbers edited.rs with the comment.
     harness.files.write("edited.rs", b"// note\nalpha\nbeta\n");
     let (answered, access) = harness.answer("Keep it.");
-    // The comment goes before the agent submits.
     harness.files.write("edited.rs", b"alpha\nbeta\n");
     let Operation::SubmitQuestion(mut update) = question(&answered, 2) else {
         unreachable!("a question");

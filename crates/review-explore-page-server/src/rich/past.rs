@@ -1,8 +1,3 @@
-//! The rich data set's past rounds: as many as a repository reviewed for weeks keeps, several
-//! rounds of one change on the same day, a title too long for a line, one with no space to break
-//! at, a change with no description, and a round of the year before. One change has a pull
-//! request and a ticket, others a ticket alone, on GitHub or on Linear.
-
 use crate::round_data::{
     AT_FIRST_QUESTION, AT_SECOND_QUESTION, CONCLUDED, DAY, MINUTE, SavedRound,
 };

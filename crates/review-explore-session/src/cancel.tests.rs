@@ -1,13 +1,9 @@
-//! Cancelling the latest answer gives back its turn's marks and rewinds the round.
-
 use review_explore::Command;
 use review_store::LoadResult;
 use review_types::MarkAuthor;
 
 use super::*;
 
-/// A conclusion after `request`'s answer that marks the only changed line
-/// reviewed, taking it over from whoever had marked it.
 fn retaking_conclusion(request: &TurnRequest) -> Operation {
     let Operation::SubmitConclusion(mut submission) = marking_conclusion(request) else {
         unreachable!("a conclusion");
@@ -17,7 +13,6 @@ fn retaking_conclusion(request: &TurnRequest) -> Operation {
 }
 
 impl Harness {
-    /// The kickoff and first question, then an answer awaiting the agent.
     fn answered(&mut self) -> (TurnRequest, String) {
         self.capture();
         let first = self.request(None);
@@ -81,7 +76,6 @@ fn cancelling_an_answer_reopens_its_lines_and_the_next_prompt_says_so() {
 #[test]
 fn lines_the_answer_took_over_return_to_their_previous_author() {
     let mut harness = Harness::start();
-    // Another file stays unreviewed: a change with nothing left to review starts no round.
     harness
         .files
         .write("unreviewed.rs", b"pub fn unreviewed() {}\n");
@@ -115,7 +109,6 @@ fn lines_the_answer_took_over_return_once_another_file_changed() {
         harness.submit(&access, retaking_conclusion(&request))
     ));
     let answer = request.answer.unwrap().id;
-    // The diff of reviewed.rs stays the round's: its lines are the same lines.
     harness
         .files
         .write("unreviewed.rs", b"// note\npub fn unreviewed() {}\n");
@@ -150,7 +143,6 @@ fn the_pane_cancels_only_the_latest_answer() {
     let (_, _) = harness.answer("Second answer.");
     let first = request.answer.unwrap().id;
 
-    // A pane that has not heard of the second answer yet cancels nothing it does not show.
     let error = harness.cancel(&first).unwrap_err();
 
     assert!(error.contains("Only the latest answer"), "{error}");
@@ -237,7 +229,6 @@ fn cancelling_an_answer_gives_back_the_marks_of_the_question_it_answered() {
     assert_eq!(harness.author(), None);
     assert!(round.marks.is_empty());
 
-    // Answering again applies them again, as the new answer.
     let (replacement, _) = harness.answer("Keep it, with a test.");
     let answer = replacement.answer.unwrap().id;
     assert_eq!(harness.author(), Some(MarkAuthor::Explore { answer }));
@@ -249,7 +240,6 @@ fn after_a_cancelled_answer_the_agent_revises_the_question_the_round_went_back_t
     let (request, access) = harness.answered();
     assert!(applied(harness.submit(&access, question(&request, 2))));
 
-    // Cancel answer sends no prompt: the access of the agent's latest one still revises.
     harness
         .cancel(&request.answer.as_ref().unwrap().id)
         .unwrap();
@@ -276,7 +266,6 @@ fn after_stop_waiting_and_a_cancelled_answer_the_agent_revises_the_question_the_
 {
     let mut harness = Harness::start();
     let (request, access) = harness.answered();
-    // Stop waiting renews the access and sends no prompt.
     harness.session.handle(Input::Command(Command::Cancel));
 
     harness
@@ -321,8 +310,6 @@ fn after_cancelling_an_answer_whose_prompt_was_withdrawn_the_agent_revises_with_
     let first = harness.request(None);
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, question(&first, 1))));
-    // The courier holds the answer's prompt after its delivery began, as when it types a
-    // review thread's wakeup first.
     let hold = harness.threads.prompt_sender().hold();
     let answer = harness.request(Some(AnswerInput {
         option: Some("keep".into()),
@@ -352,7 +339,6 @@ fn the_next_answer_after_a_cancelled_one_takes_back_the_access_the_agent_held() 
     harness
         .cancel(&request.answer.as_ref().unwrap().id)
         .unwrap();
-    // The next answer's prompt has not reached the agent yet.
     let hold = harness.threads.prompt_sender().hold();
     let again = harness.request(Some(AnswerInput {
         option: Some("keep".into()),

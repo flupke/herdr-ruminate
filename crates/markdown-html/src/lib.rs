@@ -1,16 +1,3 @@
-//! Markdown written by an agent, as HTML a page can show.
-//!
-//! The HTML holds standard Markdown with tables, strikethrough and task lists, and the marks of
-//! [`markdown_marks`]: a quote that opens with a callout marker becomes a `role="note"` block of
-//! class `callout callout-<kind>`, and a table cell that opens with a status marker gets the
-//! class `status-<status>` and a `role="img"` mark in place of the marker. A fenced block keeps
-//! its language as the class `language-<name>` of its `<code>`, so a script can find the
-//! blocks of one language.
-//!
-//! The agent's text is not trusted: raw HTML shows as text, only `http`, `https` and `mailto`
-//! links stay links, images show their description, and nothing carries an inline style, which
-//! the page's content security policy refuses.
-
 use markdown_marks::{Callout, Mark, StatusMark};
 use pulldown_cmark::{
     Alignment, CowStr, Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd,
@@ -19,16 +6,12 @@ use pulldown_cmark::{
 #[cfg(test)]
 mod tests;
 
-/// Renders Markdown as [`Html`].
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlRenderer {
-    /// How many levels the text's headings move down.
     heading_shift: usize,
 }
 
 impl HtmlRenderer {
-    /// For text that sits under a heading of `level`: its `#` headings come one level below,
-    /// and none goes deeper than `<h6>`.
     pub fn under_heading(level: usize) -> Self {
         Self {
             heading_shift: level,
@@ -39,9 +22,6 @@ impl HtmlRenderer {
         Html::of(self.rewrite(markdown))
     }
 
-    /// Renders Markdown meant for one line, such as a thesis shown as a heading: its inline
-    /// markup only, with no block around it. A block's markers are dropped and its text kept, and
-    /// a line break becomes a space.
     pub fn render_inline(self, markdown: &str) -> Html {
         let inline = self
             .rewrite(markdown)
@@ -59,7 +39,6 @@ impl HtmlRenderer {
         Html(html.trim_end().to_owned())
     }
 
-    /// The events of the page's HTML for `markdown`.
     fn rewrite(self, markdown: &str) -> Vec<Event<'_>> {
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
@@ -70,7 +49,6 @@ impl HtmlRenderer {
     }
 }
 
-/// Whether a tag marks up text inside a line rather than a block.
 fn is_inline(tag: TagEnd) -> bool {
     matches!(
         tag,
@@ -78,7 +56,6 @@ fn is_inline(tag: TagEnd) -> bool {
     )
 }
 
-/// HTML rendered from an agent's Markdown, safe to put in a page as it is.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Html(String);
 
@@ -94,20 +71,15 @@ impl Html {
     }
 }
 
-/// Rewrites the parser's events into the events of the page's HTML.
 struct Rewrite<'a> {
     renderer: HtmlRenderer,
-    /// The parser's events, in reverse, so the next one pops off the end.
     input: Vec<Event<'a>>,
     output: Vec<Event<'a>>,
-    /// For each quote open, whether it is a callout.
     quotes: Vec<bool>,
-    /// For each link open, whether it stays a link.
     links: Vec<bool>,
     table: TableState,
 }
 
-/// Where the rewrite is in a table: the cells take their alignment and element from it.
 #[derive(Default)]
 struct TableState {
     alignments: Vec<Alignment>,
@@ -153,7 +125,6 @@ impl<'a> Rewrite<'a> {
         }
     }
 
-    /// The event `ahead` events after the next one (0 for the next), without taking it.
     fn peek(&self, ahead: usize) -> Option<&Event<'a>> {
         self.input
             .len()
@@ -161,8 +132,6 @@ impl<'a> Rewrite<'a> {
             .map(|index| &self.input[index])
     }
 
-    /// The mark whose marker opens the text event `ahead` (see [`Self::peek`]), and the text
-    /// after the marker.
     fn marked<M: Mark>(&self, ahead: usize) -> Option<(M, CowStr<'a>)> {
         match self.peek(ahead) {
             Some(Event::Text(text)) => {
@@ -246,8 +215,6 @@ impl<'a> Rewrite<'a> {
         HeadingLevel::try_from(shifted).unwrap_or(HeadingLevel::H6)
     }
 
-    /// A quote whose first paragraph opens with a callout marker becomes that callout, titled
-    /// in place of the marker.
     fn quote(&mut self, tag: Tag<'a>) {
         let callout = matches!(self.peek(0), Some(Event::Start(Tag::Paragraph)))
             .then(|| self.marked::<Callout>(1))
@@ -273,7 +240,6 @@ impl<'a> Rewrite<'a> {
             self.output.push(Event::Text(rest));
             return;
         }
-        // The marker stood alone: drop its line, and its paragraph when nothing else was in it.
         match self.peek(0) {
             Some(Event::SoftBreak | Event::HardBreak) => {
                 self.input.pop();
@@ -286,7 +252,6 @@ impl<'a> Rewrite<'a> {
         }
     }
 
-    /// A table cell, aligned by a class, with the status its marker gives.
     fn cell(&mut self) {
         let element = if self.table.in_head { "th" } else { "td" };
         let mut classes = Vec::new();
@@ -323,13 +288,11 @@ impl<'a> Rewrite<'a> {
         if !rest.is_empty() {
             self.output.push(Event::Text(format!(" {rest}").into()));
         } else if !matches!(self.peek(0), Some(Event::End(TagEnd::TableCell))) {
-            // Inline markup follows the marker.
             self.output.push(Event::Text(" ".into()));
         }
     }
 }
 
-/// Whether a link to `url` stays a link: only web and `mailto:` addresses do.
 fn is_web_link(url: &str) -> bool {
     ["http://", "https://", "mailto:"].iter().any(|scheme| {
         url.get(..scheme.len())

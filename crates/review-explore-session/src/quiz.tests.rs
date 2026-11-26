@@ -1,6 +1,3 @@
-//! The quiz of a conclusion on the Explore page: published with its proofs, and the reviewer's
-//! answers saved with the round.
-
 use review_explore::{QuizPick, QuizResponse};
 use review_explore_page::{
     CommandRefusal, CommandReply, PageCommand, PageQuiz, PageQuizResponse, RoundStage,
@@ -8,7 +5,6 @@ use review_explore_page::{
 
 use super::*;
 
-/// A quiz of two items, each proven by the line of `reviewed.rs`; the second option is correct.
 fn quiz() -> serde_json::Value {
     let item = |question: &str| {
         serde_json::json!({
@@ -25,7 +21,6 @@ fn quiz() -> serde_json::Value {
 }
 
 impl Harness {
-    /// Ask the first question, answer it and let the agent conclude with `quiz()`.
     fn conclude_with_quiz(&mut self) -> TurnRequest {
         self.capture();
         let first = self.request(None);
@@ -39,8 +34,6 @@ impl Harness {
         request
     }
 
-    /// Answer the quiz of the conclusion of the turn `conclusion` from the Explore page, and
-    /// return the session's reply.
     fn answer_quiz(
         &mut self,
         conclusion: &str,
@@ -58,7 +51,6 @@ impl Harness {
         replied.blocking_recv().expect("the session replies")
     }
 
-    /// The quiz the page shows with the conclusion.
     fn shown_quiz(&self) -> PageQuiz {
         match self.page.stage() {
             RoundStage::Conclusion { quiz, .. } => quiz,

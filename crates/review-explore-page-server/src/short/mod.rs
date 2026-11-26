@@ -1,6 +1,3 @@
-//! The short data set, which the e2e tests check: a change of one file that keeps the reviewer's
-//! unsent draft when a round reopens, two questions that take turns, and a short conclusion.
-
 mod change;
 mod design;
 mod diagrams;

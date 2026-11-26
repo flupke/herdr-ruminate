@@ -1,25 +1,21 @@
-//! The period a reviewer limits the numbers to.
 use std::fmt;
 use time::{
     Date, OffsetDateTime, PrimitiveDateTime, UtcOffset, format_description::well_known::Rfc3339,
     macros::format_description,
 };
 
-/// Rounds started from `since`, inclusive, until `until`, exclusive.
 #[derive(Clone, Debug)]
 pub struct Period {
     since: Option<Bound>,
     until: Option<Bound>,
 }
 
-/// A period's bound as the reviewer wrote it, and the instant it stands for.
 #[derive(Clone, Debug)]
 struct Bound {
     text: String,
     at_ms: i128,
 }
 
-/// Which end of the period a bound is: a date starts or ends its whole day.
 #[derive(Clone, Copy)]
 enum End {
     Since,
@@ -27,15 +23,12 @@ enum End {
 }
 
 impl Period {
-    /// A period from optional bounds, each a date, which covers that day in
-    /// local time, or an RFC 3339 time.
     pub fn parse(since: Option<&str>, until: Option<&str>) -> eyre::Result<Self> {
         Self::parse_at(since, until, |local| {
             UtcOffset::local_offset_at(local.assume_utc()).unwrap_or(UtcOffset::UTC)
         })
     }
 
-    /// Like [`Self::parse`], with the offset of local time at a given time.
     pub(crate) fn parse_at(
         since: Option<&str>,
         until: Option<&str>,
@@ -90,7 +83,6 @@ impl Bound {
     }
 }
 
-/// `from 2026-09-15 until 2026-10-01`, as the reviewer wrote the bounds.
 impl fmt::Display for Period {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
         match (&self.since, &self.until) {

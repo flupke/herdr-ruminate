@@ -1,20 +1,13 @@
-//! A fork's calls to the reviewer: its access value, or its session that a Codex call names,
-//! lets it submit a question or a conclusion for the request it was forked for, and nothing
-//! else. What it submits is checked as the agent's turns are, then kept for its choice and shown
-//! to nobody.
-
 use review_explore::InterviewUpdate;
 use review_mcp::{Operation, Request, Response};
 
 use super::{RoundKey, TakenFork};
 use crate::ExploreSession;
 
-/// What a discarded fork hears from every call.
 const DISCARDED: &str = "This turn is no longer needed: the reviewer's round moved on. Do not \
                          submit again; end your turn now.";
 
 impl ExploreSession {
-    /// Answers the call `request` when a fork made it; hands back any other call.
     pub(crate) fn run_ahead_call(&mut self, request: Request) -> Option<Request> {
         let session = request.agent_session.as_deref();
         if self.run_ahead.discarded.contains(&request.access)
@@ -37,12 +30,10 @@ impl ExploreSession {
                 .and_then(|update| self.keep_fork_turn(&fork, &round, update, &request.operation))
         };
         request.respond(result);
-        // An answer may wait for that turn.
         self.run_ahead_fork_submitted();
         None
     }
 
-    /// Checks the turn `update` that `fork` of `round` submitted, and keeps it for its choice.
     fn keep_fork_turn(
         &mut self,
         fork: &TakenFork,
@@ -67,8 +58,6 @@ impl ExploreSession {
             };
         }
         let saved = self.state.round.as_ref().ok_or("No Explore round")?;
-        // The round as it would be had the reviewer picked the fork's choice; once the
-        // reviewer did, as it is.
         let mut answered = saved.clone();
         if !answered.turns.contains_key(&fork.request.request) {
             answered

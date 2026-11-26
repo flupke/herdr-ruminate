@@ -1,15 +1,10 @@
-//! The Explore prompts as a vision session's turn log records them (crate `vision-turns`): what
-//! a reply must carry, and the answer each prompt brings.
-
 use review_explore::{ReviewerAnswer, TopicStatus, TurnRequest};
 use review_source::ReviewCheckpoint;
 use serde::Serialize;
 
-/// One prompt as it was sent.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct SentTurn {
     kind: TurnKind,
-    /// What a reply must carry; an Implement prompt takes no reply.
     #[serde(flatten)]
     identity: Option<TurnIdentity>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -37,7 +32,6 @@ struct TurnIdentity {
     checkpoint: ReviewCheckpoint,
 }
 
-/// The reviewer's answer as the prompt states it.
 #[derive(Clone, Debug, Serialize)]
 struct SentAnswer {
     id: String,
@@ -86,7 +80,6 @@ impl SentAnswer {
 }
 
 impl SentTurn {
-    /// An interview prompt: the kickoff, or the wakeup after an answer.
     pub(crate) fn interview(
         request: &TurnRequest,
         access: &str,

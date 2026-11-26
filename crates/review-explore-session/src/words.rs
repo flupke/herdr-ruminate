@@ -1,6 +1,3 @@
-//! What the reviewer, the person, writes to the agent in an Explore round goes on herdr-bus
-//! too, as the review comments do, so that other programs, such as herdr-bowtie, read it.
-
 use std::collections::HashSet;
 
 use herdr_client::protocol::PaneId;
@@ -11,12 +8,6 @@ use review_words_bus::{Place, UserWords};
 use crate::ExploreSession;
 
 impl ExploreSession {
-    /// Publishes what the reviewer wrote in the new turn `request`, which the round saved, to the
-    /// agent the round selected for it. Of an answer, its text: a choice's comment, a comment
-    /// alone, or a reply to the conclusion; of Back to the drawing board, the comment typed with
-    /// it, the reviewer's reason, and a reply to the conclusion it reached. Of a kickoff, the
-    /// reviewer's name, for someone else's change. A turn without the reviewer's words publishes
-    /// nothing, and a cancelled answer does not withdraw what it published: the bus is a log.
     pub(crate) fn publish_turn(&self, request: &TurnRequest) {
         let to = self.agent_pane();
         let Some(answer) = &request.answer else {
@@ -50,9 +41,6 @@ impl ExploreSession {
         });
     }
 
-    /// Publishes the lines of the list of `request`, saved in `round`, that the reviewer wrote or
-    /// changed, to the agent the round selected for it: the agent's own lines, and their
-    /// @mentions, stay off the bus, and a list sent as the agent wrote it publishes nothing.
     pub(crate) fn publish_implementation(
         &self,
         request: &ImplementationRequest,
@@ -90,7 +78,6 @@ impl ExploreSession {
         });
     }
 
-    /// The pane of the agent the round selected last, if any.
     fn agent_pane(&self) -> Option<PaneId> {
         self.state
             .agent

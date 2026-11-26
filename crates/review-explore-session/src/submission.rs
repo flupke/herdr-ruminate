@@ -1,5 +1,3 @@
-//! Agent MCP calls to the Explore tools, authorized by the current access value.
-
 use std::sync::Arc;
 
 use review_explore::ExploreRound;
@@ -9,7 +7,6 @@ use crate::ExploreSession;
 
 impl ExploreSession {
     pub(crate) fn submission(&mut self, request: Request) {
-        // A fork's calls never reach the round.
         let Some(request) = self.run_ahead_call(request) else {
             return;
         };
@@ -38,7 +35,6 @@ impl ExploreSession {
         self.submit(request, &update);
     }
 
-    /// Answers `request`, whose access [`Self::authorize`] refused for `error`.
     fn refuse(&self, request: Request, error: &eyre::Report) {
         let revising = matches!(request.operation, Operation::ReviseQuestion(_));
         let other_access = revising
@@ -46,7 +42,6 @@ impl ExploreSession {
             && !self.state.historical
             && !self.state.grants(&request.access);
         request.respond(Err(if other_access {
-            // Each answer the reviewer sends renews the access.
             "This is not the Explore review access of the round now. Use the one of your \
              latest Explore prompt, not the comments wakeup's. If you did, the round moved \
              on since that prompt: the reviewer answered, stopped waiting for your turn or \
@@ -73,7 +68,6 @@ impl ExploreSession {
         self.acknowledge(request, applied, round, shown_as);
     }
 
-    /// Saves the agent's `revision` of the open question, and shows it.
     fn revise(&mut self, request: Request, revision: &review_explore::QuestionRevision) {
         let committed = self.revised(revision);
         let (applied, round) = match committed {
@@ -90,8 +84,6 @@ impl ExploreSession {
         self.acknowledge(request, applied, round, shown_as);
     }
 
-    /// Saves `revision` in the session's round; whether it changed the round, and the round
-    /// after it.
     fn revised(
         &mut self,
         revision: &review_explore::QuestionRevision,
@@ -116,8 +108,6 @@ impl ExploreSession {
         Ok((applied, round))
     }
 
-    /// Shows the round `round` an accepted call left, and answers `request` once the reviewer
-    /// applied it.
     fn acknowledge(
         &self,
         request: Request,
@@ -154,8 +144,6 @@ impl ExploreSession {
         });
     }
 
-    /// Saves the agent's turn `update` in the session's round, with the marks of a
-    /// conclusion; returns whether the turn changed the round, and the round after it.
     pub(crate) fn commit(
         &mut self,
         update: &review_explore::InterviewUpdate,
@@ -168,8 +156,6 @@ impl ExploreSession {
         {
             return Err("Explore response belongs to another instance".into());
         }
-        // What differed when the turn's prompt, or its fork's, was written, and what differs
-        // now: the agent read the code at either.
         let mut diverged = self
             .prompted_diverged
             .remove(&update.request)
@@ -193,7 +179,6 @@ impl ExploreSession {
         Ok((applied, round))
     }
 
-    /// Checks that `access` is the round's now, and returns the round's agent.
     fn authorize(&mut self, access: &str) -> eyre::Result<herdr_client::protocol::Agent> {
         eyre::ensure!(
             self.state.storage_error.is_none(),
@@ -242,7 +227,6 @@ impl ExploreSession {
     }
 }
 
-/// The agent's turn an Explore tool call carries, or why it carries none.
 pub(crate) fn update_of(operation: &Operation) -> Result<review_explore::InterviewUpdate, String> {
     match operation {
         Operation::SubmitQuestion(update)

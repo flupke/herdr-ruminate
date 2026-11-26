@@ -1,8 +1,3 @@
-//! The review threads of a session, which hold its rounds' conversations, kept in memory as the
-//! review tool's thread worker keeps them on disk: the page's thread commands change them, a
-//! test plays the agent's replies and a wakeup that does not reach the agent, and every change
-//! reaches the page.
-
 use review_explore_page::{CommandRefusal, ThreadsFeed, ThreadsPublisher};
 use review_threads::{
     AskedUnder, MessageId, Post, ReviewThreads, ThreadCommand, WakeupFailure, WakeupNotice,
@@ -12,22 +7,16 @@ use serde::Serialize;
 
 use crate::sessions::Clock;
 
-/// The review of every session's rounds.
 const REVIEW: &str = "standalone-review";
 
-/// The review threads of one session.
 pub(crate) struct SessionThreads {
     threads: ReviewThreads,
     publisher: ThreadsPublisher,
-    /// The messages the reviewer sent from the page, in order.
     sent: Vec<SentMessage>,
-    /// The agent's replies so far, which name each reply.
     replies: usize,
-    /// The clock that stamps each message the page shows.
     clock: Clock,
 }
 
-/// A message the reviewer sent from the page, as a test reads it back.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct SentMessage {
     round: String,
@@ -47,18 +36,14 @@ impl SessionThreads {
         }
     }
 
-    /// Hands the page the threads as they are now, each message stamped by the session's clock.
     fn publish(&self) {
         self.publisher.loaded(self.clock.stamped(&self.threads));
     }
 
-    /// The review the session's rounds belong to.
     pub(crate) fn review() -> ReviewUnit {
         REVIEW.into()
     }
 
-    /// The threads as they are now, each message stamped by the session's clock, as a past
-    /// round of the session reads them.
     pub(crate) fn stamped(&self) -> ReviewThreads {
         self.clock.stamped(&self.threads)
     }
@@ -67,8 +52,6 @@ impl SessionThreads {
         self.publisher.subscribe()
     }
 
-    /// Carries out the page's thread `command`, as the review tool's thread worker would: a
-    /// post wakes the agent, and Retry wakes it again.
     pub(crate) fn take(&mut self, command: ThreadCommand) -> Result<(), CommandRefusal> {
         let result = match command {
             ThreadCommand::Post { post, .. } => self.post(post),
@@ -101,14 +84,11 @@ impl SessionThreads {
                 asked_under: message.asked_under,
                 quote: message.quote,
             });
-            // The wakeup is on its way.
             self.publisher.wakeup(Self::review(), None);
         }
         Ok(())
     }
 
-    /// The agent replies `text` to the reviewer's latest message in the conversation of the round
-    /// `round`. Returns false when that conversation has no message yet.
     pub(crate) fn agent_replies(&mut self, round: &str, text: &str) -> bool {
         let Some(thread) = self.threads.round_conversation(round) else {
             return false;
@@ -127,8 +107,6 @@ impl SessionThreads {
         true
     }
 
-    /// The wakeup for the reviewer's waiting messages did not reach the agent, for `error`.
-    /// Returns false when no message waits.
     pub(crate) fn not_delivered(&mut self, error: &str) -> bool {
         let Some(through) = self.threads.pending_comment_sequence() else {
             return false;
@@ -142,7 +120,6 @@ impl SessionThreads {
         true
     }
 
-    /// The messages the reviewer sent from the page, in order.
     pub(crate) fn sent(&self) -> Vec<SentMessage> {
         self.sent.clone()
     }

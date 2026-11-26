@@ -1,8 +1,3 @@
-//! The design of the change that the standalone server's round explains on its first turn: a
-//! sequence diagram, a table with status marks and a callout among its parts, each as wide as an
-//! agent's explanation tends to be: the diagram and the table fit a desktop window, not the
-//! width of a phone.
-
 use review_explore::{Design, DesignPart};
 
 pub(super) fn design() -> Design {

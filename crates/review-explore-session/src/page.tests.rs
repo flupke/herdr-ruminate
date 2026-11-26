@@ -1,5 +1,3 @@
-//! The stage of the round the session publishes for the Explore page.
-
 use review_explore::Command;
 use review_explore::{QuizStage, Step, StepState, TabTitle};
 use review_explore_page::{
@@ -11,7 +9,6 @@ use review_repository::repository::ShortRevision;
 
 use super::*;
 
-/// The number and text of the question the page shows, or `None` in another stage.
 fn shown_question(stage: &RoundStage) -> Option<(usize, String)> {
     match stage {
         RoundStage::Question {
@@ -67,7 +64,6 @@ fn the_page_follows_the_round_from_its_kickoff_to_its_conclusion_and_reset() {
     };
     assert_eq!(request, answer.request);
     assert_eq!(shown.summary, CONCLUSION);
-    // Each answered question, with the answer the reviewer kept.
     let overview = harness.page.overview().expect("an overview");
     let kept: Vec<_> = overview
         .decisions
@@ -154,8 +150,6 @@ fn a_cancelled_answer_brings_its_question_back_to_the_page() {
     );
 }
 
-/// The recaps and the reply of what the agent said back to the previous answer, above the
-/// question or the conclusion the page shows.
 fn shown_response(stage: &RoundStage) -> Option<(Vec<String>, Option<String>)> {
     stage.response().map(|response| {
         let recaps = response
@@ -200,7 +194,6 @@ fn the_page_shows_what_the_agent_said_back_to_the_previous_answer() {
     );
 }
 
-/// Whether the question the page shows waits again because its answer was cancelled.
 fn answer_cancelled(stage: &RoundStage) -> bool {
     match stage {
         RoundStage::Question {
@@ -253,7 +246,6 @@ fn the_page_names_the_review_it_belongs_to_as_the_panes_header_does() {
         harness.page.review(),
         Some(ReviewName {
             repository: repository.to_string_lossy().into_owned(),
-            // A Git abbreviation has no colours: it is all rest.
             revision: ShortRevision {
                 prefix: String::new(),
                 rest: snapshot.identity.display_id().to_owned(),
@@ -370,7 +362,6 @@ fn the_page_shows_each_earlier_question_with_the_lines_its_citations_name() {
     assert_eq!(rows.len(), 1);
 }
 
-/// The question citing `evidence`, each `(path, notes)` at line 1 of the new side.
 fn question_citing(request: &TurnRequest, evidence: &[(&str, &str)]) -> Operation {
     let Operation::SubmitQuestion(mut update) = question(request, 1) else {
         unreachable!("a question");
@@ -437,8 +428,6 @@ fn the_page_shows_no_lines_of_a_file_outside_the_change_and_the_tracked_files() 
 }
 
 impl Harness {
-    /// Send `input` from the Explore page, as the answer to version `version` of question
-    /// `question`, and return the session's reply.
     fn answer_on_page(
         &mut self,
         question: &str,
@@ -458,7 +447,6 @@ impl Harness {
         replied.blocking_recv().expect("the session replies")
     }
 
-    /// Ask the first question, as the agent.
     pub(super) fn ask_first_question(&mut self) {
         self.capture();
         let first = self.request(None);
@@ -479,7 +467,6 @@ fn keep(text: &str) -> AnswerInput {
 fn an_answer_from_the_page_is_saved_and_prompted_as_one_from_the_pane() {
     let mut harness = Harness::start();
     harness.ask_first_question();
-    // What the pane would post for the same pick and comment, from its copy of the round.
     let mut pane = harness.exploration().clone();
     let shown = pane.questions.last().cloned();
     let expected = pane
@@ -572,8 +559,6 @@ fn a_second_answer_from_another_page_or_after_the_pane_is_refused() {
 }
 
 impl Harness {
-    /// The reviewer's first pick on the page of version `version` of `question`, as the session
-    /// replies to it.
     fn pick_on_page(&mut self, question: &str, version: u32) -> Result<(), CommandRefusal> {
         let (reply, replied) = CommandReply::channel();
         let command = PageCommand::Pick {
@@ -697,7 +682,6 @@ fn the_page_shows_why_the_prompt_of_its_answer_could_not_be_delivered() {
 fn the_page_shows_the_lines_an_answer_to_its_question_marks() {
     let mut harness = Harness::start();
     harness.ask_first_question();
-    // Only a turn that follows an answer may mark lines.
     let (answer, access) = harness.answer("Keep it.");
     let Operation::SubmitQuestion(mut update) = question(&answer, 2) else {
         unreachable!("a question");
@@ -746,7 +730,6 @@ fn the_page_keeps_the_design_the_first_turn_explained_for_the_rest_of_the_round(
 }
 
 impl Harness {
-    /// The start the page offers, or a start no stage offers.
     pub(super) fn offered_start(&self) -> String {
         match self.page.stage() {
             RoundStage::NoRound { start } | RoundStage::StartFailed { start, .. } => start,
@@ -754,7 +737,6 @@ impl Harness {
         }
     }
 
-    /// Start a round from the Explore page, and return the session's reply.
     pub(super) fn start_on_page(&mut self, challenger: bool) -> Result<(), CommandRefusal> {
         self.start_on_page_with(review_explore::RoundChoices {
             challenger,
@@ -762,7 +744,6 @@ impl Harness {
         })
     }
 
-    /// Start a round from the Explore page with `choices`, and return the session's reply.
     pub(super) fn start_on_page_with(
         &mut self,
         choices: review_explore::RoundChoices,
@@ -778,8 +759,6 @@ impl Harness {
         replied.blocking_recv().expect("the session replies")
     }
 
-    /// Start a round from the Explore page as the reviewer's worker does, which sends the
-    /// kickoff itself; return the reply and the kickoff.
     pub(super) fn start_as_worker(&mut self) -> (Result<(), CommandRefusal>, Option<TurnRequest>) {
         let (reply, replied) = CommandReply::channel();
         let start = self.offered_start();
@@ -1005,9 +984,6 @@ fn a_page_answer_whose_first_pick_is_not_a_choice_is_refused() {
 }
 
 impl Harness {
-    /// Send `text` from the Explore page as the list to implement for the conclusion of turn
-    /// `conclusion`, in place of the request `replaces` the page showed, and return the
-    /// session's reply.
     pub(super) fn implement_on_page(
         &mut self,
         conclusion: &str,
@@ -1027,7 +1003,6 @@ impl Harness {
         replied.blocking_recv().expect("the session replies")
     }
 
-    /// The request of the turn that posted the round's conclusion.
     pub(super) fn conclusion_request(&self) -> String {
         self.saved()
             .exploration
@@ -1036,7 +1011,6 @@ impl Harness {
             .to_owned()
     }
 
-    /// The implementation request the page shows for the conclusion.
     pub(super) fn shown_implementation(&self) -> Option<PageImplementation> {
         match self.page.stage() {
             RoundStage::Conclusion { implementation, .. } => implementation,
@@ -1044,8 +1018,6 @@ impl Harness {
         }
     }
 
-    /// Wait until the implementation request is sent or fails, then pick up the outcome the
-    /// prompt sender saved, as the storage watcher hands it to the session.
     pub(super) fn implementation_finished(&mut self) -> ui_events::ExploreImplementationFinished {
         let finished = self.next::<ui_events::ExploreImplementationFinished>();
         self.session.handle(Input::StorageChanged);
@@ -1060,7 +1032,6 @@ fn an_implement_from_the_page_saves_and_prompts_the_request_the_pane_would() {
     let mut harness = Harness::start();
     harness.conclude();
     let conclusion = harness.conclusion_request();
-    // What the pane would send for the same edited list, from its copy of the round.
     let pane = harness
         .saved()
         .exploration
@@ -1110,7 +1081,6 @@ fn the_page_shows_its_implementation_request_as_sending_then_sent() {
     harness.implementation_finished();
     let shown = harness.shown_implementation().expect("a request");
     assert_eq!(shown.state, ImplementationState::Sent);
-    // The page says when the agent received it.
     assert!(shown.sent_at_ms.is_some());
     harness.reopen();
     assert_eq!(
@@ -1132,7 +1102,6 @@ fn the_pane_hears_the_request_this_process_sends_as_sending_until_it_is_sent() {
         (EDITED, &ImplementationState::Sending)
     );
 
-    // Another front end saves the round while the request is on its way.
     harness.damage(|round| round.revision += 1);
     harness.session.handle(Input::StorageChanged);
 
@@ -1230,7 +1199,6 @@ fn after_a_request_that_was_not_sent_the_page_may_send_another() {
     let mut harness = Harness::start();
     harness.conclude();
     let conclusion = harness.conclusion_request();
-    // The agent leaves after the request is saved, before it is sent.
     harness.delivery.close();
     assert_eq!(harness.implement_on_page(&conclusion, None, EDITED), Ok(()));
     harness.agents.remove_agent(&PaneId(PANE.into()));
@@ -1265,7 +1233,6 @@ fn a_pane_implement_that_missed_the_pages_request_starts_no_second_implementatio
     let conclusion = harness.conclusion_request();
     harness.delivery.close();
     assert_eq!(harness.implement_on_page(&conclusion, None, EDITED), Ok(()));
-    // The pane's copy of the round, taken before the page's request.
     let pane = harness
         .saved()
         .exploration
@@ -1313,7 +1280,6 @@ fn a_pane_implement_that_missed_the_pages_request_starts_no_second_implementatio
     assert_eq!(implement_prompts, 1);
 }
 
-/// The steps of the round rail the page shows, with their states, and the tab title.
 fn shown_rail(feed: &review_explore_page::RoundFeed) -> Option<(Vec<(Step, StepState)>, TabTitle)> {
     let overview = feed.overview()?;
     let rail = overview
@@ -1406,7 +1372,6 @@ fn the_page_shows_the_answer_the_agents_turn_carries_and_when_the_turn_went_out(
     harness.capture();
     let first = harness.request(None);
     let access = harness.turn(&first);
-    // The kickoff carries no answer.
     assert!(matches!(
         harness.page.stage(),
         RoundStage::AgentWorking { answer: None, .. }
@@ -1414,7 +1379,6 @@ fn the_page_shows_the_answer_the_agents_turn_carries_and_when_the_turn_went_out(
     assert!(applied(harness.submit(&access, question(&first, 1))));
 
     let (answer, _) = harness.answer("Keep it.");
-    // The prompt went out on another thread, which saved when: the storage watcher follows.
     harness.session.handle(Input::StorageChanged);
 
     let RoundStage::AgentWorking {
@@ -1438,7 +1402,6 @@ fn the_page_shows_the_answer_the_agents_turn_carries_and_when_the_turn_went_out(
     assert_eq!(sent.kept.choice.as_deref(), Some("Keep it"));
     assert_eq!(sent.kept.comment, "Keep it.");
 
-    // Stopped, the turn waits for Retry with the same answer.
     harness.session.handle(Input::Command(Command::Cancel));
     let RoundStage::Interrupted {
         answer: Some(stopped),

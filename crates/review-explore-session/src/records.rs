@@ -1,10 +1,3 @@
-//! What each durable Explore change means: which round may change, when a conclusion
-//! is final, how delivery outcomes are recorded and how damaged records are repaired.
-//!
-//! The store owns the record format and the per-review lock; every rule here runs
-//! while that lock is held, apart from the search for a new round's change references, which
-//! takes it only to save them.
-
 use std::thread::JoinHandle;
 
 use change_references_finder::ReferencesFinder;
@@ -26,27 +19,19 @@ fn historical_round_error() -> Error {
     explore_error("this round is history; open the latest round to continue")
 }
 
-/// The rounds of a review started before a new one.
 pub(crate) struct EarlierRounds {
-    /// How many rounds the reviewer reset before a later round started.
     pub(crate) reset_rounds: usize,
-    /// The rounds whose decisions still stand, oldest first.
     pub(crate) standing: Vec<ExploreRound>,
 }
 
-/// A round after an Explore response was submitted to it.
 pub(crate) struct Submitted {
-    /// False when the response was already accepted and changed nothing.
     pub(crate) applied: bool,
     pub(crate) round: ExploreRound,
 }
 
-/// The saved Explore rounds of every review, changed only through the session's rules.
 #[derive(Clone)]
 pub(crate) struct SavedRounds {
     store: ReviewStore,
-    /// Finds the pull request and the tickets of the change a new round reviews; `None` when
-    /// nothing looks for them.
     references: Option<ReferencesFinder>,
 }
 
@@ -58,22 +43,14 @@ impl SavedRounds {
         }
     }
 
-    /// The rounds of `store`, which look for the pull request and the tickets of the change
-    /// each new round reviews with `references`.
     pub(crate) fn with_references(self, references: Option<ReferencesFinder>) -> Self {
         Self { references, ..self }
     }
 
-    /// Looks for the pull request and the tickets of the change that the new round `round`
-    /// reviews, on a thread of its own, and saves them beside the round: jj and gh may be slow,
-    /// missing or offline, and the round starts without waiting for them. A round whose change
-    /// names none keeps its description's name. `None` when nothing looks for them, or for a
-    /// round that kept no jj change. It runs jj and gh without the review's lock, which it
-    /// takes only to save.
+    // jj and gh may be slow, missing or offline.
     pub(crate) fn find_references(&self, round: &ExploreRound) -> Option<JoinHandle<()>> {
         let finder = self.references.clone()?;
         let comparison = &round.exploration.comparison;
-        // A Git working tree has none.
         let base = comparison
             .base
             .clone()
@@ -86,8 +63,6 @@ impl SavedRounds {
             .name("change-references".into())
             .spawn(move || {
                 let references = finder.find(&root, &base);
-                // Unsaved, the past round keeps its description's name.
-                // The round may have been removed meanwhile: no record outlives it.
                 if let Ok(records) = store.lock_explore(&unit) {
                     let _ = records.save_change_references(&instance, &references);
                 }
@@ -95,28 +70,22 @@ impl SavedRounds {
             .ok()
     }
 
-    /// The writing style the reviewer's settings give the next round.
     pub(crate) fn next_writing(&self) -> Result<WritingStyle> {
         Ok(self.store.explore_round_settings()?.writing)
     }
 
-    /// What the reviewer asks of every round, as they wrote it beside the settings.
     pub(crate) fn reviewer_notes(&self) -> Result<Option<String>> {
         self.store.explore_reviewer_notes()
     }
 
-    /// Which choices run-ahead prepares, as the reviewer's settings say now.
     pub(crate) fn run_ahead(&self) -> Result<RunAhead> {
         Ok(self.store.explore_round_settings()?.run_ahead)
     }
 
-    /// The run-ahead forks saved beside the round `instance`, and the paths of its answers.
     pub(crate) fn forks(&self, unit: &ReviewUnit, instance: &str) -> Result<RoundForks> {
         self.store.load_round_forks(unit, instance)
     }
 
-    /// The review and identity of every round of the repository whose run-ahead forks
-    /// `wanted` picks.
     pub(crate) fn rounds_with_forks(
         &self,
         wanted: impl Fn(&RoundForks) -> bool,
@@ -124,7 +93,6 @@ impl SavedRounds {
         self.store.rounds_with_forks(wanted)
     }
 
-    /// Change the run-ahead forks saved beside the round `instance`, closed or not.
     pub(crate) fn update_forks<T>(
         &self,
         unit: &ReviewUnit,
@@ -135,10 +103,6 @@ impl SavedRounds {
         Ok(records.update_round_forks(instance, update)?.0)
     }
 
-    /// Whether the reviewer wrote in the conversation of the round `instance`, under the
-    /// question `question` (in any version) or since `since_ms`, a message that forks taken at
-    /// `taken_ms` know nothing of: one posted from then on, or one the agent has not answered.
-    /// Times are in milliseconds since the epoch.
     pub(crate) fn reviewer_wrote_unknown_to_forks(
         &self,
         unit: &ReviewUnit,
@@ -159,15 +123,12 @@ impl SavedRounds {
             let since = message
                 .posted_at_ms
                 .is_some_and(|posted| posted >= since_ms);
-            // A message of unknown time may be newer than the forks.
             let unknown_to_forks = message.posted_at_ms.is_none_or(|posted| posted >= taken_ms)
                 || !conversation.is_answered(message);
             message.author == Author::Reviewer && (under || since) && unknown_to_forks
         }))
     }
 
-    /// The reviewer's messages in the conversation of the round `instance` of `unit` that the
-    /// agent has not replied to, oldest first, each with when the review received it.
     pub(crate) fn unanswered_round_messages(
         &self,
         unit: &ReviewUnit,
@@ -195,9 +156,6 @@ impl SavedRounds {
         self.store.load_explore(unit, instance)
     }
 
-    /// The rounds of `unit` started before `instance`: how many the reviewer reset before a
-    /// later round started, and the readable rounds whose decisions still stand, oldest first.
-    /// An unreadable round is left out.
     pub(crate) fn earlier(&self, unit: &ReviewUnit, instance: &str) -> Result<EarlierRounds> {
         let history = self.history(unit)?;
         let before = history.before(instance);
@@ -215,7 +173,6 @@ impl SavedRounds {
         self.store.load_explore_view(unit, instance)
     }
 
-    /// Save a new round, then make it the editable latest round of its review.
     pub(crate) fn create(&self, round: ExploreRound) -> Result<ExploreRound> {
         let records = self
             .store
@@ -223,7 +180,6 @@ impl SavedRounds {
         let mut history = records.history()?;
         records.create_round(&round)?;
         if history.closed {
-            // The reviewer reset the latest round: this one starts over.
             history.reset_rounds = history.rounds.len();
         }
         history.rounds.push(round.exploration.instance.clone());
@@ -233,7 +189,6 @@ impl SavedRounds {
         Ok(round)
     }
 
-    /// Change the editable latest round; earlier rounds are history.
     pub(crate) fn update<T>(
         &self,
         unit: &ReviewUnit,
@@ -247,8 +202,6 @@ impl SavedRounds {
         records.update_round(instance, update)
     }
 
-    /// Serially accept an Explore response without changing file review marks, with the files
-    /// whose diff had `diverged` from the round's when it came.
     pub(crate) fn submit(
         &self,
         unit: &ReviewUnit,
@@ -276,7 +229,6 @@ impl SavedRounds {
         Ok(Submitted { applied, round })
     }
 
-    /// Saves the agent's `revision` of the open question of the round `instance`.
     pub(crate) fn revise(
         &self,
         unit: &ReviewUnit,
@@ -296,7 +248,6 @@ impl SavedRounds {
         Ok(Submitted { applied, round })
     }
 
-    /// A started external call may complete after a reset. Only its result can change history.
     pub(crate) fn finish_dispatch(
         &self,
         unit: &ReviewUnit,
@@ -315,8 +266,6 @@ impl SavedRounds {
             .map(|((), round)| round)
     }
 
-    /// Rebuild a damaged index from readable rounds, oldest first, retaining their
-    /// editor views. A rebuilt history never guesses which round is editable.
     pub(crate) fn repair_history(&self, unit: &ReviewUnit) -> Result<ExploreHistory> {
         let records = self.store.lock_explore(unit)?;
         let mut rounds: Vec<_> = records
@@ -335,8 +284,6 @@ impl SavedRounds {
         Ok(history)
     }
 
-    /// Close `instance` when it is the latest round, so reopening shows the start
-    /// screen. Its records stay. A later round, another reviewer's, stays open.
     pub(crate) fn close(&self, unit: &ReviewUnit, instance: &str) -> Result<()> {
         let records = self.store.lock_explore(unit)?;
         let mut history = records.history()?;
@@ -348,7 +295,6 @@ impl SavedRounds {
         records.sync()
     }
 
-    /// Remove one unreadable round and its editor view while preserving other rounds.
     pub(crate) fn clear_round(&self, unit: &ReviewUnit, instance: &str) -> Result<()> {
         let records = self.store.lock_explore(unit)?;
         let mut history = records.history()?;
@@ -363,15 +309,12 @@ impl SavedRounds {
         records.sync()
     }
 
-    /// Discard a damaged editor view while retaining its valid interview.
     pub(crate) fn clear_view(&self, unit: &ReviewUnit, instance: &str) -> Result<()> {
         let records = self.store.lock_explore(unit)?;
         records.remove_view(instance)?;
         records.sync()
     }
 
-    /// Save the reviewer's editor state without rewriting the round. Older autosaves
-    /// never replace newer ones, and one sequence number never changes content.
     pub(crate) fn save_view(&self, unit: &ReviewUnit, view: &ViewSave) -> Result<()> {
         if &view.review_unit != unit {
             return Err(explore_error("editor belongs to another review"));
@@ -398,7 +341,6 @@ impl SavedRounds {
 #[path = "records.tests.rs"]
 mod tests;
 
-/// Adds the files of `more` that `diverged` lacks, keeping its order.
 pub(crate) fn merge_diverged(diverged: &mut Vec<String>, more: Vec<String>) {
     for path in more {
         if !diverged.contains(&path) {

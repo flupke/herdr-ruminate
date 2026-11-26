@@ -1,5 +1,3 @@
-//! Prompts the agent did not start on: Herdr wrote them into its pane, and nothing happened.
-
 use review_explore::{Command, DispatchState};
 use review_explore_page::{ImplementationState, Interruption, RoundStage};
 use review_thread_service::PromptError;
@@ -8,13 +6,10 @@ use ui_events::ExploreProgress;
 use super::*;
 
 impl Harness {
-    /// The agent reads each prompt without starting on it, or starts on each prompt again.
     fn swallow_prompts(&self, swallow: bool) {
         self.agents.swallow_prompts(&PaneId(PANE.into()), swallow);
     }
 
-    /// Hand the session the outcome of its prompt, as its owner does, and return the failure
-    /// the front ends hear of.
     fn prompt_failed(&mut self) -> String {
         let input = self.inbox.recv_timeout(Duration::from_secs(10)).unwrap();
         self.session.handle(input);
@@ -59,7 +54,6 @@ fn a_turn_the_agent_does_not_start_on_waits_for_a_retry_of_the_same_request() {
     harness.swallow_prompts(false);
     let retry = harness.exploration.as_mut().unwrap().retry().unwrap();
     assert_eq!(retry.request, kickoff.request);
-    // The swallowed prompt counts as delivered to the agent's pane.
     harness.delivered_prompt();
     harness
         .session

@@ -1,27 +1,16 @@
-//! Cancelling one of the reviewer's answers with every answer after it: the review marks they
-//! applied are given back, then the saved round forgets the answers and the agent's turns after
-//! them.
-
 use std::sync::Arc;
 
 use review_explore::ExploreRound;
 
 use crate::ExploreSession;
 
-/// Which answers Cancel answer may take back.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Cancel {
-    /// The latest answer only, as the pane offers it: the pane may not have heard of a later
-    /// answer yet.
     Latest,
-    /// Any answer, with every answer after it, as an earlier question on the Explore page
-    /// offers it.
     From,
 }
 
 impl ExploreSession {
-    /// Cancels the answer `answer`, as `cancel` allows, with every answer after it, tells the
-    /// front ends, and returns why it could not, when it could not.
     pub(crate) fn cancel_answer(&mut self, answer: String, cancel: Cancel) -> Result<(), String> {
         let result = self
             .cancel_from(&answer, cancel)
@@ -53,7 +42,6 @@ impl ExploreSession {
             .rounds
             .round(&checkpoint.review_unit, &shown.exploration.instance)?
             .ok_or_else(|| eyre::eyre!("Saved Explore round is missing"))?;
-        // Refuse against the saved round before touching review marks.
         eyre::ensure!(
             cancel == Cancel::From
                 || round
@@ -92,11 +80,8 @@ impl ExploreSession {
         );
         let ((), round) = match updated {
             Ok(updated) => updated,
-            // The saved round moved on: nothing is wrong with storage.
             Err(error @ review_store::Error::ExploreRefused(_)) => return Err(error.into()),
             Err(error) => {
-                // The marks are already given back, by author, so cancelling
-                // again after reopening the round finishes the job.
                 self.state.storage_error = Some(error.to_string());
                 let _ = self
                     .events
@@ -109,14 +94,9 @@ impl ExploreSession {
                 .iter()
                 .any(|cancelled| cancelled.request.as_ref() == Some(request))
         {
-            // Withdraw the prompt; the saved round refuses the agent's late answer by its
-            // request.
             self.state.prompt = None;
             self.state.pending = None;
         }
-        // Cancel answer sends no prompt that could carry a new access: the agent revises the
-        // question the round went back to with the one it holds when it calls, which the turns
-        // after the answer renewed, whether they reached it or not.
         self.state.grants_held = true;
         self.state.round = Some(round.clone());
         Ok(Arc::new(round))

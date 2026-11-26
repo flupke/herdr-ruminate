@@ -1,8 +1,3 @@
-//! What the standalone server's agent posts, and the change it cites. Two data sets exist:
-//! [`Short`], small enough for the e2e tests to name what they check, and [`Rich`], as long and
-//! as rich as a real round, for the screenshot gallery (`make explore-gallery`). The server's
-//! `--data` option picks one.
-
 use change_references::{ChangeReferences, PullRequest, Ticket};
 use review_explore::{Conclusion, Design, Question, QuizAnswers, QuizItem};
 use review_explore_page::{
@@ -15,62 +10,42 @@ use crate::sessions::{RunAheadPath, Step};
 use crate::short::Short;
 use crate::tally::JevMark;
 
-/// The request of the agent's turn that posts the fixed conclusion.
 const CONCLUSION_REQUEST: &str = "conclusion";
 
-/// A data set: the review, the design, the questions and the conclusion of a round, and the
-/// change their citations name.
 pub(crate) trait RoundData: Send + Sync {
-    /// The review the start screen names.
     fn review(&self) -> ReviewName;
 
-    /// The design of the change, which the round explains on its first turn.
     fn design(&self) -> Design;
 
-    /// The agent's fixed question `number`, from 1, and the lines an answer to it marks.
     fn question(&self, number: usize) -> (Question, QuestionMarks);
 
-    /// What the agent says back to the reviewer's answer to the previous question before its
-    /// question `number`, from 2.
     fn answer_response(&self, number: usize) -> TurnResponse;
 
-    /// The terms of the change with their definitions, as the agent's first turn gives them.
     fn glossary(&self) -> std::collections::BTreeMap<String, String> {
         std::collections::BTreeMap::new()
     }
 
-    /// The comment of the reviewer's answers in the pane; empty for none.
     fn pane_comment(&self) -> &'static str {
         ""
     }
 
-    /// What the agent replies to the reviewer's message in the round's conversation.
     fn chat_reply(&self) -> &'static str {
         "The draft lives in the round: a reset drops it with the round, so `Keep the draft` costs \
          nothing once the round ends."
     }
 
-    /// The fixed conclusion: with its quiz when `quiz`, or else with the reason it has none.
     fn conclusion(&self, quiz: bool) -> Conclusion;
 
-    /// What the agent says back to the reviewer's last answer above its conclusion.
     fn conclusion_response(&self) -> TurnResponse;
 
-    /// The change the citations name.
     fn change(&self) -> &FixedChange;
 
-    /// The lines of the change that Jev marks when a round starts.
     fn jev_marks(&self) -> &'static [JevMark];
 
-    /// The rounds of other changes saved before a session opens, newest first, which its page
-    /// lists as past rounds.
     fn saved_rounds(&self) -> &'static [SavedRound] {
         SAVED_ROUNDS
     }
 
-    /// The round's question `number`, from 1: `question` when given, which marks nothing, or
-    /// else the fixed questions in turn. A question after the first follows the agent's fixed
-    /// response to the reviewer's previous answer.
     fn question_stage(&self, number: usize, question: Option<Question>) -> RoundStage {
         let (question, marks) = match question {
             Some(question) => (question, QuestionMarks::default()),
@@ -96,8 +71,6 @@ pub(crate) trait RoundData: Send + Sync {
         }
     }
 
-    /// The fixed conclusion, with the latest implementation request the reviewer authorized,
-    /// and its quiz with the reviewer's answers when `quiz` is given.
     fn conclusion_stage(
         &self,
         implementation: Option<PageImplementation>,
@@ -125,37 +98,25 @@ pub(crate) trait RoundData: Send + Sync {
         }
     }
 
-    /// The items of the conclusion's quiz.
     fn quiz_items(&self) -> Vec<QuizItem> {
         self.conclusion(true).quiz
     }
 
-    /// The conclusion's list to be implemented.
     fn to_be_implemented(&self) -> String {
         self.conclusion(false).to_be_implemented
     }
 }
 
-/// A round of another change, saved before a session opens.
 pub(crate) struct SavedRound {
-    /// The title of its change.
     pub(crate) title: &'static str,
-    /// The change's revision: the prefix jj highlights, then the rest.
     pub(crate) revision: (&'static str, &'static str),
-    /// How long before the session opened it was saved, in minutes.
     pub(crate) minutes_ago: u64,
-    /// The steps the round took before it was saved.
     pub(crate) steps: &'static [Step],
-    /// The number of the change's pull request, whose title is `title`; `None` without one.
     pub(crate) pull_request: Option<u64>,
-    /// The tickets the change names: `#N`, an issue of the repository on GitHub, else a Linear
-    /// issue's identifier.
     pub(crate) tickets: &'static [&'static str],
 }
 
 impl SavedRound {
-    /// The pull request and the tickets of its change, as the review tool saves them: in the
-    /// repository `flupke/drafts-demo` on GitHub, and the Linear workspace `drafts`.
     pub(crate) fn references(&self) -> ChangeReferences {
         let github = "https://github.com/flupke/drafts-demo";
         ChangeReferences {
@@ -180,9 +141,7 @@ impl SavedRound {
     }
 }
 
-/// A minute, in minutes.
 pub(crate) const MINUTE: u64 = 1;
-/// A day, in minutes.
 pub(crate) const DAY: u64 = 24 * 60 * MINUTE;
 
 const QUESTION: Step = Step::Question {
@@ -192,11 +151,8 @@ const ANSWER: Step = Step::Answer {
     after_first_pick: false,
 };
 
-/// A round left at its first question.
 pub(crate) const AT_FIRST_QUESTION: &[Step] = &[Step::Kickoff, QUESTION];
-/// A round left at its second question.
 pub(crate) const AT_SECOND_QUESTION: &[Step] = &[Step::Kickoff, QUESTION, ANSWER, QUESTION];
-/// A round concluded after two questions, with a quiz.
 pub(crate) const CONCLUDED: &[Step] = &[
     Step::Kickoff,
     QUESTION,
@@ -206,7 +162,6 @@ pub(crate) const CONCLUDED: &[Step] = &[
     Step::Conclude { quiz: true },
 ];
 
-/// The saved rounds of the short data set: two changes, one round each.
 const SAVED_ROUNDS: &[SavedRound] = &[
     SavedRound {
         title: "Keep the reviewer's draft across reloads",
@@ -226,7 +181,6 @@ const SAVED_ROUNDS: &[SavedRound] = &[
     },
 ];
 
-/// The data set named `name`: `short` or `rich`.
 pub(crate) fn by_name(name: &str) -> Option<&'static dyn RoundData> {
     match name {
         "short" => Some(&Short),

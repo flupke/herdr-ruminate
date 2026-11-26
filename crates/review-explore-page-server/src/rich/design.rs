@@ -1,9 +1,3 @@
-//! The design of the rich data set's change, in four full parts written as the kickoff asks, in
-//! plain words with no file, type or function name: the story and a diagram of the components with
-//! new and changed nodes; a sequence diagram, a table of the data and a state diagram, so that one
-//! part holds several diagrams; a table of the costs with callouts; and a table of the rejected
-//! alternatives.
-
 use review_explore::{Design, DesignPart};
 
 pub(super) fn design() -> Design {
@@ -70,8 +64,6 @@ leaves the agent idle without knowing.",
     )
 }
 
-/// The data-flow part: a sequence diagram, a table of the types, then a state diagram of the
-/// queue, so that the data set shows a part with several diagrams.
 fn data_flow() -> DesignPart {
     DesignPart::new(
         "A reply goes through three owners: the thread, which saves it; the queue, which holds it; and \

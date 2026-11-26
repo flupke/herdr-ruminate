@@ -1,27 +1,18 @@
-//! A question's citations with their cited lines in syntax colors, as the Explore page shows
-//! them. The colors are Catppuccin Mocha's, named by their role in the Catppuccin palette, so
-//! that a page can show each role in the palette's light flavor too.
-
 use ratatui::style::Color;
 use review_explore::{CitedLines, EvidenceRef, Uncitable};
 use syntax_highlighting::SyntaxHighlighter;
 pub use syntax_highlighting::{HighlightedRow, Token};
 use two_face::theme::EmbeddedThemeName;
 
-/// A citation of a question, and the lines it shows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Citation {
     pub evidence: EvidenceRef,
-    /// The cited lines as colored diff rows, or why the citation shows none.
     pub lines: Result<Vec<HighlightedRow>, Uncitable>,
 }
 
-/// Colors cited code with Catppuccin Mocha.
 #[derive(Clone, Debug)]
 pub struct CodeColors(SyntaxHighlighter);
 
-/// The Catppuccin roles that the Mocha syntax theme uses, with their Mocha color. A page's
-/// stylesheet gives each role its color.
 const PALETTE: &[(&str, (u8, u8, u8))] = &[
     ("rosewater", (0xf5, 0xe0, 0xdc)),
     ("flamingo", (0xf2, 0xcd, 0xcd)),
@@ -42,8 +33,6 @@ const PALETTE: &[(&str, (u8, u8, u8))] = &[
 
 impl Default for CodeColors {
     fn default() -> Self {
-        // Plain text, and Mocha's own text color, have no role: they take the page's text
-        // color.
         Self(SyntaxHighlighter::new(
             EmbeddedThemeName::CatppuccinMocha,
             Color::Reset,
@@ -52,7 +41,6 @@ impl Default for CodeColors {
 }
 
 impl CodeColors {
-    /// The citation `evidence`, showing `lines`, the lines that the change has for it.
     pub fn cite(&self, evidence: EvidenceRef, lines: Result<CitedLines, Uncitable>) -> Citation {
         let lines = lines.map(|lines| {
             self.0
@@ -67,7 +55,6 @@ impl CodeColors {
         Citation { evidence, lines }
     }
 
-    /// The palette role of `token`'s color, or `None` for the text color.
     pub fn role(token: &Token) -> Option<&'static str> {
         let Color::Rgb(red, green, blue) = token.color else {
             return None;

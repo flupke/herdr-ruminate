@@ -1,6 +1,3 @@
-//! What the tests of the page beyond this machine share: rounds to publish, and plain HTTP
-//! requests.
-
 use std::fmt::Write as _;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -17,7 +14,6 @@ use review_explore_page::{
 
 use crate::{NetworkAccess, NetworkListener, PageDirectory, PageHost, PanePlace};
 
-/// The round `id`, with nothing more to publish.
 pub(crate) fn published(id: &str) -> PublishedRound<'_> {
     PublishedRound {
         id,
@@ -32,11 +28,9 @@ pub(crate) fn published(id: &str) -> PublishedRound<'_> {
     }
 }
 
-/// The review of every round, which these tests do not look at.
 static REVIEW: std::sync::LazyLock<review_types::ReviewUnit> =
     std::sync::LazyLock::new(|| "review".into());
 
-/// A round's overview, which these tests do not look at.
 static OVERVIEW: RoundOverview = RoundOverview {
     rail: Vec::new(),
     decisions: Vec::new(),
@@ -74,7 +68,6 @@ pub(crate) const LOOPBACK: &str = "lo";
 #[cfg(not(target_os = "linux"))]
 pub(crate) const LOOPBACK: &str = "lo0";
 
-/// The path and query of `url`.
 pub(crate) fn path(url: &str) -> &str {
     let rest = url.split_once("://").unwrap().1;
     &rest[rest.find('/').unwrap()..]
@@ -94,7 +87,6 @@ pub(crate) fn status(
         .unwrap_or_else(|| panic!("no status in {response:?}"))
 }
 
-/// The response, head and body, to a request for `target` with `body`.
 pub(crate) fn request(
     address: SocketAddr,
     method: &str,
@@ -117,10 +109,8 @@ pub(crate) fn request(
     response
 }
 
-/// The identity of the one past round of the tests' pages.
 pub(crate) const PAST: &str = "past-1";
 
-/// The saved rounds of the tests' pages: the round `PAST` alone, which the page lists and opens.
 fn past_rounds() -> PastRounds {
     let publisher = PastRoundsPublisher::default();
     publisher.publish(vec![PastChange {
@@ -146,9 +136,6 @@ fn past_rounds() -> PastRounds {
     })
 }
 
-/// A page host of the round that `RoundPublisher` publishes, whose owner takes a Reset and
-/// refuses every other command, with its records under `state`. Its page on this machine
-/// offers one past round, `PAST`.
 pub(crate) fn page_host(state: &std::path::Path) -> (Arc<RoundPublisher>, PageHost) {
     let round = Arc::new(RoundPublisher::default());
     let owner = Arc::downgrade(&round);
@@ -174,14 +161,11 @@ pub(crate) fn page_host(state: &std::path::Path) -> (Arc<RoundPublisher>, PageHo
     (round, host)
 }
 
-/// A page host with its page shared on the loopback interface, which stands in for a network
-/// interface, and the addresses it announces.
 pub(crate) struct Shared {
     pub(crate) round: Arc<RoundPublisher>,
     pub(crate) host: PageHost,
     pub(crate) address: SocketAddr,
     pub(crate) announced: mpsc::Receiver<String>,
-    /// The address the host announced first, for the start screen, before any round started.
     pub(crate) first: String,
     _state: tempfile::TempDir,
 }
@@ -204,15 +188,11 @@ impl Shared {
         }
     }
 
-    /// Starts the round `id`, which replaces a running round, and returns the address of its
-    /// page that the host announced.
     pub(crate) fn replace_round(&self, id: &str) -> String {
         self.round.publish(Some(published(id)), working());
         self.next_announcement()
     }
 
-    /// Starts the round `id` while no round runs, and waits for the host to give it the token
-    /// of the address it announced for the start screen.
     pub(crate) fn start_round(&self, id: &str) {
         self.round.publish(Some(published(id)), working());
         assert_eq!(
@@ -228,7 +208,6 @@ impl Shared {
             .expect("an announcement")
     }
 
-    /// The status of a request for `target` with the network address as its host.
     pub(crate) fn status(&self, method: &str, target: &str, headers: &[(&str, &str)]) -> u16 {
         let host = self.address.to_string();
         let mut all = vec![("Host", host.as_str())];
@@ -236,13 +215,10 @@ impl Shared {
         status(self.address, method, target, &all)
     }
 
-    /// The status of a request for the path and query of `url`.
     pub(crate) fn open(&self, url: &str) -> u16 {
         self.status("GET", path(url), &[])
     }
 
-    /// The status of a load of the page by a browser whose cookie holds the token of `url`,
-    /// under the name the page gives it on its port.
     pub(crate) fn load(&self, url: &str) -> u16 {
         let token = url.rsplit('=').next().unwrap();
         let cookie = format!("explore_token_{}={token}", self.address.port());
@@ -250,8 +226,6 @@ impl Shared {
     }
 }
 
-/// Shares the page of `host` on a free port of the loopback interface, and returns the address
-/// it is served at and the addresses the host announces for it.
 pub(crate) fn share_on_loopback(host: &PageHost) -> (SocketAddr, mpsc::Receiver<String>) {
     let listener = NetworkListener::bind(&loopback(0)).unwrap().unwrap();
     let address = listener.address();

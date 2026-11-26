@@ -71,7 +71,6 @@ fn a_record_saved_before_the_host_s_fields_had_a_place_keeps_them_for_the_host()
         trace.host.get::<ProcessStamp>("process"),
         Some(ProcessStamp { pid: 3, started: 4 })
     );
-    // Saved again, it reads as it was saved.
     assert_eq!(serde_json::to_value(&fork).unwrap(), saved);
 }
 
@@ -196,7 +195,6 @@ fn a_turn_is_prepared_once_the_pane_s_agent_runs_its_fork_s_session_and_every_pl
     assert_eq!(forks.continued_as("other"), None);
 }
 
-/// A switch that failed for `error`.
 fn switch_failed(error: &str) -> Failure {
     Failure::SwitchFailed {
         error: error.into(),

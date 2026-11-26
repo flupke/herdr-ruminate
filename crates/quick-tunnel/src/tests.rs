@@ -8,8 +8,6 @@ use super::*;
 
 const HOST: &str = "quiet-river-stone-lamp.trycloudflare.com";
 
-/// A wrapper that runs the program without a parent-death signal: it drops the reviewer's
-/// process ID the launcher passes and runs the rest.
 fn plain_wrapper() -> agent_fork::Wrapper {
     agent_fork::Wrapper {
         program: "sh".into(),
@@ -17,8 +15,6 @@ fn plain_wrapper() -> agent_fork::Wrapper {
     }
 }
 
-/// A stand-in for `cloudflared` in `directory`, which runs `script` after writing its process
-/// ID and its arguments to `pid` and `arguments` there. The process ID file appears whole.
 fn stand_in(directory: &Path, script: &str) -> TunnelProgram {
     let program = directory.join("cloudflared");
     std::fs::write(
@@ -48,7 +44,6 @@ fn stand_in(directory: &Path, script: &str) -> TunnelProgram {
     }
 }
 
-/// Prints the box with the address on the standard error, as `cloudflared` does.
 fn prints_address() -> String {
     format!(
         "echo 'INF Requesting new quick Tunnel on trycloudflare.com...' >&2\n\
@@ -73,7 +68,6 @@ fn next(events: &mpsc::Receiver<TunnelEvent>) -> TunnelEvent {
     events.recv_timeout(Duration::from_secs(10)).unwrap()
 }
 
-/// Whether the stand-in in `directory`, which wrote its process ID, still runs.
 fn runs(directory: &Path) -> bool {
     let pid = std::fs::read_to_string(directory.join("pid")).unwrap();
     Path::new(&format!("/proc/{}", pid.trim())).exists()
@@ -103,7 +97,6 @@ fn the_tunnel_to_the_local_address_reports_its_public_host_and_stops_with_its_pr
     assert!(runs(directory.path()));
     tunnel.stop();
     assert!(!runs(directory.path()));
-    // The tunnel lets go of the events once it saw the end of its process.
     assert_eq!(
         events.recv(),
         Err(mpsc::RecvError),
@@ -177,8 +170,6 @@ fn a_cloudflared_that_prints_no_address_in_time_is_stopped() {
     program.address_wait = Duration::ZERO;
 
     let (tunnel, events) = start(&program);
-    // The tunnel's process, whether it is still the wrapper or already the stand-in, which
-    // takes the wrapper's place: with no wait, the tunnel may stop it before the stand-in runs.
     let process = tunnel.fork.stamp();
     assert_ne!(process.started, 0, "the process was read while it ran");
 

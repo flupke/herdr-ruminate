@@ -2,9 +2,6 @@ use super::*;
 use crate::tests::{comparison, prepare_with as prepare};
 use std::sync::Arc;
 
-/// An earlier round in which the reviewer gave `answers`, each a question ID,
-/// the chosen option ID (none for a reply to a conclusion) and a comment, and
-/// the agent interpreted each choice as its option's outcome.
 fn round(answers: &[(&str, Option<&str>, &str)]) -> Exploration {
     let mut round = Exploration::new(Arc::new(comparison()));
     round.answers = answers
@@ -144,7 +141,6 @@ fn the_first_round_has_no_earlier_decisions() {
     let earlier = EarlierDecisions::new([&round(&[("q1", None, "Ship it")])]);
 
     assert_eq!(earlier.to_string(), "");
-    // The round's data ends on the description: no earlier decision follows it.
     let kickoff = kickoff(&earlier);
     let round = &kickoff[..kickoff.find(include_str!("rules/turn.md")).expect(&kickoff)];
     assert!(round.ends_with("Change description: none\n\n"), "{round}");
@@ -162,12 +158,10 @@ fn every_turn_lists_the_earlier_decisions_in_the_rounds_data() {
 
     let wakeup = prepare(&request, &comparison, &earlier);
 
-    // Once as an earlier decision in the round's data, once as the answer of the turn.
     assert_eq!(wakeup.matches("answer-q1").count(), 2, "{wakeup}");
     assert_eq!(wakeup.matches("> Keep q1?").count(), 1, "{wakeup}");
 }
 
-/// Record that an agent turn of `round` took up `answer`.
 fn take_up(round: &mut Exploration, answer: &str) {
     let update = serde_json::from_value(serde_json::json!({
         "instance": round.instance, "request": format!("after-{answer}"),

@@ -6,7 +6,6 @@ use review_explore_page::{CommandRefusal, CommandSender, RoundPublisher};
 
 use super::*;
 
-/// The review pane in tab `tab` of workspace `workspace`.
 fn place(workspace: &str, tab: &str) -> PanePlace {
     PanePlace {
         workspace: WorkspaceId(workspace.into()),
@@ -14,7 +13,6 @@ fn place(workspace: &str, tab: &str) -> PanePlace {
     }
 }
 
-/// The page's side of `round`, whose commands no session takes.
 pub(crate) fn page_round(round: &RoundPublisher) -> PageRound {
     let commands = CommandSender::new(|_, reply| {
         reply.send(Err(CommandRefusal::Failed(
@@ -24,7 +22,6 @@ pub(crate) fn page_round(round: &RoundPublisher) -> PageRound {
     PageRound::new(round.subscribe(), commands)
 }
 
-/// The review of the tests' reviewers.
 const REVIEW: &str = "/repositories/drafts";
 
 fn host(directory: &PageDirectory, place: &PanePlace) -> PageHost {
@@ -36,7 +33,6 @@ fn host_of(directory: &PageDirectory, place: &PanePlace, review: &str) -> PageHo
     PageHost::start(page_round(&round), directory, place, Path::new(review)).unwrap()
 }
 
-/// The token of the page's address `url`.
 fn token(url: &str) -> &str {
     url.rsplit('=').next().unwrap()
 }
@@ -125,8 +121,6 @@ fn each_tab_of_a_workspace_finds_the_page_of_its_own_reviewer() {
     let state = tempfile::tempdir().unwrap();
     let directory = PageDirectory::new(state.path());
     let first = host(&directory, &place("w1", "t1"));
-    // herdr-app runs a review pane in each tab of a space: the last one to start must not take
-    // the page of the others.
     let second = host(&directory, &place("w1", "t2"));
 
     assert_eq!(
@@ -163,7 +157,6 @@ fn the_page_of_a_reviewer_that_died_is_not_found() {
     let directory = PageDirectory::new(state.path());
     let host = host(&directory, &place("w1", "t1"));
     let record = std::fs::read(directory.record(&place("w1", "t1"))).unwrap();
-    // A reviewer killed before it could remove its record leaves it behind.
     drop(host);
     std::fs::write(directory.record(&place("w1", "t1")), record).unwrap();
 

@@ -1,14 +1,5 @@
-//! The change the rich data set cites: a review tool stops waking its agent for every reply
-//! the reviewer writes, and sends the replies in batches. Three Rust files that the questions
-//! cite; each one's text before and after the change is in `change/`, beside the diff
-//! `git diff` wrote of them (run it again on two copies of the files after an edit). Around
-//! them, as in a real change of that size, forty files that change one line each, most of them
-//! under one deep directory, so that the meter lists long paths that start alike. They come
-//! after the three, by path, as the review tool lists a change's files.
-
 use crate::changed_source::{ChangedSource, FixedChange};
 
-/// The queue that holds the replies, and sends them.
 pub(super) const QUEUE: ChangedSource = ChangedSource {
     path: "src/notify/queue.rs",
     old: include_str!("change/queue.rs.old"),
@@ -16,7 +7,6 @@ pub(super) const QUEUE: ChangedSource = ChangedSource {
     diff: include_str!("change/queue.rs.diff"),
 };
 
-/// The rule that decides when a queue goes out.
 pub(super) const FLUSH: ChangedSource = ChangedSource {
     path: "src/notify/flush.rs",
     old: include_str!("change/flush.rs.old"),
@@ -24,7 +14,6 @@ pub(super) const FLUSH: ChangedSource = ChangedSource {
     diff: include_str!("change/flush.rs.diff"),
 };
 
-/// Where a reply is saved to its thread, then queued.
 pub(super) const REPLY: ChangedSource = ChangedSource {
     path: "src/threads/reply.rs",
     old: include_str!("change/reply.rs.old"),
@@ -32,7 +21,6 @@ pub(super) const REPLY: ChangedSource = ChangedSource {
     diff: include_str!("change/reply.rs.diff"),
 };
 
-/// A file of the change whose one changed line turns batching on.
 macro_rules! batching_on {
     ($path:literal) => {
         ChangedSource {

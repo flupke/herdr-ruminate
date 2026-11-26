@@ -1,11 +1,3 @@
-//! The reviewer's talk with the agent in the round conversation while a question waits: the
-//! reviewer's messages the agent has yet to reply to, from those posted while it took the turn
-//! that asks the question, and those that came since. A message changes what the agent knows, so forks taken before it cannot prepare the reviewer's next turn: they are
-//! discarded as soon as the reviewer posts it. They are taken again only once the talk has been
-//! quiet for a while, a minute in a reviewer: the agent replied to every message of the talk and
-//! stayed idle, and the reviewer posted nothing new. A new message, or work of the agent, starts
-//! the quiet wait again from the agent's next idle after its reply.
-
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -16,27 +8,21 @@ use review_threads::MessageId;
 use super::{Event, RunAheadInput, RunAheadState};
 use crate::{ExploreSession, Input};
 
-/// How long the talk stays quiet before the forks are taken again.
 pub const TALK_QUIET: Duration = Duration::from_secs(60);
 
-/// The reviewer's messages of a talk, and the quiet wait that runs once the agent replied.
 #[derive(Default)]
 pub(super) struct Talk {
-    /// The reviewer's messages, oldest first.
     messages: Vec<MessageId>,
     quiet: Option<QuietWait>,
-    /// Whether the log says that the idle agent has not replied yet, since the last message.
     unreplied_logged: bool,
 }
 
-/// A quiet wait that runs, by the number it was started under: dropping it stops it.
 struct QuietWait {
     number: u64,
     _stop: mpsc::Sender<()>,
 }
 
 impl Talk {
-    /// The talk of `messages`, which wait for the agent's reply, if any.
     pub(super) fn waiting_for(messages: Vec<MessageId>) -> Option<Self> {
         (!messages.is_empty()).then(|| Self {
             messages,
@@ -44,22 +30,18 @@ impl Talk {
         })
     }
 
-    /// The agent works: the quiet wait, if one runs, stops.
     pub(super) fn interrupt(&mut self) {
         self.quiet = None;
     }
 }
 
 impl RunAheadState {
-    /// The quiet wait of the talk about the question that waits, while one runs.
     fn quiet_wait(&self) -> Option<&QuietWait> {
         self.armed.as_ref()?.talk.as_ref()?.quiet.as_ref()
     }
 }
 
 impl ExploreSession {
-    /// The watched agent is idle and the question that waits has no forks: they are taken, or,
-    /// while the reviewer talks, the quiet wait starts once the agent replied.
     pub(super) fn run_ahead_idle(&mut self) {
         if self
             .run_ahead
@@ -73,8 +55,6 @@ impl ExploreSession {
         }
     }
 
-    /// The reviewer posted `message`: in the round of the question that waits, its forks are
-    /// discarded, and no fork is taken again until the talk has been quiet.
     pub(crate) fn run_ahead_round_message(&mut self, message: &RoundMessage) {
         let Some(armed) = self.run_ahead.armed.as_mut().filter(|armed| {
             armed.asked.round.unit == message.review_unit
@@ -92,8 +72,6 @@ impl ExploreSession {
         self.discard_taken(DiscardReason::ChatMessage);
     }
 
-    /// The agent is idle while the reviewer talks: the quiet wait starts once the agent replied
-    /// to every message of the talk.
     fn talk_idle(&mut self) {
         let Some(armed) = self.run_ahead.armed.as_ref() else {
             return;
@@ -152,8 +130,6 @@ impl ExploreSession {
         }
     }
 
-    /// Starts the quiet wait `number`, on a thread of its own: once it passes, unless it was
-    /// stopped, its end reaches the session's inbox.
     fn start_quiet_wait(&self, number: u64) -> QuietWait {
         let (stop, stopped) = mpsc::channel::<()>();
         let (inbox, wait) = (self.inbox.clone(), self.run_ahead.talk_quiet);
@@ -168,8 +144,6 @@ impl ExploreSession {
         }
     }
 
-    /// The quiet wait `number` passed: when it still runs, the talk is over and the forks are
-    /// taken again.
     pub(super) fn run_ahead_quiet(&mut self, number: u64) {
         if self
             .run_ahead
@@ -186,13 +160,11 @@ impl ExploreSession {
         self.run_ahead_take();
     }
 
-    /// Whether a quiet wait of the reviewer's talk runs.
     #[cfg(test)]
     pub(crate) fn quiet_wait_runs(&self) -> bool {
         self.run_ahead.quiet_wait().is_some()
     }
 
-    /// The quiet wait that runs passes now.
     #[cfg(test)]
     pub(crate) fn end_quiet_wait(&mut self) {
         let number = self
@@ -203,7 +175,6 @@ impl ExploreSession {
         self.handle(Input::RunAhead(RunAheadInput(Event::Quiet { number })));
     }
 
-    /// The reviewer's talk lasts `wait` of quiet, in place of a minute.
     #[cfg(test)]
     pub(crate) fn quiet_for(&mut self, wait: Duration) {
         self.run_ahead.talk_quiet = wait;

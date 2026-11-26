@@ -1,9 +1,3 @@
-//! One Explore session: the round, its MCP access, the pinned agent and delivery attempts.
-//!
-//! The owner forwards every [`Input`] and reports review checkpoint changes; the
-//! session publishes its results as application events and prompts agents through
-//! the agent port.
-
 mod agent;
 mod cancel;
 mod diagram;
@@ -45,34 +39,23 @@ use review_store::ReviewStore;
 use review_thread_service::{PinnedAgent, PromptCancellation, PromptSender};
 use review_types::ReviewUnit;
 
-/// Work the session's owner forwards, in the order it arrived.
 #[derive(Debug)]
 pub enum Input {
-    /// An explicit reviewer command.
     Command(Command),
-    /// An agent's MCP call to an Explore tool.
     Submission(Box<review_mcp::Request>),
-    /// A prompt this session sent could not be delivered.
     PromptFinished {
         event: Box<ui_events::ExploreFinished>,
         attempt: String,
     },
-    /// Saved Explore state changed on disk, possibly by another reviewer.
     StorageChanged,
-    /// A command the reviewer sent from the Explore page, and where to reply once it is
-    /// carried out or refused.
     Page {
         command: review_explore_page::PageCommand,
         reply: review_explore_page::CommandReply,
     },
-    /// An event of run-ahead's forks, or of the agent they are forked from.
     RunAhead(RunAheadInput),
-    /// The reviewer posted a message in the conversation of an Explore round.
     RoundMessage(review_thread_service::RoundMessage),
 }
 
-/// Returns inputs the session produces later, such as prompt outcomes, to its owner's
-/// serial input order.
 #[derive(Clone)]
 pub struct Inbox(Arc<dyn Fn(Input) + Send + Sync>);
 
@@ -81,42 +64,28 @@ impl Inbox {
         Self(Arc::new(deliver))
     }
 
-    /// Hand `input` to the owner, behind the inputs it already holds.
     pub fn deliver(&self, input: Input) {
         (self.0)(input);
     }
 }
 
-/// What a session needs from the process that owns it.
 pub struct Collaborators {
     pub repository: Repository,
     pub store: ReviewStore,
-    /// The review marks every reviewer component shares.
     pub tracker: Arc<ReviewTracker>,
     pub agents: Arc<dyn AgentPort>,
     pub target: AgentTarget,
     pub prompts: PromptSender,
     pub events: ApplicationEventSender,
     pub inbox: Inbox,
-    /// Where a `make vision` session reads the prompts this session sent;
-    /// `None` in every other reviewer.
     pub turns: Option<TurnLog>,
-    /// Where the session publishes the stage of its round for the Explore page.
     pub page: RoundPublisher,
-    /// The agent whose session run-ahead forks.
     pub forks: Arc<dyn review_run_ahead::ForkHost>,
-    /// How long the reviewer's talk with the agent in the round conversation stays quiet
-    /// before run-ahead takes forks again: [`TALK_QUIET`], less in tests.
     pub talk_quiet: std::time::Duration,
-    /// The reviewer's end of the agents' hooks, which learns the session a Codex agent names in
-    /// its calls; `None` when the reviewer does not listen to them.
     pub hooks: Option<Arc<agent_hooks::AgentHooks>>,
-    /// Finds the pull request and the tickets of the change each new round reviews, which name
-    /// it among the past rounds; `None` when nothing looks for them.
     pub references: Option<change_references_finder::ReferencesFinder>,
 }
 
-/// The Explore session of one reviewer process.
 pub struct ExploreSession {
     repository: Repository,
     tracker: Arc<ReviewTracker>,
@@ -129,29 +98,16 @@ pub struct ExploreSession {
     turns: Option<TurnLog>,
     page: RoundPublisher,
     hooks: Option<Arc<agent_hooks::AgentHooks>>,
-    /// The citations of the question the page shows.
     citations: page::PageCitations,
-    /// The citations of the earlier questions the page shows from the round rail.
     earlier_citations: page::PageCitations,
-    /// The review marks of the reviewer's snapshot, as the session read them last.
     marks: review_explore_tally::ChangeMarks,
-    /// The snapshot whose review marks the session read last.
     marks_snapshot: Option<review_repository::repository::Snapshot>,
-    /// The files on which the marks of the round apply at a snapshot, as worked out last.
     markable: mark_tally::MarkableCache,
-    /// The files whose diff differed from the round's at the snapshot the latest unreviewed
-    /// diffs were written from, until the prompt they belong to takes them.
     prompt_diverged: Vec<String>,
-    /// The files whose diff differed from the round's when a prompt for a request was
-    /// written, the agent's or a fork's, by request, until the round keeps them with the turn.
     prompted_diverged: std::collections::BTreeMap<String, Vec<String>>,
-    /// The unreviewed lines of the latest prompt, as files.
     diffs: Option<unreviewed_diffs::UnreviewedDiffs>,
-    /// The instructions of the latest prompt, as files.
     turn_files: Option<turn_files::TurnFiles>,
-    /// Why no round can start, as the latest review marks the session read say.
     start_block: Option<review_explore::StartBlock>,
-    /// The forks of the question that waits.
     run_ahead: run_ahead::RunAheadState,
     state: State,
 }
@@ -164,35 +120,21 @@ struct State {
     historical: bool,
     storage_error: Option<String>,
     access: String,
-    /// The access the pane's agent holds, which can be an earlier one than `access`.
     held: held_access::HeldAccess,
-    /// Whether the round grants the held access in place of `access`: after Cancel answer, until
-    /// the access renews.
     grants_held: bool,
     last_view: Option<ViewSave>,
     pending: Option<(String, String)>,
-    /// The latest round when the reviewer reset another one; it stays out of view.
     dismissed: Option<String>,
-    /// Where the reviewer's latest start of a round stands, while no round runs.
     start: Start,
     agent: Option<PinnedAgent>,
     prompt: Option<PromptCancellation>,
     implementation: Option<implementation::SendingImplementation>,
 }
 
-/// Where the reviewer's latest start of a round stands, while the session has no round. Each
-/// start has an identity, made before the reviewer starts it: the page shows it with the start
-/// screen, and a Start from the page carries it back, so that a late repeat of a start that
-/// went through, or was stopped since, starts nothing.
 #[derive(Debug)]
 enum Start {
-    /// No start is under way, and the latest one, if any, succeeded; `offer` is the next one.
     Idle { offer: String },
-    /// The start `start`, which the reviewer started at `started_at_ms`, in milliseconds since
-    /// the epoch: the change is captured, or being captured, and the new round's kickoff is not
-    /// saved yet.
     Starting { start: String, started_at_ms: u64 },
-    /// The latest start failed, for `failure`; `offer` is the next one.
     Failed { failure: String, offer: String },
 }
 
@@ -205,7 +147,6 @@ impl Default for Start {
 }
 
 impl Start {
-    /// The start the session offers, while none is under way.
     fn offered(&self) -> Option<&str> {
         match self {
             Self::Idle { offer } | Self::Failed { offer, .. } => Some(offer),
@@ -213,7 +154,6 @@ impl Start {
         }
     }
 
-    /// The start under way, if any.
     fn starting(&self) -> Option<&str> {
         match self {
             Self::Starting { start, .. } => Some(start),
@@ -221,7 +161,6 @@ impl Start {
         }
     }
 
-    /// The offered start begins; a start under way goes on.
     fn begin(&mut self) {
         if let Some(offer) = self.offered() {
             *self = Self::Starting {
@@ -231,8 +170,6 @@ impl Start {
         }
     }
 
-    /// The start under way ended with its round, or was stopped: the next one is offered. A
-    /// failed start stays failed.
     fn settle(&mut self) {
         if self.starting().is_some() {
             *self = Self::default();
@@ -241,7 +178,6 @@ impl Start {
 }
 
 impl State {
-    /// The start under way failed, for `error`.
     fn start_failed(&mut self, error: &dyn std::fmt::Display) {
         self.start = Start::Failed {
             failure: error.to_string(),
@@ -249,12 +185,10 @@ impl State {
         };
     }
 
-    /// This process delivers the turn `request` to the agent from now on.
     fn pend(&mut self, request: &TurnRequest) {
         self.pending = Some((request.instance.clone(), request.request.clone()));
     }
 
-    /// Whether this process delivers the turn `request` of the round `instance` to the agent.
     fn is_pending(&self, instance: &str, request: &str) -> bool {
         self.pending
             .as_ref()
@@ -263,13 +197,11 @@ impl State {
             })
     }
 
-    /// Revoke the MCP access of every earlier prompt.
     fn renew_access(&mut self) {
         self.access = uuid::Uuid::new_v4().to_string();
         self.grants_held = false;
     }
 
-    /// Whether `access` is the Explore access the round grants now.
     fn grants(&self, access: &str) -> bool {
         let held = self.grants_held.then(|| self.held.held()).flatten();
         held.as_deref().unwrap_or(&self.access) == access
@@ -350,12 +282,10 @@ impl ExploreSession {
         self.publish_page();
     }
 
-    /// Whether a round runs: the start screen, and whether it can start a round, do not show.
     pub fn runs_round(&self) -> bool {
         self.state.round.is_some()
     }
 
-    /// The reviewer now shows `unit`; restore its latest round when the unit changed.
     pub fn checkpoint_changed(&mut self, unit: &ReviewUnit) {
         if self.state.loaded_unit.as_ref() == Some(unit) {
             return;
@@ -375,20 +305,16 @@ impl ExploreSession {
             Command::Start => self.start(),
             Command::Reset => self.reset(),
             Command::SaveView(view) => self.save_view(*view),
-            // The pane learns the outcome from the event the session sends.
             Command::Turn(request) => {
                 let _ = self.deliver_turn(*request, None);
             }
-            // The pane learns the outcome from the events the session sends.
             Command::Retry(request) => {
                 let _ = self.retry(*request);
             }
-            // The pane learns the outcome from the events the session sends.
             Command::Implement(request) => {
                 let _ = self.implement(request);
             }
             Command::CancelImplementation => self.state.implementation = None,
-            // The pane learns the outcome from the event the session sends.
             Command::CancelAnswer(answer) => {
                 let _ = self.cancel_answer(answer, cancel::Cancel::Latest);
             }
@@ -396,8 +322,6 @@ impl ExploreSession {
         }
     }
 
-    /// Stops waiting for the start or the agent's turn under way. An answer that waited for the
-    /// fork of its choice goes to the agent in the pane instead, as a Retry would send it.
     fn stop_waiting(&mut self) {
         let waited = self.run_ahead_stop_waiting();
         self.cancel_record();
@@ -406,7 +330,6 @@ impl ExploreSession {
         self.state.prompt = None;
         self.state.pending = None;
         self.state.implementation = None;
-        // The pane learns the outcome from the events the session sends.
         if let Some(request) = waited {
             let _ = self.retry(request);
         }
@@ -438,12 +361,6 @@ impl ExploreSession {
         });
     }
 
-    /// Starts a round from the Explore page, as Start or Start with Challenger in the pane
-    /// would, and returns its kickoff for the owner to send, after Jev's marks when Jev is
-    /// enabled. Refuses while a round runs or starts, and when nothing is left to review. It
-    /// replies to the page before it captures the change, so that the page shows the round
-    /// starting; a capture that fails shows on the page as a failed start. The pane hears of the
-    /// start, and of its failure.
     pub fn start_from_page(
         &mut self,
         choices: review_explore::RoundChoices,
@@ -451,7 +368,6 @@ impl ExploreSession {
         reply: CommandReply,
     ) -> Option<TurnRequest> {
         let refusal = if self.state.round.is_none() && self.state.start.starting() == Some(start) {
-            // A repeat of the start under way.
             Some(CommandRefusal::AlreadyApplied)
         } else if self.state.round.is_some() || self.state.start.offered() != Some(start) {
             Some(CommandRefusal::Stale)
@@ -488,8 +404,6 @@ impl ExploreSession {
         }
     }
 
-    /// Takes `comparison`, the change a start captured, for the kickoff to come: the earlier
-    /// round's agent and access no longer apply.
     fn begin_start(&mut self, comparison: Arc<Comparison>) {
         self.run_ahead_discard(review_run_ahead::DiscardReason::NewRound);
         self.state.comparison = Some(comparison);
@@ -498,12 +412,9 @@ impl ExploreSession {
         self.state.historical = false;
         self.state.start.begin();
         self.state.renew_access();
-        // The agent's access to the earlier round grants nothing in this one.
         self.state.held = held_access::HeldAccess::default();
     }
 
-    /// Close the round and forget it: reopening shows the start screen. A later
-    /// round another reviewer started stays theirs, and out of view until reopening.
     fn reset(&mut self) {
         self.run_ahead_discard(review_run_ahead::DiscardReason::Reset);
         self.cancel_record();
@@ -532,7 +443,6 @@ impl ExploreSession {
         }
     }
 
-    /// Captures the change for a new round, unless nothing is left to review in it.
     fn capture(&mut self) -> eyre::Result<Arc<Comparison>> {
         let review_repository::repository::PollResult::Complete(snapshot) =
             self.repository.poll()?

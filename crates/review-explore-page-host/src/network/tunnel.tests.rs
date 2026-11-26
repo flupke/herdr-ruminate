@@ -11,9 +11,6 @@ use crate::test_page::{Shared, no_round, page_host, path, published, request, st
 
 const HOST: &str = "quiet-river-stone-lamp.trycloudflare.com";
 
-/// A stand-in for `cloudflared` in a directory of its own: it writes its process ID and its
-/// arguments there, prints the box with the tunnel's address on its standard error, then runs
-/// until it is stopped.
 struct StandIn {
     directory: tempfile::TempDir,
     program: TunnelProgram,
@@ -53,22 +50,18 @@ impl StandIn {
         self.directory.path().join(name)
     }
 
-    /// The local address the tunnel forwards to: its `--url`.
     fn target(&self) -> SocketAddr {
         let arguments = std::fs::read_to_string(self.file("arguments")).unwrap();
         let url = arguments.trim().rsplit(' ').next().unwrap();
         url.strip_prefix("http://").unwrap().parse().unwrap()
     }
 
-    /// Whether the stand-in's process runs.
     fn runs(&self) -> bool {
         let pid = std::fs::read_to_string(self.file("pid")).unwrap();
         Path::new(&format!("/proc/{}", pid.trim())).exists()
     }
 }
 
-/// Waits until the tunnels of `network` closed so far stopped: their listeners closed, and
-/// `cloudflared` ended.
 fn stopped(network: &PageNetwork) {
     let stopping = std::mem::take(&mut network.lock().tunnels.stopping);
     for stop in stopping {
@@ -76,7 +69,6 @@ fn stopped(network: &PageNetwork) {
     }
 }
 
-/// Opens the tunnel of `network` with `stand_in`, and returns the states it reports.
 fn open(network: &PageNetwork, stand_in: &StandIn) -> mpsc::Receiver<TunnelState> {
     let (sent, reported) = mpsc::channel();
     let report: TunnelReport = Arc::new(move |state| {
@@ -92,7 +84,6 @@ fn next(reported: &mpsc::Receiver<TunnelState>) -> TunnelState {
         .expect("a state of the tunnel")
 }
 
-/// The public address the tunnel reported once open, after it said it was opening.
 fn opened(reported: &mpsc::Receiver<TunnelState>) -> String {
     assert_eq!(next(reported), TunnelState::Opening);
     let TunnelState::Open { url } = next(reported) else {
@@ -105,20 +96,16 @@ fn token(url: &str) -> &str {
     url.rsplit('=').next().unwrap()
 }
 
-/// The status of a request that the tunnel forwards to `target`: for its public host name,
-/// with `headers`.
 fn forwarded(target: SocketAddr, method: &str, url: &str, headers: &[(&str, &str)]) -> u16 {
     let mut all = vec![("Host", HOST)];
     all.extend_from_slice(headers);
     status(target, method, path(url), &all)
 }
 
-/// The cookie that keeps the token of `url` in a browser of the tunnel's page.
 fn cookie(url: &str) -> String {
     format!("explore_token_80={}", token(url))
 }
 
-/// Whether nothing listens at `address`.
 fn closed(address: SocketAddr) -> bool {
     TcpStream::connect(address).is_err()
 }
@@ -349,7 +336,6 @@ fn a_missing_cloudflared_is_reported_in_one_line_with_how_to_install_it() {
 fn a_cloudflared_that_fails_closes_the_tunnels_page_and_says_why() {
     let shared = Shared::start();
     shared.start_round("r1");
-    // The stand-in fails once the test writes to its FIFO.
     let fifo = tempfile::tempdir().unwrap();
     let fail = fifo.path().join("fail");
     nix::unistd::mkfifo(&fail, nix::sys::stat::Mode::S_IRWXU).unwrap();
@@ -435,7 +421,6 @@ fn a_stage_of_the_same_round_keeps_the_tunnel() {
         .round
         .publish(Some(published("r1")), interrupted.clone());
 
-    // The task that ends the tunnel with its round saw the new stage and kept the tunnel.
     while watched.recv_timeout(Duration::from_secs(10)).unwrap() != interrupted {}
     assert!(reported.try_recv().is_err(), "nothing more reported");
     assert_eq!(forwarded(stand_in.target(), "GET", &url, &[]), 303);

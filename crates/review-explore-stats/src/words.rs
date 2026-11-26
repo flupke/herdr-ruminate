@@ -1,7 +1,5 @@
-//! How many words of agent text a question puts before the reviewer.
 use review_explore::{Alternative, Assessments, Consequence, EvidenceRef, Question, Reply};
 
-/// Agent-written text the reviewer reads, counted in words.
 pub(crate) trait Words {
     fn words(&self) -> usize;
 }
@@ -72,8 +70,6 @@ impl Words for Reply {
     }
 }
 
-/// The question's own text, context, sketch, choices, evidence notes and
-/// assessments; None of the above is the reviewer's, not the agent's.
 impl Words for Question {
     fn words(&self) -> usize {
         self.text.words()

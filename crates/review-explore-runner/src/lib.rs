@@ -1,6 +1,3 @@
-//! Start an Explore interview once, then wake the same agent for each human answer. Each turn's
-//! instructions are files the review tool writes for the agent to read, trimmed to the round;
-//! the prompt only names the round, where its index is, and the tools that end the turn.
 use std::path::Path;
 
 use review_explore::{ChangeAuthor, Comparison, TurnRequest};
@@ -15,31 +12,22 @@ pub use decisions::EarlierDecisions;
 pub use rules::TurnFile;
 pub use unreviewed::Unreviewed;
 
-/// What a round started with, the same on every turn: the decisions of the review's earlier
-/// rounds and the reviewer's notes.
 #[derive(Debug, Default)]
 pub struct RoundData {
     pub earlier: EarlierDecisions,
     pub notes: Option<String>,
 }
 
-/// The index every turn's directory holds, which the prompt names.
 pub const INDEX: &str = "index.md";
 
-/// One agent turn's instructions, as the files of its directory.
 #[derive(Clone, Debug)]
 pub struct TurnInstructions {
     instance: String,
     files: Vec<TurnFile>,
-    /// The models and the efforts of the round, which the prompt names the round's of; none
-    /// when the round runs on the agent's own.
     models: Option<ExploreModels>,
 }
 
 impl TurnInstructions {
-    /// The instructions for `request`, listing the unreviewed lines, with the round's data: the
-    /// change, and what the `round` started with. `answered` is the number the reviewer's
-    /// screens give the question the request's answer answers.
     pub fn prepare(
         request: &TurnRequest,
         comparison: &Comparison,
@@ -69,20 +57,16 @@ impl TurnInstructions {
         }
     }
 
-    /// The same instructions, for an agent whose round has the models `models`.
     #[must_use]
     pub fn on_models(self, models: Option<ExploreModels>) -> Self {
         Self { models, ..self }
     }
 
-    /// The files to write in the turn's directory, the index first.
     pub fn files(&self) -> &[TurnFile] {
         &self.files
     }
 
-    /// The prompt of the turn whose files are written in `directory`. It names the tools with
-    /// their MCP server, since a client shows them only under names that hold it, and ends with
-    /// the model the round runs on, when it has one.
+    // Claude Code and Codex show MCP tools only under names that hold their server's name.
     pub fn prompt(&self, directory: &Path) -> String {
         let model = self
             .models
@@ -99,17 +83,11 @@ impl TurnInstructions {
     }
 }
 
-/// The human's edited task list is the entire implementation scope. For someone else's change,
-/// the list is the review to post, and posting it the entire scope. When `models` name the
-/// worker's model and effort, the agent has a fresh subagent on them implement
-/// the list, which it briefs and supervises; otherwise it implements the list itself. With
-/// `models`, the prompt names the round's model too, which the agent goes on with.
 pub fn implementation_prompt(
     request: &review_explore::ImplementationRequest,
     author: ChangeAuthor,
     models: Option<&ExploreModels>,
 ) -> String {
-    // The agent goes on on the round's model, whatever its plugin's hooks module remembers.
     let round = models
         .map(|models| format!("{}\n\n", models.round_line()))
         .unwrap_or_default();

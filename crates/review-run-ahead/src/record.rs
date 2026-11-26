@@ -1,6 +1,3 @@
-//! What the tool saves of the forks of a round, beside the round, so that a reopened reviewer
-//! knows which forks existed, stops those that still run and deletes their sessions.
-
 use std::ops::Not;
 
 use agent_fork::ProcessStamp;
@@ -11,25 +8,17 @@ use serde::{Deserialize, Serialize};
 use crate::answer::AnswerRecord;
 use crate::host::HostFields;
 
-/// How many failures of run-ahead a round may have in a row before run-ahead stops for it.
 pub const FAILURES_TO_HALT: u32 = 3;
 
-/// Every fork run-ahead started in one Explore round, oldest first, and the path each answer
-/// to a question it watched took.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub struct RoundForks {
     pub forks: Vec<ForkRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub answers: Vec<AnswerRecord>,
-    /// How many times run-ahead failed since the last prepared turn the round used.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub failed_in_a_row: u32,
-    /// When run-ahead stopped for the round, in milliseconds since the epoch, because it
-    /// failed [`FAILURES_TO_HALT`] times in a row. No fork is taken for the round after it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub halted_at_ms: Option<u64>,
-    /// The failure that stopped run-ahead for the round. `None` in records saved before it was
-    /// kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub halted_by: Option<Failure>,
 }
@@ -43,25 +32,20 @@ fn is_zero(count: &u32) -> bool {
 }
 
 impl RoundForks {
-    /// The record of the fork `session`.
     pub fn fork(&self, session: &str) -> Option<&ForkRecord> {
         self.forks.iter().find(|fork| fork.session == session)
     }
 
-    /// The record of the fork `session`.
     pub fn fork_mut(&mut self, session: &str) -> Option<&mut ForkRecord> {
         self.forks.iter_mut().find(|fork| fork.session == session)
     }
 
-    /// The record of the answer that started the turn `request`.
     pub fn answer_mut(&mut self, request: &str) -> Option<&mut AnswerRecord> {
         self.answers
             .iter_mut()
             .find(|answer| answer.request == request)
     }
 
-    /// Counts `failure`, at `at_ms`. Returns whether run-ahead stops for the round now,
-    /// because it failed [`FAILURES_TO_HALT`] times in a row.
     pub fn failed(&mut self, failure: Failure, at_ms: u64) -> bool {
         self.failed_in_a_row += 1;
         if self.halted_at_ms.is_some() || self.failed_in_a_row < FAILURES_TO_HALT {
@@ -72,13 +56,10 @@ impl RoundForks {
         true
     }
 
-    /// The round used a prepared turn: the failures before it no longer count.
     pub fn prepared_turn_used(&mut self) {
         self.failed_in_a_row = 0;
     }
 
-    /// Why no fork is taken for the round once run-ahead stopped for it, with the failure that
-    /// stopped it when the record keeps it; `None` while run-ahead runs.
     pub fn halt_notice(&self) -> Option<String> {
         self.halted_at_ms?;
         let stopped =
@@ -89,7 +70,6 @@ impl RoundForks {
         })
     }
 
-    /// The request of the answer that continued as the fork `session`, if one did.
     pub fn continued_as(&self, session: &str) -> Option<&str> {
         self.answers.iter().find_map(|answer| match &answer.path {
             TurnPath::Prepared { session: prepared } if prepared == session => {
@@ -99,9 +79,6 @@ impl RoundForks {
         })
     }
 
-    /// The path of each turn an answer started, by request: a prepared turn once the pane's
-    /// agent runs its fork's session, and every plain chain. A turn whose switch to a fork did not
-    /// end, after a reviewer that stopped meanwhile, has no path: Retry sends it to the agent.
     pub fn turn_paths(&self) -> impl Iterator<Item = (&str, &TurnPath)> {
         self.answers.iter().filter_map(|answer| {
             let shown =
@@ -110,8 +87,6 @@ impl RoundForks {
         })
     }
 
-    /// Whether `answer`'s turn was the prepared turn of a fork: the pane's agent continued as
-    /// that fork.
     pub fn used_a_prepared_turn(&self, answer: &AnswerRecord) -> bool {
         match &answer.path {
             TurnPath::Prepared { session } => {
@@ -122,62 +97,37 @@ impl RoundForks {
     }
 }
 
-/// One fork, from before it starts until it stopped and its session is deleted.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ForkRecord {
-    /// The question the fork answers, by ID and version.
     pub question: String,
     pub version: u32,
-    /// The choice the fork was told the reviewer picked, by ID.
     pub choice: String,
-    /// The answer the fork was told, by ID: the one reserved for its choice, which the round
-    /// gives the reviewer's answer that picks it. `None` in records saved before it was kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answer: Option<String>,
-    /// The session ID the fork runs as, chosen before it started.
     pub session: String,
-    /// The session the fork was taken from: the pane's agent goes back to it when it may run
-    /// the fork's session but the round did not take the fork's turn. `None` in records saved
-    /// before it was kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
-    /// The reviewer process that started the fork.
     pub reviewer: ProcessStamp,
-    /// When the fork was taken, in milliseconds since the epoch.
     pub taken_at_ms: u64,
-    /// The turn the fork submitted, which the tool keeps for its choice until the fork is
-    /// discarded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn: Option<Box<InterviewUpdate>>,
-    /// When the fork submitted its turn, in milliseconds since the epoch; kept once the turn
-    /// is discarded. `None` in records saved before it was kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub submitted_at_ms: Option<u64>,
-    /// How its process ended, once it ended.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit: Option<String>,
-    /// The tokens of the fork's own requests, not of the history it started from, as far as
-    /// it reported them before it ended.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
-    /// Why and when the fork was discarded, once it was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discarded: Option<Discard>,
-    /// Whether it stopped and its session is deleted.
     #[serde(default, skip_serializing_if = "Not::not")]
     pub cleaned: bool,
-    /// The switch of the pane's agent to the fork's session, once the reviewer's answer chose
-    /// the fork.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continued: Option<Continuation>,
-    /// What the fork's host keeps of it, such as where Claude Code keeps its transcript and its
-    /// process once it started, or a Codex fork's daemon: every field the record does not name.
     #[serde(flatten)]
     pub host: HostFields,
 }
 
 impl ForkRecord {
-    /// What stops the fork and removes what it left.
     pub fn trace(&self) -> crate::ForkTrace<'_> {
         crate::ForkTrace {
             session: &self.session,
@@ -185,14 +135,10 @@ impl ForkRecord {
         }
     }
 
-    /// Whether the pane's agent continued as the fork: Herdr reported it on the fork's session,
-    /// and the round took the fork's turn.
     pub fn is_continued(&self) -> bool {
         matches!(self.continued, Some(Continuation::Switched { .. }))
     }
 
-    /// Whether the fork's session may be the pane agent's: it is the agent's conversation then,
-    /// and never deleted.
     pub fn is_agent_session(&self) -> bool {
         match self.continued {
             Some(Continuation::Switching { .. } | Continuation::Switched { .. }) => true,
@@ -201,9 +147,6 @@ impl ForkRecord {
         }
     }
 
-    /// Whether the pane's agent may run the fork's session while the switch to it did not
-    /// end: it runs, or ran in a reviewer that stopped, or it failed after the agent was told
-    /// to resume the fork's session.
     pub fn is_unsettled(&self) -> bool {
         matches!(
             self.continued,
@@ -211,13 +154,10 @@ impl ForkRecord {
         )
     }
 
-    /// Whether the fork, ending now, failed: it kept no turn, and the tool did not discard it.
     pub fn ending_is_a_failure(&self) -> bool {
         self.turn.is_none() && self.discarded.is_none()
     }
 
-    /// Whether a reviewer other than `reviewer`, which stopped, left the fork, which is not
-    /// cleaned up yet, nor a session the pane's agent may run.
     pub fn left_by_a_stopped_reviewer(&self, reviewer: ProcessStamp) -> bool {
         !self.cleaned
             && !self.is_agent_session()
@@ -225,7 +165,6 @@ impl ForkRecord {
             && !self.reviewer.is_running()
     }
 
-    /// Whether the fork runs for a reviewer other than `reviewer`, which still runs.
     pub fn runs_for_another_reviewer(&self, reviewer: ProcessStamp) -> bool {
         self.discarded.is_none()
             && !self.cleaned
@@ -233,15 +172,10 @@ impl ForkRecord {
             && self.reviewer.is_running()
     }
 
-    /// Whether `reviewer` may settle the session of the fork: it started the fork, or the
-    /// reviewer that did stopped.
     pub fn may_be_settled_by(&self, reviewer: ProcessStamp) -> bool {
         self.reviewer == reviewer || !self.reviewer.is_running()
     }
 
-    /// Discards the fork for `reason`, at `at_ms`: its kept turn is dropped. A fork already
-    /// discarded keeps its first reason, and a fork whose session may be the pane agent's is
-    /// never discarded.
     pub fn discard(&mut self, reason: DiscardReason, at_ms: u64) {
         if self.discarded.is_some() || self.is_agent_session() {
             return;
@@ -254,48 +188,39 @@ impl ForkRecord {
     }
 }
 
-/// Where the switch of the pane's agent to a fork's session stands.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Continuation {
-    /// The switch started at `at_ms`, in milliseconds since the epoch.
-    Switching { at_ms: u64 },
-    /// Herdr reported the pane's agent on the fork's session at `at_ms`.
-    Switched { at_ms: u64 },
-    /// The switch failed at `at_ms`, for `error`. `typed` says whether the agent was told to
-    /// resume the fork's session, which it may then run.
+    Switching {
+        at_ms: u64,
+    },
+    Switched {
+        at_ms: u64,
+    },
     Failed {
         at_ms: u64,
         error: String,
         typed: bool,
     },
-    /// The switch did not hold: the round did not take the fork's turn, for `reason`, and at
-    /// `at_ms` Herdr reported the pane's agent back on the session the fork was taken from.
-    Undone { at_ms: u64, reason: String },
-    /// At `at_ms`, the pane's agent ran without the hooks a move needs: it restarted since it
-    /// was told to resume the fork's session, and runs the session it started with.
-    Restarted { at_ms: u64 },
+    Undone {
+        at_ms: u64,
+        reason: String,
+    },
+    Restarted {
+        at_ms: u64,
+    },
 }
 
-/// A failure of run-ahead in a round: what it spent gave the reviewer no prepared turn, and the
-/// reviewer was told of none of it but a quiet line. [`FAILURES_TO_HALT`] in a row stop
-/// run-ahead for the round.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(tag = "failure", rename_all = "snake_case")]
 pub enum Failure {
-    /// A fork ended, or could not start, without a turn, before the tool discarded it, as
-    /// `exit` says.
     Fork { exit: String },
-    /// A check at the reviewer's answer could not be made, for `error`.
     Unchecked { error: String },
-    /// The pane's agent could not continue as the fork the answer chose, for `error`.
     SwitchFailed { error: String },
-    /// No fork could be taken for a question, for `why`. A refusal counts once per question.
     NoForks { why: String },
 }
 
 impl Failure {
-    /// The failure an answer's turn that ran the plain chain for `reason` stands for, if any.
     pub fn of_plain(reason: &PlainReason) -> Option<Self> {
         match reason {
             PlainReason::Unchecked { error } => Some(Self::Unchecked {
@@ -327,54 +252,32 @@ impl std::fmt::Display for Failure {
     }
 }
 
-/// Why and when a fork was discarded.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Discard {
     pub reason: DiscardReason,
-    /// Whether the fork had kept a turn.
     pub prepared: bool,
-    /// In milliseconds since the epoch.
     pub at_ms: u64,
 }
 
-/// Why the tool discarded a fork.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DiscardReason {
-    /// The reviewer answered its question.
     Answered,
-    /// The reviewer stopped waiting for it, the fork of a bare answer's choice, before it
-    /// submitted its turn: the answer went to the agent in the pane.
     StoppedWaiting,
-    /// The reviewer withdrew the bare answer that waited for it: cancelled the answer, reset
-    /// the round or left it.
     Withdrawn,
-    /// The reviewer cancelled the answer the question followed.
     AnswerCancelled,
-    /// The question no longer waits, for another reason, such as another reviewer's answer.
     QuestionGone,
-    /// The pane agent's session moved after the forks were taken: new forks replace them.
     SessionMoved,
-    /// The reviewer wrote in the round's conversation while the question waited: new forks
-    /// replace them once the talk is quiet.
     ChatMessage,
-    /// The reviewer turned run-ahead off.
     TurnedOff,
-    /// The reviewer reset the round.
     Reset,
-    /// The reviewer started a new round.
     NewRound,
-    /// The reviewer showed another review.
     ReviewChanged,
-    /// The reviewer closed.
     ReviewerClosed,
-    /// The reviewer that started it stopped without discarding it; a later reviewer did.
     ReviewerStopped,
-    /// Run-ahead failed too many times in a row: it stopped for the round.
     TooManyFailures,
 }
 
-/// Tokens of one fork's own requests to the model.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub struct TokenUsage {
     pub input: u64,
@@ -384,7 +287,6 @@ pub struct TokenUsage {
 }
 
 impl TokenUsage {
-    /// Every token, whether read from the prompt cache or not.
     pub fn total(self) -> u64 {
         self.input + self.cache_creation + self.cache_read + self.output
     }

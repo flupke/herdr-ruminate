@@ -1,8 +1,3 @@
-//! The rich data set, which the screenshot gallery shows: a round as long and as rich as a real
-//! one, about a synthetic change that batches the reviewer's replies to the agent. Its shapes
-//! follow real rounds: a design in four full parts, questions with several paragraphs of Context,
-//! tables, diagrams, three citations and long choices, and a long conclusion.
-
 mod change;
 mod conclusion;
 mod design;
@@ -116,8 +111,6 @@ mod tests {
 
     use super::*;
 
-    /// Every citation of the rich questions shows lines of the change, except the one of a file
-    /// outside it: a diff that falls out of step with its files would show none.
     #[test]
     fn rich_citations_show_lines() {
         for number in 1..=3 {

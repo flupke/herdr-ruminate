@@ -1,5 +1,3 @@
-//! Explore sessions over a temporary repository and store, prompting in-memory agents.
-
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -47,7 +45,6 @@ mod start_block;
 #[path = "words.tests.rs"]
 mod words;
 
-/// One session driven directly, as the reviewer's worker drives it.
 struct Harness {
     session: ExploreSession,
     events: crossbeam_channel::Receiver<EventEnvelope>,
@@ -55,26 +52,19 @@ struct Harness {
     inbox: mpsc::Receiver<Input>,
     inbox_sender: mpsc::Sender<Input>,
     agents: InMemoryAgents,
-    /// Holds up prompt delivery while closed.
     delivery: DeliveryGate,
     store: ReviewStore,
     repository: Repository,
     unit: ReviewUnit,
     exploration: Option<Exploration>,
-    /// Where a reopened session records the prompts it sends.
     turns: Option<TurnLog>,
-    /// The stage of the round the session publishes for the Explore page.
     page: review_explore_page::RoundFeed,
     delivered: usize,
     threads: review_thread_service::Worker,
-    /// The agent's forks, as run-ahead starts them.
     forks: run_ahead::FakeForks,
-    /// The reviewer's end of the agents' hooks that a reopened session gets.
     hooks: Option<Arc<agent_hooks::AgentHooks>>,
     files: Box<dyn ReviewRepositoryFixture>,
     state: TempDir,
-    /// What the pane was told of run-ahead's availability, among the events a submission
-    /// drained, not read yet.
     run_ahead_unavailable: Vec<Option<String>>,
 }
 
@@ -90,7 +80,6 @@ impl Harness {
         let agents = InMemoryAgents::default();
         agents.upsert_agent(agent());
         let delivery = DeliveryGate::default();
-        // The thread service owns prompt delivery; it has no MCP listener here.
         let threads = review_thread_service::Worker::start(
             store.clone(),
             GatedAgents {
@@ -156,12 +145,7 @@ impl Harness {
         harness
     }
 
-    /// Replace the session as a restarted reviewer would, keeping only saved state,
-    /// the agents and the prompts already delivered.
     fn reopen(&mut self) -> ui_events::ExploreRestored {
-        // A restarted reviewer is another process: the earlier one records nothing once the
-        // new one has read the round. Dropping the session withdraws its prompts, so each one
-        // must have been sent, or be held at the closed gate, before it goes.
         self.delivery.settle(self.threads.prompt_sender());
         while self.events.try_recv().is_ok() {}
         let inbox = self.inbox_sender.clone();
@@ -214,15 +198,12 @@ impl Harness {
         self.exploration.as_ref().unwrap()
     }
 
-    /// The reviewer's next request, answering the latest question when `answer` is set.
     fn request(&mut self, answer: Option<AnswerInput>) -> TurnRequest {
         let exploration = self.exploration.as_mut().unwrap();
         let question = exploration.questions.last().cloned();
         exploration.request(answer, question.as_ref()).unwrap()
     }
 
-    /// Post a turn as the pane does, and adopt the round saved, as the pane does too: the
-    /// session may save an answer under other identities. Returns the turn as saved.
     fn post_turn(&mut self, request: &TurnRequest) -> TurnRequest {
         self.session
             .handle(Input::Command(Command::Turn(Box::new(request.clone()))));
@@ -242,12 +223,10 @@ impl Harness {
             .clone()
     }
 
-    /// The reviewer writes `notes` for every Explore round, in the file beside the settings.
     fn write_reviewer_notes(&self, notes: &str) {
         std::fs::write(self.state.path().join("explore-reviewer-notes.md"), notes).unwrap();
     }
 
-    /// Post a turn and return the access value its delivered prompt grants.
     fn turn(&mut self, request: &TurnRequest) -> String {
         let request = &self.post_turn(request);
         let prompt = self.delivered_prompt();
@@ -262,8 +241,6 @@ impl Harness {
             .to_owned()
     }
 
-    /// The next prompt the agent in the pane got, once every prompt sent so far went out, its
-    /// outcome saved, or is held.
     fn delivered_prompt(&mut self) -> String {
         self.threads.prompt_sender().flush();
         let prompts = self.agents.prompts();
@@ -275,12 +252,10 @@ impl Harness {
         prompt.text.clone()
     }
 
-    /// Submit as the agent and acknowledge each committed round as the UI does.
     fn submit(&mut self, access: &str, operation: Operation) -> Result<Response, String> {
         self.submit_acknowledged(access, operation, true)
     }
 
-    /// Submit as the agent; without `acknowledge` the UI drops each committed round.
     fn submit_acknowledged(
         &mut self,
         access: &str,
@@ -290,8 +265,6 @@ impl Harness {
         self.submit_from(access, operation, acknowledge, None)
     }
 
-    /// Submit as the agent, in a call that names the agent's session `session` if any, as
-    /// Codex does; without `acknowledge` the UI drops each committed round.
     fn submit_from(
         &mut self,
         access: &str,
@@ -302,8 +275,6 @@ impl Harness {
         let (mut request, pending) = Request::new(access.to_owned(), operation);
         request.agent_session = session.map(str::to_owned);
         self.session.handle(Input::Submission(Box::new(request)));
-        // The session published the round it committed while it handled the submission; its
-        // response waits for the acknowledgement, at most fifteen seconds.
         while let Ok(event) = self.events.try_recv() {
             if let Some(committed) = event.downcast_ref::<ui_events::ExploreCommitted>()
                 && acknowledge
@@ -319,7 +290,6 @@ impl Harness {
         pending.blocking_recv().expect("the session responds")
     }
 
-    /// Answer the latest question as the reviewer, then post it.
     fn answer(&mut self, text: &str) -> (TurnRequest, String) {
         let request = self.request(Some(AnswerInput {
             option: Some("keep".into()),
@@ -331,7 +301,6 @@ impl Harness {
         (request, access)
     }
 
-    /// Ask the first question, answer it and let the agent conclude.
     fn conclude(&mut self) -> (TurnRequest, String) {
         self.capture();
         let first = self.request(None);
@@ -344,7 +313,6 @@ impl Harness {
         (request, access)
     }
 
-    /// Adopt a restored round as the UI does: its interrupted turn waits for Retry.
     fn adopt(&mut self, restored: &ui_events::ExploreRestored) {
         let round = restored.result.as_ref().unwrap().as_ref().unwrap();
         let mut exploration = round.exploration.clone();
@@ -366,7 +334,6 @@ impl Harness {
             .join(format!("{}.json", self.exploration().instance))
     }
 
-    /// Change the saved round as an earlier, interrupted process left it.
     fn damage(&self, change: impl FnOnce(&mut ExploreRound)) {
         self.store
             .lock_explore(&self.unit)
@@ -394,15 +361,12 @@ impl Harness {
     }
 }
 
-/// Holds up the delivery of prompts while closed: the prompt sender sees the agent only once
-/// the gate opens, after it checked whether its prompt was cancelled.
 #[derive(Clone, Default)]
 struct DeliveryGate(Arc<(std::sync::Mutex<GateState>, std::sync::Condvar)>);
 
 #[derive(Default)]
 struct GateState {
     closed: bool,
-    /// The prompts waiting for the gate to open.
     held: usize,
 }
 
@@ -427,13 +391,9 @@ impl DeliveryGate {
         }
     }
 
-    /// Waits until the prompt sender took every prompt sent through `prompts`, and either
-    /// recorded its outcome or holds it at this closed gate, where it already checked that it
-    /// was not cancelled; a prompt it holds holds back those sent after it.
     fn settle(&self, prompts: review_thread_service::PromptSender) {
         let flushed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (gate, done) = (self.clone(), flushed.clone());
-        // A flush returns only once the gate lets the held prompt through.
         std::thread::spawn(move || {
             prompts.flush();
             done.store(true, std::sync::atomic::Ordering::Release);
@@ -449,7 +409,6 @@ impl DeliveryGate {
     }
 }
 
-/// The agents as the prompt sender sees them, behind the delivery gate.
 struct GatedAgents {
     agents: InMemoryAgents,
     gate: DeliveryGate,
@@ -539,8 +498,6 @@ fn question(request: &TurnRequest, version: u32) -> Operation {
     Operation::SubmitQuestion(Box::new(update))
 }
 
-/// The agent's version 2 of the round's first question, naming a message of the reviewer's
-/// (`message-1`), which the session does not look up.
 fn revised_first_question(request: &TurnRequest) -> Operation {
     let revision: review_explore::QuestionRevision = serde_json::from_value(serde_json::json!({
         "instance": request.instance, "checkpoint": request.checkpoint,
@@ -554,7 +511,6 @@ fn revised_first_question(request: &TurnRequest) -> Operation {
     Operation::ReviseQuestion(Box::new(revision))
 }
 
-/// The design the first turn explains, as the agent sends it.
 fn design() -> serde_json::Value {
     serde_json::json!({
         "thesis": "A resolution policy decides what a changed conversation does.",
@@ -565,7 +521,6 @@ fn design() -> serde_json::Value {
     })
 }
 
-/// The conclusion of the turn `request`, with an empty quiz.
 fn conclusion(request: &TurnRequest, summary: &str) -> Operation {
     conclusion_with_quiz(
         request,
@@ -574,7 +529,6 @@ fn conclusion(request: &TurnRequest, summary: &str) -> Operation {
     )
 }
 
-/// The conclusion of the turn `request`, with the quiz fields `quiz`.
 fn conclusion_with_quiz(
     request: &TurnRequest,
     summary: &str,
@@ -595,8 +549,6 @@ fn conclusion_with_quiz(
     Operation::SubmitConclusion(Box::new(serde_json::from_value(submission).unwrap()))
 }
 
-/// The agent's conclusion at the drawing board for the turn `request`: the changes the design
-/// needs, and nothing it would decide or mark.
 fn drawing_board_conclusion(request: &TurnRequest) -> Operation {
     Operation::SubmitConclusion(Box::new(
         serde_json::from_value(serde_json::json!({
@@ -682,7 +634,6 @@ fn the_agent_learns_the_number_the_reviewer_sees_for_each_question() {
     );
 }
 
-/// A conclusion that marks the only changed line reviewed after `request`'s answer.
 fn marking_conclusion(request: &TurnRequest) -> Operation {
     let Operation::SubmitConclusion(mut submission) = conclusion(request, CONCLUSION) else {
         unreachable!("a conclusion");
@@ -723,9 +674,6 @@ fn the_lines_an_answer_settled_are_marked_reviewed_by_explore() {
 }
 
 impl Harness {
-    /// Makes the agent in the pane Claude Code as herdr-bowtie starts it: a folder of its
-    /// `--add-dir` holds its self-review's agent file, on Fable 5.2 at max effort when
-    /// `reviewer_settings`. The folder lives as long as the value returned.
     fn claude_started_by_herdr_bowtie(&self, reviewer_settings: bool) -> tempfile::TempDir {
         let folder = tempfile::tempdir().unwrap();
         if reviewer_settings {
@@ -756,7 +704,6 @@ impl Harness {
     }
 }
 
-/// The line that names the reviewer's model and effort, on Fable 5.2 at max effort.
 pub(crate) const ON_FABLE: &str = "\nExplore runs on claude-fable-5-2 at max effort.\n";
 
 #[test]
@@ -795,7 +742,6 @@ fn implement_on_an_agent_herdr_bowtie_started_has_a_subagent_on_its_worker_s_mod
     let finished = harness.next::<ui_events::ExploreImplementationFinished>();
     assert_eq!(finished.state, review_explore::ImplementationState::Sent);
     let prompt = harness.agents.prompts()[before].text.clone();
-    // The agent's own model and effort, as herdr-bowtie started it, as the Agent tool takes them.
     for named in ["`opus`", "`high`"] {
         assert!(prompt.contains(named), "{named}: {prompt}");
     }
@@ -850,7 +796,6 @@ fn a_vision_session_records_each_prompt_it_sent_as_a_numbered_turn() {
     let first = harness.request(None);
     let access = harness.turn(&first);
     let turn = |number: u32| -> serde_json::Value {
-        // Recorded with the outcome of the prompt, which the harness waited for.
         let path = directory.path().join(format!("turn-{number:06}.json"));
         serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
     };
@@ -862,7 +807,6 @@ fn a_vision_session_records_each_prompt_it_sent_as_a_numbered_turn() {
     assert_eq!(kickoff["access"], access);
     assert_eq!(kickoff["request"], first.request);
     assert_eq!(kickoff["round"], first.instance);
-    // The prompt as sent, which the agent read with its turn's files.
     let sent = kickoff["text"].as_str().unwrap();
     assert!(
         sent.contains(&format!("/{}", review_explore_runner::INDEX)),
@@ -894,7 +838,6 @@ fn a_vision_session_records_each_prompt_it_sent_as_a_numbered_turn() {
     assert_eq!(wakeup["answer"]["question"]["id"], "q1");
     assert_eq!(wakeup["answer"]["text"], "Keep it.");
 
-    // A reopened reviewer continues after the highest turn, whatever is missing.
     std::fs::remove_file(directory.path().join("turn-000001.json")).unwrap();
     std::fs::write(directory.path().join("turn-000009.partial"), b"{").unwrap();
     let reopened = TurnLog::open(directory.path().to_owned()).unwrap();
@@ -936,7 +879,6 @@ fn each_prompt_points_at_numbered_diffs_of_what_is_still_unreviewed() {
         "{diff}"
     );
 
-    // Each prompt has a directory of its own; the previous one is removed.
     assert!(applied(harness.submit(&access, question(&first, 1))));
     let (request, access) = harness.answer("Keep it.");
     let wakeup = harness.agents.prompts().last().unwrap().text.clone();
@@ -944,7 +886,6 @@ fn each_prompt_points_at_numbered_diffs_of_what_is_still_unreviewed() {
     assert_ne!(next, diffs);
     assert!(!diffs.exists() && next.join("reviewed.rs").exists());
 
-    // The answer's turn marks the line: nothing is left to show.
     let Operation::SubmitQuestion(mut update) = question(&request, 2) else {
         unreachable!("a question");
     };
@@ -968,7 +909,6 @@ fn a_prompt_whose_diffs_cannot_be_written_is_not_sent_and_says_why() {
     let mut harness = Harness::start();
     harness.capture();
     let first = harness.request(None);
-    // The repository can no longer be read.
     std::fs::remove_dir_all(harness.files.root().join(".git")).unwrap();
 
     harness
@@ -1042,7 +982,6 @@ fn a_questions_marks_wait_for_its_answer() {
         harness.submit(&access, Operation::SubmitQuestion(update))
     ));
 
-    // Accepting the question marks nothing: progress moves when the reviewer answers.
     assert!(harness.saved().marks.is_empty());
     assert_eq!(marked(&harness), None);
 
@@ -1173,7 +1112,6 @@ fn a_new_rounds_kickoff_lists_the_standing_earlier_decisions_without_cancelled_a
             .is_ok()
     );
 
-    // A new round without a Reset, as after an unreadable latest round.
     harness.capture();
     let kickoff = harness.request(None);
     harness.turn(&kickoff);
@@ -1189,7 +1127,6 @@ fn a_new_rounds_kickoff_lists_the_standing_earlier_decisions_without_cancelled_a
     );
 }
 
-/// The data of a kickoff `prompt`: the round's, from its first field, then the turn's.
 fn kickoff_input(prompt: &str) -> &str {
     &prompt[prompt.find("\nRepository root:").unwrap()..]
 }

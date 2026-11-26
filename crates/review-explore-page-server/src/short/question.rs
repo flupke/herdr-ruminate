@@ -1,5 +1,3 @@
-//! The questions and the conclusion of the short data set.
-
 use review_explore::{
     Conclusion, Interpretation, NotRelevantMark, NotRelevantReason, Question, SourceSide,
     TopicStatus,
@@ -9,8 +7,6 @@ use review_explore_page::{QuestionMarks, TurnResponse};
 use super::{change, diagrams, explanation, quiz};
 use crate::question_parts;
 
-/// The fixed question `number`, from 1, in turn, and the lines an answer to it marks: an
-/// answer to the first fixed question marks lines.
 pub(super) fn question(number: usize) -> (Question, QuestionMarks) {
     if number % 2 == 1 {
         (keep_draft(), keep_draft_marks())
@@ -19,7 +15,6 @@ pub(super) fn question(number: usize) -> (Question, QuestionMarks) {
     }
 }
 
-/// What the agent says back to the reviewer's previous answer before its next question.
 pub(super) fn answer_response() -> TurnResponse {
     TurnResponse {
         interpretations: vec![interpretation(
@@ -33,7 +28,6 @@ pub(super) fn answer_response() -> TurnResponse {
     }
 }
 
-/// The agent's interpretation of the reviewer's previous answer.
 fn interpretation(recap: &str, follow_ups: Vec<String>) -> Interpretation {
     Interpretation {
         answer: "previous-answer".into(),
@@ -47,7 +41,6 @@ fn interpretation(recap: &str, follow_ups: Vec<String>) -> Interpretation {
     }
 }
 
-/// The fixed conclusion: with the fixed quiz when `quiz`, or else with the reason it has none.
 pub(super) fn conclusion(quiz: bool) -> Conclusion {
     Conclusion {
         summary: "A reopened round keeps the reviewer's unsent draft.".into(),
@@ -59,7 +52,6 @@ pub(super) fn conclusion(quiz: bool) -> Conclusion {
     }
 }
 
-/// What the agent says back to the reviewer's last answer above its conclusion.
 pub(super) fn conclusion_response() -> TurnResponse {
     TurnResponse {
         interpretations: vec![interpretation(
@@ -73,7 +65,6 @@ pub(super) fn conclusion_response() -> TurnResponse {
     }
 }
 
-/// Cites the new `reopen`, then the round as it was before the change.
 fn keep_draft() -> Question {
     Question {
         rationale: Some(explanation::RATIONALE.into()),
@@ -107,7 +98,6 @@ fn keep_draft() -> Question {
     }
 }
 
-/// Four lines reviewed and twenty not relevant.
 fn keep_draft_marks() -> QuestionMarks {
     QuestionMarks {
         reviewed: vec![question_parts::lines("src/drafts.rs", 10, 13)],
@@ -120,7 +110,6 @@ fn keep_draft_marks() -> QuestionMarks {
     }
 }
 
-/// Cites the whole file.
 fn draft_storage() -> Question {
     Question {
         rationale: Some(diagrams::RATIONALE.into()),

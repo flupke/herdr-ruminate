@@ -1,7 +1,3 @@
-//! The unreviewed lines as files the agent reads: one numbered diff per
-//! changed path, so it sees what is left without intersecting a full diff
-//! with a list of ranges, and cites the line numbers it reads.
-
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::Permissions;
@@ -13,32 +9,21 @@ use review_repository::repository::{ChangedFile, Snapshot};
 use review_state::{OpenRow, ReviewTracker, RowChange};
 use tempfile::TempDir;
 
-/// The unreviewed diffs of one prompt, in a temporary directory of their own
-/// that goes away with them. Several reviewers run at once, each prompt of
-/// each gets a new directory, and only this user can read it: the diffs are
-/// source code.
 #[derive(Debug)]
 pub(crate) struct UnreviewedDiffs {
     directory: TempDir,
-    /// The diffs that could not sit at their source path, as (source path,
-    /// file name) pairs.
     displaced: Vec<(String, String)>,
 }
 
-/// Lists the displaced diffs, at the top of the directory.
 const INDEX: &str = "__herdr_reviewer_index__";
-/// What the reviewer's own files at the top of the directory start with.
 const RESERVED: &str = "__herdr_reviewer_";
 
-/// One path's unreviewed hunks: each row with its old (base) and new
-/// (current) line number, as review marks and citations name them.
 struct FileDiff<'a> {
     name: &'a str,
     hunks: &'a [Vec<OpenRow>],
 }
 
 impl UnreviewedDiffs {
-    /// Write the diffs of `files`, the paths that still have unreviewed lines.
     pub(crate) fn write<'a>(
         tracker: &ReviewTracker,
         snapshot: &Snapshot,
@@ -73,25 +58,16 @@ impl UnreviewedDiffs {
         self.directory.path()
     }
 
-    /// Whether `other` holds the same diffs, at the same paths: the same lines are unreviewed.
     pub(crate) fn same_lines(&self, other: &Self) -> bool {
         files(self.directory())
             .is_ok_and(|ours| files(other.directory()).is_ok_and(|theirs| ours == theirs))
     }
 
-    /// The file listing the displaced diffs, when there are any.
     pub(crate) fn index(&self) -> Option<PathBuf> {
         (!self.displaced.is_empty()).then(|| self.directory().join(INDEX))
     }
 
-    /// Write one diff at its source path. Two kinds of path cannot hold it:
-    /// one another diff already uses as a file or as a directory (a file
-    /// replaced by a directory of the same name, or the reverse), and one
-    /// named like the reviewer's own files. The diff then goes to the top of
-    /// the directory, and the index says where. Any other failure is an
-    /// error.
     fn place(&mut self, name: &str, text: &str) -> std::io::Result<()> {
-        // A repository path never leaves the directory.
         if !Path::new(name)
             .components()
             .all(|part| matches!(part, Component::Normal(_)))
@@ -107,8 +83,6 @@ impl UnreviewedDiffs {
         Ok(())
     }
 
-    /// Whether another diff already uses `name` as a directory, or one of
-    /// its parent directories as a file.
     fn taken(&self, name: &str) -> bool {
         let path = self.directory().join(name);
         path.exists()
@@ -145,7 +119,6 @@ impl UnreviewedDiffs {
     }
 }
 
-/// Every file under `directory`, by its path from there, with its contents.
 fn files(directory: &Path) -> std::io::Result<BTreeMap<PathBuf, Vec<u8>>> {
     let mut found = BTreeMap::new();
     let mut directories = vec![directory.to_owned()];

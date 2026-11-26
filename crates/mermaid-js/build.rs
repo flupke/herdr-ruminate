@@ -1,5 +1,3 @@
-//! Compresses the vendored Mermaid once, at build time: the binary holds the gzipped file only.
-
 use std::io::Write;
 use std::path::PathBuf;
 

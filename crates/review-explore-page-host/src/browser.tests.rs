@@ -8,7 +8,6 @@ use super::*;
 use crate::PageHost;
 use crate::tests::page_round;
 
-/// The review pane in tab `tab` of the tests' workspace.
 fn in_tab(tab: &str) -> PanePlace {
     PanePlace {
         workspace: WorkspaceId("w1".into()),
@@ -16,12 +15,10 @@ fn in_tab(tab: &str) -> PanePlace {
     }
 }
 
-/// The review pane whose page the tests open.
 fn place() -> PanePlace {
     in_tab("t1")
 }
 
-/// The page of the reviewer at `place`, recorded under `state`.
 fn host_at(state: &Path, place: &PanePlace) -> PageHost {
     let round = RoundPublisher::default();
     PageHost::start(
@@ -33,22 +30,18 @@ fn host_at(state: &Path, place: &PanePlace) -> PageHost {
     .unwrap()
 }
 
-/// The page of the reviewer at [`place`], recorded under `state`.
 fn host(state: &Path) -> PageHost {
     host_at(state, &place())
 }
 
-/// Opens the page of the review pane at `place` under `state` with `browser`.
 fn opener_at(state: &Path, place: PanePlace, browser: Browser) -> PageOpener {
     PageOpener::new(PageDirectory::new(state), place, browser)
 }
 
-/// Opens the page of [`place`] under `state` with `browser`.
 fn opener(state: &Path, browser: Browser) -> PageOpener {
     opener_at(state, place(), browser)
 }
 
-/// A browser that writes the address it opens to `address_file`, then exits with `status`.
 fn browser(directory: &Path, address_file: &Path, status: u8) -> Browser {
     let script = directory.join("browser");
     std::fs::write(

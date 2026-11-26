@@ -1,6 +1,3 @@
-//! What the Explore page shows of the round the session owns, and the commands the reviewer
-//! sends from it.
-
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -23,42 +20,31 @@ use review_source::ReviewCheckpoint;
 
 use crate::{ExploreSession, Start};
 
-/// The citations the page shows, those of a question, the proofs of a conclusion's quiz or those
-/// of the earlier questions, found in the change and colored once per stage rather than on
-/// every input the session handles.
 #[derive(Default)]
 pub(crate) struct PageCitations {
     colors: CodeColors,
     shown: Option<Shown>,
 }
 
-/// The lists of citations the page shows, and the checkpoint they were found at.
 struct Shown {
     checkpoint: ReviewCheckpoint,
     lists: Vec<Vec<EvidenceRef>>,
     citations: Vec<Arc<[Citation]>>,
 }
 
-/// Where the page reads the lines a citation names: the working copy, for the round the session
-/// owns, or the repository at a saved round's checkpoint, for a past round.
 #[derive(Clone, Copy)]
 pub(crate) enum CitedCode<'a> {
-    /// The working copy at this root.
     WorkingCopy(&'a Path),
-    /// The repository, at the round's checkpoint, else the round's saved diff.
     Saved(&'a Repository),
 }
 
 impl CitedCode<'_> {
-    /// The lines `location` names in the change `comparison`.
     fn lines(
         self,
         comparison: &Comparison,
         location: &CodeLocation,
     ) -> Result<CitedLines, Uncitable> {
         match self {
-            // The page may be open from the network: it shows no file outside the change and
-            // the repository's tracked files.
             Self::WorkingCopy(root) => comparison.tracked_cited_lines(location, root),
             Self::Saved(repository) => comparison.saved_cited_lines(location, repository),
         }
@@ -66,7 +52,6 @@ impl CitedCode<'_> {
 }
 
 impl PageCitations {
-    /// The citations of `question`, with the lines `comparison` has for them in `code`.
     fn of(
         &mut self,
         question: &Question,
@@ -77,7 +62,6 @@ impl PageCitations {
             .swap_remove(0)
     }
 
-    /// Each list of `lists` cited, with the lines `comparison` has for them in `code`.
     pub(crate) fn lists(
         &mut self,
         lists: &[Vec<EvidenceRef>],
@@ -111,13 +95,10 @@ impl PageCitations {
 }
 
 impl ExploreSession {
-    /// Publishes the stage of the round the pane shows; the page loads itself again only when
-    /// the stage changed.
     pub(crate) fn publish_page(&mut self) {
         let stage = self.page_stage();
         let cancellable = self.cancellable();
         let overview = self.state.round.as_ref().map(|round| {
-            // The turn this process delivers to the agent now, as `page_stage` tells it.
             let delivering = self
                 .state
                 .pending
@@ -162,8 +143,6 @@ impl ExploreSession {
         self.page.publish_counted(round, stage, self.mark_tally());
     }
 
-    /// The reviewer's latest answer, while the reviewer may cancel it, as the pane offers it:
-    /// in a round that can still change, before any implementation request.
     pub(crate) fn cancellable(&self) -> Option<LatestAnswer> {
         let round = self.state.round.as_ref()?;
         if self.state.historical
@@ -181,8 +160,6 @@ impl ExploreSession {
         })
     }
 
-    /// The reviewer now shows the snapshot `identity`, which names the Linear `issues`: the page
-    /// names the review it belongs to, and links to the issues, as the pane's header does.
     pub fn name_review(&self, identity: &SnapshotIdentity, issues: Vec<LinearIssue>) {
         self.page.name(ReviewName {
             issues,
@@ -190,12 +167,10 @@ impl ExploreSession {
         });
     }
 
-    /// Carries out `command` from the page, or refuses it, and replies.
     pub(crate) fn page_command(&mut self, command: PageCommand, reply: CommandReply) {
         match command {
             PageCommand::Answer(answer) => {
                 let result = self.answer_from_page(answer);
-                // The new stage reaches the page before the reply does.
                 self.publish_page();
                 reply.send(result);
             }
@@ -208,8 +183,6 @@ impl ExploreSession {
                 self.publish_page();
                 reply.send(result);
             }
-            // A reviewer's worker calls `start_from_page` itself, so that Jev marks before the
-            // kickoff: this sends the kickoff at once.
             PageCommand::Start { choices, start } => {
                 if let Some(kickoff) = self.start_from_page(choices, &start, reply) {
                     let _ = self.deliver_turn(kickoff, None);
@@ -231,9 +204,6 @@ impl ExploreSession {
         }
     }
 
-    /// Carries out the page's action that recovers or closes the round, or refuses it, and
-    /// replies, then returns whether it went through. A reviewer's worker drops the kickoff it
-    /// holds once a Stop waiting or a Reset went through.
     pub fn recover_from_page(&mut self, recovery: Recovery, reply: CommandReply) -> bool {
         let result = match recovery {
             Recovery::Stop(waiting) => self.stop(&waiting),
@@ -252,8 +222,6 @@ impl ExploreSession {
         self.reply_to_page(reply, result)
     }
 
-    /// Replies `result` to the page once it shows the new stage: the page loads itself again
-    /// once it has the reply. Returns whether the command went through.
     fn reply_to_page(&mut self, reply: CommandReply, result: Result<(), CommandRefusal>) -> bool {
         self.publish_page();
         let done = result.is_ok();
@@ -261,8 +229,6 @@ impl ExploreSession {
         done
     }
 
-    /// The latest saved copy of the round the pane shows, so that the page never acts on a
-    /// stale copy.
     pub(crate) fn saved_round(&self) -> Result<ExploreRound, CommandRefusal> {
         let shown = self.state.round.as_ref().ok_or(CommandRefusal::Stale)?;
         self.rounds
@@ -274,9 +240,6 @@ impl ExploreSession {
             .ok_or(CommandRefusal::Stale)
     }
 
-    /// Answers the question the page showed, as the pane would answer it. The turn comes from
-    /// the latest saved round, so the page never answers from a stale copy, and a question
-    /// answered already, from the pane or from another page, is refused.
     fn answer_from_page(&mut self, answer: PageAnswer) -> Result<(), CommandRefusal> {
         let failed = |error: &dyn std::fmt::Display| CommandRefusal::Failed(error.to_string());
         let round = self.saved_round()?;
@@ -284,7 +247,6 @@ impl ExploreSession {
             .filter(|question| question.is_version(&answer.question, answer.version))
             .cloned()
         else {
-            // The round's latest answer is this one: a repeat of an answer that went through.
             let repeat = round.exploration.answers.last().is_some_and(|latest| {
                 let latest_answered = answered(latest);
                 latest_answered.question == Some((answer.question.clone(), answer.version))
@@ -302,9 +264,6 @@ impl ExploreSession {
             .map_err(CommandRefusal::Failed)
     }
 
-    /// Accepts the reviewer's first pick of version `version` of `question`, which the page
-    /// keeps, while the latest saved round still waits for an answer to it. A pick saves
-    /// nothing: the answer carries it.
     fn pick_from_page(&self, question: &str, version: u32) -> Result<(), CommandRefusal> {
         let round = self.saved_round()?;
         waiting_question(&round.exploration)
@@ -313,11 +272,6 @@ impl ExploreSession {
             .ok_or(CommandRefusal::Stale)
     }
 
-    /// Implements the conclusion the page showed, as the pane would: the request comes from
-    /// the latest saved round, and an empty list is refused. The page may send one only while
-    /// the conclusion has no request that is on its way or that the agent received, as the pane
-    /// offers it, and only in place of the request it showed, so that a repeated or stale
-    /// Implement cannot start a second implementation.
     fn implement_from_page(&mut self, implement: PageImplement) -> Result<(), CommandRefusal> {
         let round = self.saved_round()?;
         if round.exploration.conclusion_request() != Some(implement.conclusion.as_str()) {
@@ -332,8 +286,6 @@ impl ExploreSession {
             }
         };
         if !offered {
-            // The conclusion's latest request is this list, on its way or received, in place of
-            // the one the page showed: a repeat of an Implement that went through.
             let repeat = round
                 .latest_implementation(&implement.conclusion)
                 .is_some_and(|latest| {
@@ -377,8 +329,6 @@ impl ExploreSession {
         let exploration = &round.exploration;
         let code = CitedCode::WorkingCopy(self.repository.root());
         if let Some(request) = exploration.pending_request() {
-            // A turn saved as pending that no prompt of this process carries, after a
-            // reopening or Stop waiting, waits for Retry.
             let delivering = self.state.pending.as_ref().is_some_and(|(instance, id)| {
                 *instance == request.instance && *id == request.request
             });
@@ -391,7 +341,6 @@ impl ExploreSession {
                         .get(&request.request)
                         .and_then(|delivery| delivery.started_at_ms),
                     finishing_since_ms: self.run_ahead_finishing_since(&request.request),
-                    // A prepared turn shows as the fork's own, once the agent continued as it.
                     not_prepared: match self.run_ahead.turn_paths().get(&request.request) {
                         Some(path @ TurnPath::Plain { .. }) => path.line().map(Into::into),
                         _ => None,
@@ -407,7 +356,6 @@ impl ExploreSession {
             return interrupted(round, retry, answer);
         }
         let sending = self.state.implementation.is_some();
-        // What `save_from_page` refuses, the page does not ask.
         let takes_quiz_answers = !self.state.historical && self.state.storage_error.is_none();
         latest_turn(
             round,
@@ -422,8 +370,6 @@ impl ExploreSession {
     }
 }
 
-/// The reviewer's answer that the turn `request` of `round` carries, with the question it
-/// answers, whose citations `citations` finds in the change in `code`, and the marks it applied.
 pub(crate) fn sent_answer(
     round: &ExploreRound,
     request: &TurnRequest,
@@ -438,7 +384,6 @@ pub(crate) fn sent_answer(
             picked_blind: answer.first_pick.is_some(),
         }),
         kept: KeptAnswer::of(answer),
-        // The marks of the turn that asked the question, which the answer applied.
         marked: answer_marks(round, &answer.in_reply_to, &answer.id)
             .map(TurnMarks::counts)
             .unwrap_or_default(),
@@ -447,8 +392,6 @@ pub(crate) fn sent_answer(
     }))
 }
 
-/// The marks of the turn `request` of `round`, as the answer `answer` to its question applied
-/// them.
 fn answer_marks<'a>(round: &'a ExploreRound, request: &str, answer: &str) -> Option<&'a TurnMarks> {
     round
         .marks
@@ -456,8 +399,6 @@ fn answer_marks<'a>(round: &'a ExploreRound, request: &str, answer: &str) -> Opt
         .filter(|marks| marks.answer.as_deref() == Some(answer))
 }
 
-/// The turn `request` of `round`, which the agent is not working on, and why; `answer` is the
-/// reviewer's answer the turn carries.
 pub(crate) fn interrupted(
     round: &ExploreRound,
     request: &TurnRequest,
@@ -479,25 +420,17 @@ pub(crate) fn interrupted(
     }
 }
 
-/// The question the round waits for an answer to: the one the agent's latest turn posted,
-/// unless a turn is pending or waits for Retry.
 fn waiting_question(exploration: &Exploration) -> Option<&Question> {
     exploration.waiting_turn()?.next.as_ref()
 }
 
-/// What the page shows of the agent's latest turn besides the turn itself.
 #[derive(Clone, Copy)]
 pub(crate) struct LatestTurn<'a> {
-    /// Whether this process sends an implementation request.
     pub(crate) sending: bool,
-    /// Whether the round can save the reviewer's answers to the conclusion's quiz.
     pub(crate) takes_quiz_answers: bool,
-    /// The path each turn took after an answer to a question run-ahead watched, by request.
     pub(crate) paths: &'a BTreeMap<String, TurnPath>,
 }
 
-/// The question or conclusion the agent's latest turn posted, as `latest` says to show it, with
-/// its citations' lines from `code`.
 pub(crate) fn latest_turn(
     round: &ExploreRound,
     latest: LatestTurn<'_>,
@@ -505,7 +438,6 @@ pub(crate) fn latest_turn(
     code: CitedCode<'_>,
 ) -> RoundStage {
     let exploration = &round.exploration;
-    // A round with no turn to answer and none to send again: only Reset is left.
     let nothing = || RoundStage::Interrupted {
         request: None,
         attempt: None,
@@ -515,10 +447,7 @@ pub(crate) fn latest_turn(
     let Some(turn) = exploration.conversation.last() else {
         return nothing();
     };
-    // The marks the answer the turn follows applied: those of the question it answered, or,
-    // for a conclusion, the conclusion's own, which apply once it is accepted.
     let answered = match turn.update.conclusion {
-        // A conclusion follows no answer when it opens the round or a request without one.
         Some(_) => round.marks.get(&turn.update.request),
         None => turn.answer.as_deref().and_then(|answer| {
             let answer = exploration.answers.iter().find(|kept| kept.id == answer)?;
@@ -567,7 +496,6 @@ pub(crate) fn latest_turn(
     }
 }
 
-/// An implementation request as the page shows it.
 fn page_implementation(delivery: &ImplementationDelivery, sending: bool) -> PageImplementation {
     let state = ImplementationState::of(&delivery.state, sending);
     PageImplementation {
@@ -579,7 +507,6 @@ fn page_implementation(delivery: &ImplementationDelivery, sending: bool) -> Page
     }
 }
 
-/// What `answer` answered, so that the page knows a repeat of it.
 pub(crate) fn answered(answer: &ReviewerAnswer) -> Answered {
     Answered {
         question: answer

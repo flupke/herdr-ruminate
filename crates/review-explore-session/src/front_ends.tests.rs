@@ -1,12 +1,8 @@
-//! Two front ends answering the same round: the session takes the first answer
-//! and refuses the second, whatever copy of the round the second one holds.
-
 use review_explore::Command;
 
 use super::*;
 
 impl Harness {
-    /// Post `request` from a front end and return what the session answered.
     fn post(&mut self, request: &TurnRequest) -> ui_events::ExplorePosted {
         self.session
             .handle(Input::Command(Command::Turn(Box::new(request.clone()))));
@@ -21,7 +17,6 @@ fn a_second_answer_to_a_question_the_agent_is_working_on_is_refused() {
     let first = harness.request(None);
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, question(&first, 1))));
-    // The other front end's copy of the round, taken before the first answer.
     let mut stale = harness.exploration().clone();
     let (answered, renewed) = harness.answer("Keep it.");
 
@@ -53,7 +48,6 @@ fn a_second_answer_to_a_question_the_agent_is_working_on_is_refused() {
         2,
         "no prompt for the refusal"
     );
-    // The agent still answers the first answer with the access it was given.
     assert!(applied(harness.submit(&renewed, question(&answered, 2))));
     assert_eq!(harness.saved().exploration.questions.len(), 2);
 }
@@ -96,7 +90,6 @@ fn a_refused_second_answer_leaves_the_first_answers_prompt_delivered() {
     let access = harness.turn(&first);
     assert!(applied(harness.submit(&access, question(&first, 1))));
     let mut stale = harness.exploration().clone();
-    // The first answer's prompt stays queued while the second answer arrives.
     harness.delivery.close();
     let answered = harness.request(Some(AnswerInput {
         option: Some("keep".into()),

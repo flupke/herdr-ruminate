@@ -1,21 +1,3 @@
-//! The Explore page of an open reviewer: served on this machine for the round of the
-//! reviewer's Explore session, and found by the Herdr action that opens it in a browser; and
-//! served to the network for a phone, behind a new token for each round.
-//!
-//! The reviewer starts a [`PageHost`], which serves the page on a loopback port behind a token,
-//! and leaves the page's address in the plugin's state directory, in the record of its
-//! [place](PanePlace); a reviewer of the same review that starts again there keeps the address
-//! and the token, so that an open page reconnects. The action reads that record through the
-//! [`PageDirectory`]. Unless the [`NetworkAccess`] settings turn it off, the host also
-//! [shares](PageNetwork::share) the page on a network interface, and announces the address of
-//! each round's page, and of the start screen's while no round runs, for the pane's QR code; a
-//! change of the settings moves it to another listener or [takes it off](PageNetwork::unshare)
-//! the network. The reviewer can also [share the running round over a
-//! tunnel](PageNetwork::open_tunnel), behind the same token on the network, until the round
-//! ends. A [`PageOpener`] opens the page in the default browser: for the action, the page its
-//! tab's record names; for the pane's Start, Start with Challenger, Open the Explore page and
-//! Past rounds, the host's own ([`PageHost::opener`]).
-
 mod browser;
 mod network;
 
@@ -38,33 +20,22 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::oneshot;
 
-/// How long the action waits for a recorded page to answer.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Where open reviewers leave the address of their Explore page: one record per
-/// [`PanePlace`], readable only by the user, since the address carries the page's token.
 #[derive(Clone, Debug)]
 pub struct PageDirectory(PathBuf);
 
-/// The address of a page, as its record holds it, and the review it shows. The record stays
-/// after its reviewer closes: the next reviewer of the same review serves the page at the same
-/// address with the same token, so that a tab left open reconnects to it.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct PageAddress {
     port: u16,
-    /// The address that opens the page, with its token.
     url: String,
-    /// The token of the address.
     #[serde(default)]
     token: String,
-    /// The review the page shows: the root of its repository.
     #[serde(default)]
     review: PathBuf,
 }
 
-/// Where a review pane runs, which names the record of its page: its Herdr workspace, which is
-/// herdr-app's space, and its tab. A tab holds one review pane, while a workspace holds one per
-/// tab: the panes of a workspace's tabs each find their own page.
+// herdr-app runs a review pane in each tab of a space, which is a Herdr workspace.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PanePlace {
     pub workspace: WorkspaceId,
@@ -72,14 +43,11 @@ pub struct PanePlace {
 }
 
 impl PageAddress {
-    /// Whether the page answers: the reviewer that recorded it may have died without
-    /// removing its record.
     fn answers(&self) -> bool {
         page_answers(self.port)
     }
 }
 
-/// Whether a reviewer's Explore page answers on `port` of this machine's loopback interface.
 pub fn page_answers(port: u16) -> bool {
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let health = || -> io::Result<bool> {
@@ -98,13 +66,10 @@ pub fn page_answers(port: u16) -> bool {
 }
 
 impl PageDirectory {
-    /// The records under the plugin's state directory.
     pub fn new(state_dir: &Path) -> Self {
         Self(state_dir.join("explore-page"))
     }
 
-    /// The address of the page that the open reviewer at `place` serves, or `None` when no
-    /// reviewer there serves one.
     pub fn address(&self, place: &PanePlace) -> io::Result<Option<String>> {
         let record = match fs::read(self.record(place)) {
             Ok(record) => record,
@@ -117,10 +82,7 @@ impl PageDirectory {
             .map(|address| address.url))
     }
 
-    /// The record of the page at `place`, named after a digest of its IDs so that any IDs make
-    /// a file name.
     fn record(&self, place: &PanePlace) -> PathBuf {
-        // The NUL between the IDs, which neither holds, keeps two places from making one name.
         let digest = Sha256::new()
             .chain_update(place.workspace.0.as_bytes())
             .chain_update([0])
@@ -133,8 +95,6 @@ impl PageDirectory {
         self.0.join(name)
     }
 
-    /// The address the reviewer of `review` at `place` that closed last served its page at,
-    /// when no reviewer serves it now.
     fn closed(&self, place: &PanePlace, review: &Path) -> Option<PageAddress> {
         let record = fs::read(self.record(place)).ok()?;
         serde_json::from_slice::<PageAddress>(&record)
@@ -143,8 +103,6 @@ impl PageDirectory {
             .filter(|address| !address.answers())
     }
 
-    /// Writes `address` to `record`, one of this directory's records, replacing any earlier
-    /// record whole.
     fn publish(&self, record: &Path, address: &PageAddress) -> io::Result<()> {
         DirBuilder::new()
             .recursive(true)
@@ -163,9 +121,6 @@ impl PageDirectory {
     }
 }
 
-/// The Explore page of one reviewer, served on this machine until the host drops. It shows the
-/// round that the reviewer's Explore session publishes, and sends the session the reviewer's
-/// commands.
 pub struct PageHost {
     address: PageAddress,
     record: PathBuf,
@@ -175,11 +130,6 @@ pub struct PageHost {
 }
 
 impl PageHost {
-    /// Serves the page of `round`, of the review of the repository at `review`, on the loopback
-    /// interface, and records its address for the review pane at `place` in `directory`. The
-    /// page keeps the address and the token of the page of the same review that the reviewer at
-    /// `place` served before it restarted, when its port is free; else it takes a free port, and
-    /// a new token.
     pub fn start(
         round: PageRound,
         directory: &PageDirectory,
@@ -247,27 +197,20 @@ impl PageHost {
         Ok(host)
     }
 
-    /// The address that opens the page, with its token.
     pub fn url(&self) -> &str {
         &self.address.url
     }
 
-    /// Opens this page with `browser`, for the pane of the reviewer that serves it: never the
-    /// page of another reviewer of the pane's tab, which may hold its record.
     pub fn opener(&self, browser: Browser) -> PageOpener {
         PageOpener::served(self.address.url.clone(), browser)
     }
 
-    /// The page on the network, which the reviewer's settings share and take off it.
     pub fn network(&self) -> PageNetwork {
         self.network.clone()
     }
 }
 
 impl Drop for PageHost {
-    /// Stops serving the page, and ends the tunnel that shares it. Its record stays, for the
-    /// next reviewer of the review: the action finds no page there, since nothing answers at its
-    /// address.
     fn drop(&mut self) {
         self.network.unshare();
         self.network.end_tunnels();
@@ -280,7 +223,6 @@ impl Drop for PageHost {
     }
 }
 
-/// The one round of a reviewer, behind the token of its page's address.
 struct OneRound {
     token: Token,
     round: PageRound,

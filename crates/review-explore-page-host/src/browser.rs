@@ -7,21 +7,15 @@ use review_explore_page_opening::{PageNotOpened, PageScreen};
 
 use crate::{PageDirectory, PanePlace};
 
-/// Opens the page of a review pane's reviewer, which it serves on this machine.
 #[derive(Clone, Debug)]
 pub struct PageOpener {
     page: PageSource,
     browser: Browser,
 }
 
-/// Where the opener finds the page's address.
 #[derive(Clone, Debug)]
 enum PageSource {
-    /// The address that the reviewer serving the page holds: the pane's own page, whatever
-    /// other reviewer runs in its tab.
     Served(String),
-    /// The record of the review pane at the place, which the Herdr action reads from outside
-    /// the reviewer.
     Recorded {
         pages: PageDirectory,
         place: PanePlace,
@@ -29,7 +23,6 @@ enum PageSource {
 }
 
 impl PageOpener {
-    /// Opens the page of the review pane at `place`, by its record in `pages`.
     pub fn new(pages: PageDirectory, place: PanePlace, browser: Browser) -> Self {
         Self {
             page: PageSource::Recorded { pages, place },
@@ -37,7 +30,6 @@ impl PageOpener {
         }
     }
 
-    /// Opens the page at `address`, which the reviewer serves itself.
     pub(crate) fn served(address: String, browser: Browser) -> Self {
         Self {
             page: PageSource::Served(address),
@@ -45,8 +37,6 @@ impl PageOpener {
         }
     }
 
-    /// Opens the page in the browser, on `screen`. Waits for the browser program to exit: run it
-    /// off any thread that must stay responsive.
     pub fn open(&self, screen: PageScreen) -> Result<(), PageNotOpened> {
         let address = match &self.page {
             PageSource::Served(address) => address.clone(),
@@ -71,8 +61,6 @@ impl PageOpener {
     }
 }
 
-/// The program that opens an address in the default browser: `$BROWSER` when it is set (a
-/// program and its arguments, separated by spaces), `xdg-open` on Linux, `open` on macOS.
 #[derive(Clone, Debug)]
 pub struct Browser {
     program: OsString,
@@ -88,8 +76,6 @@ impl Browser {
         }
     }
 
-    /// The program and arguments of `command`, separated by spaces, to which the address is
-    /// added.
     pub fn command(command: &str) -> Self {
         let mut words = command.split_whitespace().map(OsString::from);
         Self {
@@ -98,11 +84,6 @@ impl Browser {
         }
     }
 
-    /// Opens `url`. The program's output is dropped: it would draw over the pane. A failure
-    /// names the program by its file name, which the pane has room for.
-    ///
-    /// # Errors
-    /// Fails when the program does not start or reports a failure.
     pub fn open(&self, url: &str) -> Result<(), String> {
         let program = Path::new(&self.program)
             .file_name()

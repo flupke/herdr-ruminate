@@ -1,7 +1,3 @@
-//! The actions the Explore page offers to recover or close a round, as the pane offers them:
-//! Stop waiting, Retry, Cancel answer, Reset, a reply to the conclusion, and the recoveries of an
-//! implementation request.
-
 use review_explore::Command;
 use review_explore_page::{
     CommandRefusal, CommandReply, ImplementationState, Interruption, PageCommand, Recovery,
@@ -11,14 +7,12 @@ use review_explore_page::{
 use super::*;
 
 impl Harness {
-    /// Send `command` from the Explore page, and return the session's reply.
     pub(super) fn on_page(&mut self, command: PageCommand) -> Result<(), CommandRefusal> {
         let (reply, replied) = CommandReply::channel();
         self.session.handle(Input::Page { command, reply });
         replied.blocking_recv().expect("the session replies")
     }
 
-    /// The turn the page shows the agent working on.
     fn working_on(&self) -> String {
         match self.page.stage() {
             RoundStage::AgentWorking { request, .. } => request,
@@ -26,7 +20,6 @@ impl Harness {
         }
     }
 
-    /// The turn the page offers to retry, and why the agent is not working on it.
     fn interrupted(&self) -> (Option<String>, Interruption) {
         match self.page.stage() {
             RoundStage::Interrupted {
@@ -38,13 +31,11 @@ impl Harness {
         }
     }
 
-    /// Stop waiting on the page for the turn the page shows the agent working on.
     pub(super) fn stop_on_page(&mut self) -> Result<(), CommandRefusal> {
         let request = self.working_on();
         self.on_page(PageCommand::Recover(Recovery::Stop(Waiting::Turn(request))))
     }
 
-    /// Stop waiting on the page for the start the page shows under way, if any.
     fn stop_start_on_page(&mut self) -> Result<(), CommandRefusal> {
         let start = match self.page.stage() {
             RoundStage::Starting { start, .. } => start,
@@ -53,7 +44,6 @@ impl Harness {
         self.on_page(PageCommand::Recover(Recovery::Stop(Waiting::Start(start))))
     }
 
-    /// The latest attempt of the turn the page offers to retry, as the page shows it.
     pub(super) fn attempt(&self) -> String {
         match self.page.stage() {
             RoundStage::Interrupted {
@@ -65,8 +55,6 @@ impl Harness {
     }
 }
 
-/// `prompt` without its access value, which each prompt renews, and the directories of its
-/// turn's files and of its unreviewed diffs, which each prompt writes anew.
 fn without_access(prompt: &str) -> String {
     prompt
         .lines()
@@ -146,8 +134,6 @@ fn stop_waiting_on_the_page_drops_a_round_that_is_starting() {
 #[test]
 fn a_kickoff_the_pane_posts_after_a_stop_on_the_page_starts_nothing() {
     let mut harness = Harness::start();
-    // The pane started the round, and posts its kickoff once it hears of the capture; the
-    // page's Stop waiting arrives first.
     harness.capture();
     let kickoff = harness.request(None);
     assert_eq!(harness.stop_start_on_page(), Ok(()));
@@ -195,8 +181,6 @@ fn stop_waiting_then_retry_on_the_page_sends_a_kickoff_again() {
     harness.capture();
     let kickoff = harness.request(None);
     harness.turn(&kickoff);
-    // The agent never starts on the kickoff: the page shows it working until the reviewer
-    // stops waiting.
     assert_eq!(harness.stop_on_page(), Ok(()));
     assert_eq!(
         harness.interrupted(),
@@ -266,7 +250,6 @@ fn a_retry_of_a_turn_that_is_not_interrupted_sends_nothing() {
         attempt: harness.attempt(),
     }));
 
-    // The turn is on its way, as after a Retry that went through.
     assert_eq!(while_working, Err(CommandRefusal::AlreadyApplied));
     assert_eq!(other, Err(CommandRefusal::Stale));
     assert_eq!(harness.agents.prompts().len(), prompts);
@@ -367,7 +350,6 @@ fn cancel_answer_on_an_earlier_question_takes_back_the_answers_after_it() {
     harness.ask_first_question();
     let (first, access) = harness.answer("Keep it.");
     assert!(applied(harness.submit(&access, question(&first, 2))));
-    // The agent works on the second answer when the reviewer cancels the first.
     let (second, access) = harness.answer("Keep this one too.");
     let first = first.answer.unwrap().id;
 
@@ -504,7 +486,6 @@ fn the_page_sends_a_saved_request_that_a_reopening_paused() {
 
     assert_eq!(sent, Ok(()));
     harness.delivery.open();
-    // The earlier process's prompt ends cancelled; this one's reaches the agent.
     let finished = (0..2)
         .map(|_| harness.implementation_finished())
         .find(|finished| finished.state == ImplementationState::Sent)
@@ -521,7 +502,6 @@ fn the_page_sends_a_saved_request_that_a_reopening_paused() {
         delivery: paused.delivery,
         attempt: paused.attempt,
     }));
-    // The agent received it: a repeat of the resend sends nothing.
     assert_eq!(again, Err(CommandRefusal::AlreadyApplied));
 }
 

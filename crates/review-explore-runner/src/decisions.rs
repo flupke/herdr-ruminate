@@ -1,31 +1,20 @@
-//! What every turn's round data says about the review's earlier rounds: how many the
-//! reviewer reset, whose decisions are void, and the questions the reviewer
-//! decided in the others, so a fresh reader does not ask them again.
-
 use crate::input::{Outcome, Quoted};
 use review_explore::{Exploration, Interpretation, ReviewerAnswer, TopicStatus};
 use std::fmt;
 
-/// The questions the reviewer decided in a review's earlier rounds that still
-/// stand, oldest first, and how many rounds before them were reset. A
-/// cancelled answer has left its round, so it is never here.
 #[derive(Clone, Debug, Default)]
 pub struct EarlierDecisions {
-    /// How many rounds before them the reviewer reset: their decisions are void.
     reset_rounds: usize,
     decisions: Vec<Decision>,
 }
 
-/// An answer to a question that chose, and how the agent interpreted it.
 #[derive(Clone, Debug)]
 struct Decision {
     answer: ReviewerAnswer,
-    /// None when the round ended before the agent's turn after the answer.
     interpretation: Option<Interpretation>,
 }
 
 impl EarlierDecisions {
-    /// The decisions of `rounds`, given oldest first (see [`Decision::of`]).
     pub fn new<'a>(rounds: impl IntoIterator<Item = &'a Exploration>) -> Self {
         Self {
             reset_rounds: 0,
@@ -41,7 +30,6 @@ impl EarlierDecisions {
         }
     }
 
-    /// The same decisions, in a review whose `reset_rounds` rounds before them the reviewer reset.
     #[must_use]
     pub fn after_reset(self, reset_rounds: usize) -> Self {
         Self {
@@ -52,11 +40,6 @@ impl EarlierDecisions {
 }
 
 impl Decision {
-    /// `answer` as a decision, when it decides its question: the agent
-    /// interpreted it as accepting the choice or asking for changes, or the
-    /// round ended before the agent's turn and it chose an option that does
-    /// either. Context, questions to the agent and replies to a conclusion
-    /// decide nothing.
     fn of(round: &Exploration, answer: &ReviewerAnswer) -> Option<Self> {
         answer.question.as_ref()?;
         let interpretation = round.interpretation(&answer.id);

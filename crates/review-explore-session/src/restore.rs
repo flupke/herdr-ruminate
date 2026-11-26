@@ -1,5 +1,3 @@
-//! Saved round restoration, editor views and adoption of changes saved elsewhere.
-
 use std::sync::Arc;
 
 use review_explore::{DispatchState, ExploreRound, ViewSave};
@@ -19,8 +17,6 @@ fn empty_restore() -> ui_events::ExploreRestored {
     }
 }
 
-/// Where a restored round's interview stands. A turn whose prompt attempt began may
-/// have reached the agent even though no outcome was saved.
 fn restored_progress(round: &ExploreRound) -> ui_events::ExploreProgress {
     let Some(request) = round.exploration.retry_request() else {
         return ui_events::ExploreProgress::Ready;
@@ -105,9 +101,7 @@ impl ExploreSession {
         restored.view =
             self.load_view_for_restore(unit, &instance, &mut restored.storage_error, &mut toast);
         restored.progress = restored_progress(&round);
-        // Reopening sends nothing: a request saved as queued is paused.
         restored.implementations = crate::implementation::round_progress(&round, None);
-        // A record of forks that cannot be read takes no turn away from the round.
         restored.turn_paths = self
             .rounds
             .forks(unit, &instance)
@@ -122,9 +116,6 @@ impl ExploreSession {
         Ok((restored, toast))
     }
 
-    /// Whether `round` only shows here: a round of the past, or one that a reviewer of another
-    /// workspace of the repository started. Such a round goes on only in its own workspace,
-    /// with the agent of that reviewer's tab, which the round's turns name by its root.
     fn is_historical(
         &self,
         history: &review_explore::ExploreHistory,
@@ -245,8 +236,6 @@ impl ExploreSession {
         }
     }
 
-    /// Without a round of its own, the session shows a round another reviewer saved.
-    /// Its own reset, a round it is starting, or one it set aside leaves nothing to restore.
     fn adopt_new_round(&mut self) {
         let Some(unit) = &self.state.loaded_unit else {
             return;
@@ -266,7 +255,6 @@ impl ExploreSession {
         self.open();
     }
 
-    /// Saved Explore state changed on disk; adopt a newer revision of the current round.
     pub(crate) fn storage_changed(&mut self) {
         let Some(previous) = &self.state.round else {
             self.adopt_new_round();

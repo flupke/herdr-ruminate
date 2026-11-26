@@ -1,5 +1,3 @@
-//! What run-ahead did in one saved round, read from the run-ahead record beside it, and the
-//! numbers of several rounds.
 use crate::summary::{Share, Sorted};
 use review_explore::ExploreRound;
 use review_run_ahead::{
@@ -7,26 +5,15 @@ use review_run_ahead::{
 };
 use std::{collections::BTreeMap, time::Duration};
 
-/// What run-ahead did in one round. A round without a run-ahead record, as every round saved
-/// before run-ahead existed, has none of it.
 #[derive(Default)]
 pub(crate) struct RunAheadSample {
-    /// Whether run-ahead took a fork or watched an answer in the round.
     ran: bool,
-    /// The answers to a question run-ahead watched, and those that used a prepared turn.
     answers: Share,
-    /// Why each other answer used none.
     not_prepared: Vec<&'static str>,
-    /// From the reviewer's answer to the end of its turn, for each answer that used a prepared
-    /// turn, and for each that ran the plain chain.
     prepared_waits_ms: Vec<u64>,
     plain_waits_ms: Vec<u64>,
-    /// The forks run-ahead took.
     forks: usize,
-    /// The forks that still ran when their question was answered, and those that had
-    /// submitted their turn by then.
     ready: Share,
-    /// The tokens of the forks the pane's agent continued as, and of every other fork.
     used_tokens: TokenUsage,
     discarded_tokens: TokenUsage,
 }
@@ -74,18 +61,12 @@ impl RunAheadSample {
     }
 }
 
-/// From the reviewer's answer to the end of the turn it started, when the round knows when that
-/// turn's prompt went out and how long the agent took.
 fn wait_ms(round: &ExploreRound, answer: &AnswerRecord) -> Option<u64> {
     let started = round.turns.get(&answer.request)?.started_at_ms?;
     let elapsed = round.exploration.agent_elapsed_ms.get(&answer.request)?;
     started.saturating_add(*elapsed).checked_sub(answer.at_ms)
 }
 
-/// Whether `fork` had submitted its turn when the reviewer first answered its question after
-/// the fork was taken, or `None` when the question was not answered while the fork ran, or when
-/// the record, saved before forks kept when they submitted, cannot tell. A cancelled answer lets
-/// the question wait again, with forks taken again.
 fn ready_at_the_answer(record: &RoundForks, fork: &ForkRecord) -> Option<bool> {
     let answered_ms = record
         .answers
@@ -97,8 +78,6 @@ fn ready_at_the_answer(record: &RoundForks, fork: &ForkRecord) -> Option<bool> {
         })
         .map(|answer| answer.at_ms)
         .min()?;
-    // The answer discards the forks it does not continue as once it is recorded; an earlier
-    // version recorded it after.
     if fork.discarded.as_ref().is_some_and(|discard| {
         discard.reason != DiscardReason::Answered && discard.at_ms < answered_ms
     }) {
@@ -119,18 +98,13 @@ fn ready_at_the_answer(record: &RoundForks, fork: &ForkRecord) -> Option<bool> {
         .then_some(true)
 }
 
-/// Why an answer used no prepared turn, in a few words.
 fn reason(path: &TurnPath) -> &'static str {
     match path {
-        // The answer still waits for its fork, the switch to the fork still runs, or the
-        // reviewer stopped meanwhile.
         TurnPath::Prepared { .. } => "prepared turn not settled",
         TurnPath::Plain { reason } => plain_reason(reason),
     }
 }
 
-/// What the reviewer did, what the agent in the pane did, or what changed in the review since
-/// the forks were taken; the other reasons in `run_ahead_reason`.
 fn plain_reason(reason: &PlainReason) -> &'static str {
     match reason {
         PlainReason::NoHooks => "agent without the plugin",
@@ -146,7 +120,6 @@ fn plain_reason(reason: &PlainReason) -> &'static str {
     }
 }
 
-/// What the forks had not done that the answer needs, or run-ahead's own fault.
 fn run_ahead_reason(reason: &PlainReason) -> &'static str {
     match reason {
         PlainReason::NoForks { .. } => "no fork taken",
@@ -157,7 +130,6 @@ fn run_ahead_reason(reason: &PlainReason) -> &'static str {
         PlainReason::Unchecked { .. } => "check not made",
         PlainReason::SwitchFailed { .. } => "switch failed",
         PlainReason::Withdrawn => "withdrawn while switching",
-        // An obsolete reason, then the reasons `plain_reason` names.
         PlainReason::Obsolete
         | PlainReason::NoHooks
         | PlainReason::Comment
@@ -171,25 +143,15 @@ fn run_ahead_reason(reason: &PlainReason) -> &'static str {
     }
 }
 
-/// The run-ahead numbers of some rounds.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct RunAheadSummary {
-    /// The rounds where run-ahead took a fork or watched an answer.
     pub(crate) rounds: usize,
-    /// The answers to a question run-ahead watched, and those that used a prepared turn.
     pub(crate) answers: Share,
-    /// How many of the other answers had each reason.
     pub(crate) not_prepared: BTreeMap<&'static str, usize>,
-    /// The median wait from the reviewer's answer to the end of its turn, for the answers that
-    /// used a prepared turn, and for those that ran the plain chain.
     pub(crate) prepared_wait: Option<Duration>,
     pub(crate) plain_wait: Option<Duration>,
-    /// The forks run-ahead took.
     pub(crate) forks: usize,
-    /// The forks that still ran when their question was answered, and those that had
-    /// submitted their turn by then.
     pub(crate) ready: Share,
-    /// The tokens of the forks the pane's agent continued as, and of every other fork.
     pub(crate) used_tokens: TokenUsage,
     pub(crate) discarded_tokens: TokenUsage,
 }

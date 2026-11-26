@@ -1,5 +1,3 @@
-//! Explicitly authorized implementation of an Explore conclusion.
-
 use crate::{ExploreSession, dispatch::DurableDispatch, turn_log::SentTurn};
 use review_explore::{
     DispatchState, ExploreRound, ImplementationDelivery, ImplementationRequest, ImplementationState,
@@ -8,7 +6,6 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use ui_events::{ExploreImplementationFinished, ImplementationProgress};
 
-/// What the front ends show of `delivery`, which this process sends when `sending`.
 pub(crate) fn progress(delivery: &ImplementationDelivery, sending: bool) -> ImplementationProgress {
     ImplementationProgress {
         request: delivery.request.clone(),
@@ -17,16 +14,12 @@ pub(crate) fn progress(delivery: &ImplementationDelivery, sending: bool) -> Impl
     }
 }
 
-/// The implementation request this process sends; dropping it cancels its prompt.
 #[derive(Debug)]
 pub(crate) struct SendingImplementation {
-    /// The request's delivery ID.
     delivery: String,
     _cancellation: review_thread_service::PromptCancellation,
 }
 
-/// The latest implementation request of each conclusion of `round`, with the one whose
-/// delivery ID is `sending` sent by this process.
 pub(crate) fn round_progress(
     round: &ExploreRound,
     sending: Option<&str>,
@@ -49,8 +42,6 @@ pub(crate) fn round_progress(
 }
 
 impl ExploreSession {
-    /// Publish a durable round change nobody waits to acknowledge; false once the application
-    /// stopped receiving events.
     pub(crate) fn publish_committed(&self, round: ExploreRound) -> bool {
         let (response, _) = std::sync::mpsc::channel();
         self.events
@@ -63,8 +54,6 @@ impl ExploreSession {
             .is_ok()
     }
 
-    /// The latest implementation request of each conclusion of `round`, as this process shows
-    /// it now.
     pub(crate) fn implementation_progress(
         &self,
         round: &ExploreRound,
@@ -77,9 +66,6 @@ impl ExploreSession {
         round_progress(round, sending)
     }
 
-    /// Saves the authorized `request`, then prompts the agent with it, and tells the front
-    /// ends. Errs, with the reason, only when the request was not saved: a prompt that fails
-    /// after the save leaves the request saved as not sent.
     pub(crate) fn implement(&mut self, request: ImplementationRequest) -> Result<(), String> {
         let result = self.prepare_implementation(&request);
         let (agent, round) = match result {
@@ -160,17 +146,11 @@ impl ExploreSession {
             .clone()
             .ok_or_else(|| eyre::eyre!("No Explore round"))?;
         let sending = self.state.implementation.is_some();
-        // Refuse against the saved round before touching review marks.
         let saved = self
             .rounds
             .round(&unit, &request.instance)?
             .ok_or_else(|| eyre::eyre!("Saved Explore round is missing"))?;
         admit(&mut saved.clone(), request, sending).map_err(|error| eyre::eyre!(error))?;
-        // At the drawing board, the code is about to change for another design: what the round's
-        // answers settled goes back to review, for Implement as for Post review. Only now, since
-        // Cancel answer, which would have to mark the lines again, is offered until a request is
-        // made; and before the request is saved, so that a failure refuses Implement, which the
-        // reviewer tries again.
         if saved.exploration.concluded_at_drawing_board() {
             self.reopen_round_marks(&saved)?;
         }
@@ -182,10 +162,6 @@ impl ExploreSession {
     }
 }
 
-/// Authorizes `request` in `round`, queued, unless another request holds its conclusion: one this
-/// process sends (`sending`), or one the agent received, since a second front end that did not see
-/// it yet must not start another implementation. A request an earlier process left paused or
-/// unknown leaves the reviewer the choice.
 fn admit(
     round: &mut review_explore::ExploreRound,
     request: &ImplementationRequest,

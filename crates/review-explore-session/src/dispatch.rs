@@ -8,7 +8,6 @@ use review_thread_service::{DispatchObserver, PromptError};
 use review_types::ReviewUnit;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Records each prompt attempt in the saved round before and after delivery.
 pub(crate) struct DurableDispatch {
     pub(crate) rounds: SavedRounds,
     pub(crate) unit: ReviewUnit,
@@ -16,10 +15,7 @@ pub(crate) struct DurableDispatch {
     pub(crate) id: DispatchId,
     pub(crate) events: ApplicationEventSender,
     pub(crate) began: AtomicBool,
-    /// The access the prompt grants the pane's agent, and where the session keeps the one the
-    /// agent holds; none for a prompt that grants none.
     pub(crate) grants: Option<(String, crate::held_access::HeldAccess)>,
-    /// The prompt, for a vision session's record of what was sent.
     pub(crate) turn: Option<(TurnLog, SentTurn)>,
 }
 
@@ -37,8 +33,6 @@ impl DispatchObserver for DurableDispatch {
 
     fn finished(&self, result: &Result<(), PromptError>) -> Result<(), String> {
         let state = Self::outcome(result);
-        // A prompt withdrawn, blocked or not sent never reached the agent; one whose outcome is
-        // unknown, or that the agent did not start on, may have.
         if let Some((access, held)) = &self.grants
             && matches!(
                 state,
@@ -56,7 +50,6 @@ impl DispatchObserver for DurableDispatch {
                 state,
             },
         );
-        // Recorded after the save, so a reply never outruns the saved dispatch.
         if let Some((turns, sent)) = &self.turn {
             let error = match &saved {
                 Ok(_) => result.as_ref().err().map(ToString::to_string),
@@ -69,7 +62,6 @@ impl DispatchObserver for DurableDispatch {
                 if let DispatchId::Implementation { request, .. } = &self.id
                     && let Some(delivery) = round.implementations.get(request)
                 {
-                    // This process ran the dispatch.
                     let _ = self.events.send(ui_events::ExploreImplementationSaved(
                         crate::implementation::progress(delivery, true),
                     ));

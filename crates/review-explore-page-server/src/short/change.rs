@@ -1,6 +1,3 @@
-//! The change the fixed questions cite: one Rust file, `src/drafts.rs`, whose `reopen` no
-//! longer clears the reviewer's draft.
-
 use crate::changed_source::{ChangedSource, FixedChange};
 
 const OLD: &str = "\
@@ -46,7 +43,6 @@ diff --git a/src/drafts.rs b/src/drafts.rs
  }
 ";
 
-/// `src/drafts.rs`, the one file of the change.
 pub(super) const DRAFTS: ChangedSource = ChangedSource {
     path: "src/drafts.rs",
     old: OLD,
@@ -54,5 +50,4 @@ pub(super) const DRAFTS: ChangedSource = ChangedSource {
     diff: DIFF,
 };
 
-/// The change the fixed questions cite.
 pub(super) const CHANGE: FixedChange = FixedChange(&[DRAFTS]);

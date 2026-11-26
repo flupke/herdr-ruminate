@@ -1,6 +1,3 @@
-//! The explanation of the first fixed question: a table with status marks, a callout, a sketch,
-//! raw HTML that must show as text, and the Door and Blast radius sections.
-
 use review_explore::{Assessments, Consequence, Door};
 
 pub(super) const RATIONALE: &str = "\

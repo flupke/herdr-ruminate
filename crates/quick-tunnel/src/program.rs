@@ -1,5 +1,3 @@
-//! The `cloudflared` a tunnel runs, and how.
-
 use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
@@ -10,29 +8,19 @@ use agent_fork::Wrapper;
 
 use crate::TunnelFailure;
 
-/// How long `cloudflared` has to print the tunnel's address: it asks Cloudflare for a tunnel,
-/// then connects to it, which takes a few seconds.
+// cloudflared asks Cloudflare for a tunnel, then connects to it, which takes a few seconds.
 const ADDRESS_WAIT: Duration = Duration::from_secs(30);
 
-/// The `cloudflared` a tunnel runs: its program, the wrapper that ties its life to the
-/// reviewer's, and its environment.
 #[derive(Clone, Debug)]
 pub struct TunnelProgram {
-    /// A program name looked up on the environment's `PATH`, or a path.
     pub program: OsString,
-    /// What starts the program: `reviewer-control fork-exec` in the reviewer.
     pub wrapper: Wrapper,
-    /// The whole environment of the program.
     pub environment: Vec<(OsString, OsString)>,
-    /// Its working directory.
     pub directory: PathBuf,
-    /// How long it has to print the tunnel's address.
     pub address_wait: Duration,
 }
 
 impl TunnelProgram {
-    /// `cloudflared` on the reviewer's `PATH`, in the reviewer's environment, started through
-    /// `wrapper`.
     pub fn cloudflared(wrapper: Wrapper) -> Self {
         Self {
             program: "cloudflared".into(),
@@ -43,8 +31,7 @@ impl TunnelProgram {
         }
     }
 
-    /// The arguments of a quick tunnel to `target`. The tunnel ends with the reviewer: no
-    /// update of `cloudflared` restarts it.
+    // Without --no-autoupdate, an update of cloudflared restarts the tunnel.
     pub(crate) fn arguments(target: SocketAddr) -> Vec<OsString> {
         ["tunnel", "--no-autoupdate", "--url"]
             .into_iter()
@@ -53,8 +40,6 @@ impl TunnelProgram {
             .collect()
     }
 
-    /// The program's executable: the path it names, or the first executable of that name on
-    /// the environment's `PATH`.
     pub(crate) fn find(&self) -> Result<PathBuf, TunnelFailure> {
         let missing = || TunnelFailure::Missing {
             program: self.program.to_string_lossy().into_owned(),

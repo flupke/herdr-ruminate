@@ -1,41 +1,26 @@
-//! What one saved round measured, read from its record.
 use crate::{proposals::ProposalCounts, run_ahead::RunAheadSample, summary::Share, words::Words};
 use review_explore::{Exploration, ExploreRound, Question, ReviewerAnswer, TopicStatus};
 use review_run_ahead::RoundForks;
 use review_store::SavedRound;
 use std::time::UNIX_EPOCH;
 
-/// One accepted agent turn and how long it took.
 pub(crate) struct AgentTurn {
     pub(crate) milliseconds: u64,
-    /// The turn followed a reviewer's answer; only the first turn does not.
     pub(crate) after_answer: bool,
-    /// A fork took the turn while the reviewer was thinking: its time is the switch of the
-    /// agent in the pane to that fork, not the agent's turn.
     pub(crate) prepared: bool,
 }
 
-/// The measures of one saved round.
 pub(crate) struct RoundSample {
-    /// When the round's first prompt went out, or when it was saved when its
-    /// turns carry no time.
     pub(crate) started_at_ms: u64,
     pub(crate) challenger: bool,
     pub(crate) answered: bool,
     pub(crate) concluded: bool,
     pub(crate) questions: usize,
-    /// Answers to a question that the agent's next turn took up, and those it
-    /// interpreted as asking for a change.
     pub(crate) change_requests: Share,
-    /// Answers to a question with a recommended choice, and those that chose
-    /// something else.
     pub(crate) declined_recommendations: Share,
     pub(crate) agent_turns: Vec<AgentTurn>,
-    /// From the agent's accepted question to the reviewer's answer going out.
     pub(crate) reviewer_answers_ms: Vec<u64>,
-    /// The words of each question's page that the agent wrote.
     pub(crate) question_words: Vec<usize>,
-    /// What became of the Challenger's proposals.
     pub(crate) proposals: ProposalCounts,
     pub(crate) run_ahead: RunAheadSample,
 }
@@ -79,8 +64,6 @@ impl RoundSample {
         }
     }
 
-    /// Over the answers to a question that the agent's next turn took up: an
-    /// answer it left uninterpreted, as it may for free text, asked for nothing.
     fn change_requests(exploration: &Exploration) -> Share {
         let mut share = Share::default();
         for answer in exploration.answers.iter().filter(|a| a.question.is_some()) {
@@ -106,7 +89,6 @@ impl RoundSample {
                     .iter()
                     .any(|alternative| alternative.recommendation.is_some())
             });
-            // Back to the drawing board picks no choice: it declines no recommendation.
             if recommends && !answer.drawing_board {
                 share.add(
                     answer
@@ -137,8 +119,6 @@ impl RoundSample {
             .collect()
     }
 
-    /// How long the reviewer took to answer: from the end of the agent turn
-    /// the answer replies to, to the start of the turn that carried it.
     fn reviewer_answer(round: &ExploreRound, answer: &ReviewerAnswer) -> Option<u64> {
         let asked = round.turns.get(&answer.in_reply_to)?.started_at_ms?
             + round
@@ -158,9 +138,7 @@ impl RoundSample {
         sent.checked_sub(asked)
     }
 
-    /// The words of the question and of the reply the same turn put above it.
     fn question_words(exploration: &Exploration, question: &Question) -> usize {
-        // A revised question repeats the reply of the version it revised.
         let reply = exploration
             .conversation
             .iter()

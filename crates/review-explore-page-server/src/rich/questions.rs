@@ -1,10 +1,3 @@
-//! The questions of the rich data set, as long as a real round's, in turn:
-//!
-//! 1. a two-way question with several paragraphs of Context, a table, a diagram, a sketch, four
-//!    long choices and three citations;
-//! 2. a one-way question, whose recommendation the page hides until the reviewer's first pick;
-//! 3. a question with a diagram Mermaid cannot parse and a citation of a file outside the change.
-
 use review_explore::{
     Alternative, Assessments, Consequence, Door, EvidenceRef, Interpretation, NotRelevantMark,
     NotRelevantReason, Question, SourceSide, TopicStatus,
@@ -14,7 +7,6 @@ use review_explore_page::{QuestionMarks, TurnResponse};
 use super::change::{FLUSH, QUEUE, REPLY};
 use crate::question_parts;
 
-/// The fixed question `number`, from 1, in turn, and the lines an answer to it marks.
 pub(super) fn question(number: usize) -> (Question, QuestionMarks) {
     match (number - 1) % 3 {
         0 => (flush_rule(), flush_rule_marks()),
@@ -23,9 +15,6 @@ pub(super) fn question(number: usize) -> (Question, QuestionMarks) {
     }
 }
 
-/// What the agent says back to the reviewer's answer to the previous question before its
-/// question `number`, from 2: the rule while the pane is open before question 2, then what
-/// happens on close.
 pub(super) fn answer_response(number: usize) -> TurnResponse {
     if number.is_multiple_of(3) {
         return closing_response();
@@ -55,7 +44,6 @@ pub(super) fn answer_response(number: usize) -> TurnResponse {
     }
 }
 
-/// What the agent says back to the reviewer's answer about the queue on close.
 fn closing_response() -> TurnResponse {
     TurnResponse {
         interpretations: vec![Interpretation {
@@ -73,7 +61,6 @@ fn closing_response() -> TurnResponse {
         ),
         path: None,
         revision: None,
-        // The code changed since the round started: the answer left one file unmarked.
         marks_problem: Some(
             "src/reply_queue.rs changed since this round started; its lines were not marked".into(),
         ),
@@ -125,7 +112,6 @@ time      0s 0.6s  1.4s      3.4s       9s      11s
 queue     [1][2][3][4] ───── sent (Idle) [5] ── sent (Idle)
 ```";
 
-/// When the queue goes out while the pane is open: the rule of the change, recommended.
 fn flush_rule() -> Question {
     Question {
         rationale: Some(FLUSH_RULE_CONTEXT.into()),
@@ -223,8 +209,6 @@ fn flush_rule() -> Question {
     }
 }
 
-/// What an answer to the question about the queue on close marks: the closing code of the
-/// threads reviewed, the queue's opening lines not relevant.
 fn closing_marks() -> QuestionMarks {
     QuestionMarks {
         reviewed: vec![question_parts::lines(REPLY.path, 16, 27)],
@@ -237,7 +221,6 @@ fn closing_marks() -> QuestionMarks {
     }
 }
 
-/// The queue's file reviewed, and the reply's call site not relevant to the decision.
 fn flush_rule_marks() -> QuestionMarks {
     QuestionMarks {
         reviewed: vec![
@@ -267,8 +250,6 @@ saves its threads. The pane then closes at once: it does not wait for the agent 
 | Send them when the pane opens again | [!warning] Hours later, or never | [!good] At once |
 | Drop them, and say how many | [!bad] Never | [!good] At once |";
 
-/// What happens to the queue on close: hard to reverse, so the recommendation waits for the
-/// reviewer's first pick.
 fn closing() -> Question {
     Question {
         rationale: Some(CLOSING_CONTEXT.into()),
@@ -361,8 +342,6 @@ flowchart LR
 
 No reviewer has asked for another number yet.";
 
-/// Whether the cap becomes a setting: its sketch does not parse, and it cites a file outside
-/// the change.
 fn size_setting() -> Question {
     Question {
         rationale: Some(SIZE_SETTING_CONTEXT.into()),

@@ -1,9 +1,3 @@
-//! The reviewer's answer to a question run-ahead watched: the pane's agent continues as the
-//! fork of the answer's choice when that fork's turn is exactly the one the agent would take
-//! for the answer, and the agent can switch to it; a fork still at work is waited for
-//! (`finishing.rs`). Otherwise the answer goes to the agent, as without run-ahead. Either way
-//! the other forks are discarded, and the path is recorded with its reason.
-
 use review_explore::{Alternative, TurnRequest};
 use review_explore_runner::Unreviewed;
 use review_run_ahead::{AnswerRecord, DiscardReason, Failure, ForkPoint, PlainReason, TurnPath};
@@ -16,9 +10,6 @@ use crate::ExploreSession;
 use crate::turn::SavedTurn;
 
 impl ExploreSession {
-    /// `request` under the identities reserved for its choice, when it answers the question that
-    /// waits with a choice whose forks were taken: with a comment too, so that the agent knows
-    /// the answer by the same ID whichever path its turn takes.
     pub(crate) fn with_reserved_ids(&self, mut request: TurnRequest) -> TurnRequest {
         if let Some(reserved) = self
             .run_ahead
@@ -31,11 +22,7 @@ impl ExploreSession {
         request
     }
 
-    /// Decides what the reviewer's answer, the saved turn `turn` with its marks applied, does
-    /// with the forks of its question. Returns whether the pane's agent continues as a fork:
-    /// its switch then runs, and the answer needs no prompt.
     pub(crate) fn run_ahead_answer(&mut self, turn: &SavedTurn) -> bool {
-        // The reviewer waits from now on, through the checks below.
         let answered_at_ms = review_explore::now_ms();
         let request = &turn.request;
         let Some(answer) = &request.answer else {
@@ -76,7 +63,6 @@ impl ExploreSession {
                         stopped: false,
                     })
                 } else if let Err(reason) = self.same_turn(&turn.request, &fork, &taken.files) {
-                    // Checked now as well: the reviewer does not wait for a turn it cannot use.
                     self.discard_forks(
                         &asked.round,
                         std::slice::from_ref(&fork),
@@ -105,13 +91,10 @@ impl ExploreSession {
             }
         };
         let continues = self.record_answer(&asked, request, &path, answered_at_ms);
-        // The question no longer waits.
         self.run_ahead.armed = None;
         continues
     }
 
-    /// Starts `switching`, when its fork's turn is exactly the agent's for the answer;
-    /// otherwise discards the fork. Returns the path the answer's turn takes.
     pub(super) fn continue_as(&mut self, switching: Switching) -> TurnPath {
         if let Err(reason) =
             self.same_turn(&switching.turn.request, &switching.fork, &switching.files)
@@ -126,8 +109,6 @@ impl ExploreSession {
         }
     }
 
-    /// The fork of `armed`, by index, that the answer `request` continues as, once it submitted
-    /// its turn if it has not yet, or why the answer goes to the pane's agent.
     fn fork_for(&self, armed: &Armed, request: &TurnRequest) -> Result<usize, PlainReason> {
         let choice = self.forked_choice(armed, request)?;
         let taken = armed.taken.as_ref().ok_or_else(|| PlainReason::NoForks {
@@ -146,9 +127,6 @@ impl ExploreSession {
         Ok(index)
     }
 
-    /// Whether the agent that asked the question `asked` at `asked_at_ms` stands where the forks
-    /// taken from `point` at `taken_at_ms` left it, idle, with nothing written in the round's
-    /// conversation that they do not know; otherwise why not.
     pub(super) fn unchanged_since_forks(
         &self,
         asked: &Asked,
@@ -159,8 +137,6 @@ impl ExploreSession {
         let unchecked = |error: &dyn std::fmt::Display| PlainReason::Unchecked {
             error: error.to_string(),
         };
-        // A talk in the chat that the agent answered before the forks were taken is in their
-        // sessions: forks taken again after it hold it.
         if self
             .rounds
             .reviewer_wrote_unknown_to_forks(
@@ -191,17 +167,12 @@ impl ExploreSession {
         Ok(())
     }
 
-    /// The choice of the answer `request` that a fork may have taken, or why the answer goes to
-    /// the pane's agent whatever the forks did.
     fn forked_choice<'a>(
         &self,
         armed: &Armed,
         request: &'a TurnRequest,
     ) -> Result<&'a Alternative, PlainReason> {
         let answer = request.answer.as_ref().expect("an answer");
-        // First, whatever the answer: run-ahead stays off for that agent until it restarts,
-        // unless it never forks the agent, whose answers say why, as the refusal to take its
-        // forks does.
         if self
             .agents
             .get_agent(&armed.asked.pane)
@@ -231,10 +202,6 @@ impl ExploreSession {
         Ok(choice)
     }
 
-    /// Whether the agent's turn for the answer `request` would list the same unreviewed lines as
-    /// the diffs `files` of the fork `fork` and, written with those diffs, have the files of the
-    /// fork's turn; otherwise why not. The session keeps the diffs it wrote for the turn, as for
-    /// a prompt it sends.
     fn same_turn(
         &mut self,
         request: &TurnRequest,
@@ -253,8 +220,6 @@ impl ExploreSession {
         {
             return Err(PlainReason::UnreviewedChanged);
         }
-        // The same lines: the real turn names the diffs the fork read, so its files compare as
-        // they are.
         let unreviewed = Unreviewed {
             directory: files.diffs().directory().to_owned(),
             index: files.diffs().index(),
@@ -269,11 +234,6 @@ impl ExploreSession {
         Ok(())
     }
 
-    /// Records the path `path` of the answer `request` to the question `asked`, given at
-    /// `at_ms`, and logs it;
-    /// counts the failure of run-ahead it stands for. The reviewer is shown the path of a plain
-    /// chain at once: it shows with the turn once the agent took it. Returns whether the pane's
-    /// agent continues as a fork.
     fn record_answer(
         &mut self,
         asked: &Asked,
@@ -304,7 +264,6 @@ impl ExploreSession {
                 .log(&format!("the answer's path was not recorded: {error}"));
         }
         let reason = match path {
-            // A prepared turn shows once the pane's agent runs its fork's session.
             TurnPath::Prepared { .. } => return true,
             TurnPath::Plain { reason } => reason,
         };

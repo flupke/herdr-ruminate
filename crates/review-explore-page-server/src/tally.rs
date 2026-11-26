@@ -1,11 +1,3 @@
-//! How much of the change the review marks cover, as the standalone server tells it. The review
-//! tool counts the marks it saved, line by line (`review_explore_tally`); the standalone server
-//! saves none, so it counts lines: the lines Jev marked when the round started, the lines each
-//! answer of the round marked, the lines the reviewer marked by hand meanwhile, and
-//! the lines the question that waits marks once answered. A mark covers as many lines of a
-//! file as its location spans, and never more than the file has left; the totals follow the
-//! review tool's rules (`MarkTally::of_files`).
-
 use review_explore::{CodeLocation, NotRelevantMark, Question};
 use review_explore_page::QuestionMarks;
 use review_explore_tally::{FileTally, MarkTally, MarkedLines, PendingLines, Tally};
@@ -13,24 +5,17 @@ use review_repository::repository::RepoPath;
 
 use crate::changed_source::{ChangedSource, FixedChange};
 
-/// Lines of a file of the change that Jev marks when a round starts.
 pub(crate) struct JevMark {
     pub(crate) path: &'static str,
     pub(crate) lines: u64,
 }
 
-/// What a session's marks are, as it counts them.
 pub(crate) struct SessionMarks<'a> {
     pub(crate) change: &'a FixedChange,
-    /// The lines Jev marks when a round starts, which count only while a round runs.
     pub(crate) jev: &'a [JevMark],
-    /// Whether a round runs.
     pub(crate) running: bool,
-    /// What each answer of the round marked, in order.
     pub(crate) answered: &'a [QuestionMarks],
-    /// The lines the reviewer marked by hand since, in the change's first file.
     pub(crate) by_hand: u64,
-    /// The question that waits for an answer, with what its answer marks.
     pub(crate) waiting: Option<(&'a Question, &'a QuestionMarks)>,
 }
 
@@ -46,7 +31,6 @@ impl SessionMarks<'_> {
         MarkTally::of_files(files, self.waiting.is_some())
     }
 
-    /// The tally of `source`, the change's first file when `first`.
     fn file(&self, source: &ChangedSource, first: bool) -> FileTally {
         let path = RepoPath::from_bytes(source.path);
         let changed = source.statistics();
@@ -83,7 +67,6 @@ impl SessionMarks<'_> {
     }
 }
 
-/// The changed lines of a file that no mark took yet.
 struct Lines {
     total: u64,
     left: u64,
@@ -94,14 +77,12 @@ impl Lines {
         Self { total, left: total }
     }
 
-    /// Takes up to `lines` of the lines left, and returns how many it took.
     fn take(&mut self, lines: u64) -> u64 {
         let taken = lines.min(self.left);
         self.left -= taken;
         taken
     }
 
-    /// The lines of the file at `path` that `locations` span: a whole file spans every line.
     fn within<'a>(
         &self,
         path: &RepoPath,

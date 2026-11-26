@@ -1,5 +1,3 @@
-//! The saved-round rules over a temporary store.
-
 use std::sync::Arc;
 
 use review_explore::{
@@ -10,7 +8,6 @@ use review_store::ReviewStore;
 
 use super::{SavedRounds, Submitted};
 
-/// The directory of the only review saved in `store`.
 fn review_directory(store: &ReviewStore) -> std::path::PathBuf {
     std::fs::read_dir(store.explore_directory())
         .unwrap()
@@ -518,7 +515,6 @@ fn archived_attempt_keeps_authoritative_success_and_cancel_cannot_rewrite_it() {
     }
 }
 
-/// The time `run` takes place, in milliseconds since the epoch, as a range.
 fn during(run: impl FnOnce()) -> std::ops::RangeInclusive<u64> {
     let now = || {
         u64::try_from(
@@ -685,7 +681,6 @@ fn editor_sequence_conflict_and_wrong_review_keep_original_bytes() {
     );
 }
 
-/// A repository on GitHub whose bookmark `t7-slug` has the pull request 12.
 struct GitHubTools {
     root: std::path::PathBuf,
 }

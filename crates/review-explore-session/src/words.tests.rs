@@ -1,16 +1,10 @@
-//! What the reviewer writes to the agent in an Explore round goes on herdr-bus, as the review
-//! comments do.
-
 use super::*;
 
 impl Harness {
-    /// Publishes from now on what the reviewer writes to agents on the herdr-bus file `bus`.
     fn publish_on_bus(&self, bus: &std::path::Path) {
         self.threads.publish_on_bus(Ok(bus.to_owned()));
     }
 
-    /// The `words` messages of the bus file `bus`, oldest first, once what was handed to it so
-    /// far is published.
     fn words_on_bus(&self, bus: &std::path::Path) -> Vec<herdr_bus::Message> {
         self.threads.prompt_sender().flush();
         let mut stored = herdr_bus::Bus::open(bus)
@@ -24,8 +18,6 @@ impl Harness {
         stored.into_iter().map(|stored| stored.message).collect()
     }
 
-    /// Answer the latest question with `answer` as the reviewer, then post it; returns the
-    /// turn as saved and the access its prompt grants.
     fn answer_with(&mut self, answer: AnswerInput) -> (TurnRequest, String) {
         let request = self.request(Some(answer));
         let access = self.turn(&request);
@@ -33,7 +25,6 @@ impl Harness {
         (request, access)
     }
 
-    /// Reply `text` to the round's conclusion, as the pane does, then post it.
     fn reply_to_conclusion(&mut self, text: &str) -> TurnRequest {
         let reply = self
             .exploration
@@ -52,7 +43,6 @@ impl Harness {
     }
 }
 
-/// The fields herdr-bowtie reads of a `herdr.words` message, but the place's.
 fn words(message: &herdr_bus::Message) -> (String, &str, Option<&str>, Option<&str>) {
     (
         message.id.to_string(),

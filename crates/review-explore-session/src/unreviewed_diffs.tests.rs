@@ -58,7 +58,6 @@ fn a_change_without_text_hunks_has_no_rows() {
     let text = diff("logo.png", &[]);
 
     assert!(text.starts_with("logo.png"), "{text}");
-    // A line tells the agent there is nothing to show, in place of the rows.
     assert!(text.lines().count() > 1, "{text}");
     assert!(!text.contains("old new"), "{text}");
 }
@@ -85,7 +84,6 @@ fn a_diff_is_named_like_its_source_file_whatever_its_length() {
 fn a_path_that_is_a_file_and_a_directory_displaces_one_diff_and_the_index_says_where() {
     let mut diffs = diffs();
 
-    // `docs` was a file and is now a directory, in either order.
     diffs.place("docs", "the deleted file").unwrap();
     diffs.place("docs/guide.md", "the new file").unwrap();
     diffs
@@ -128,7 +126,6 @@ fn a_path_that_is_a_file_and_a_directory_displaces_one_diff_and_the_index_says_w
 fn a_write_failure_that_is_not_a_clash_is_an_error() {
     use std::os::unix::fs::PermissionsExt;
     let mut diffs = diffs();
-    // The directory can no longer be written to.
     std::fs::set_permissions(diffs.directory(), std::fs::Permissions::from_mode(0o500)).unwrap();
 
     let failed = diffs.place("src/lib.rs", "diff");

@@ -1,12 +1,6 @@
-//! The public address in `cloudflared`'s log.
-
-/// The domain of quick tunnels' addresses.
 const DOMAIN: &str = ".trycloudflare.com";
 
-/// The host name of a quick tunnel's public address in `line`, such as
-/// `quiet-river-stone-lamp.trycloudflare.com` in the box `cloudflared` prints once the tunnel
-/// is up. The address of the service that makes quick tunnels, `api.trycloudflare.com`, which
-/// `cloudflared` names when it cannot reach it, is no tunnel's.
+// cloudflared names api.trycloudflare.com, the service that makes quick tunnels, when it cannot reach it.
 pub(crate) fn quick_tunnel_host(line: &str) -> Option<&str> {
     line.match_indices("https://").find_map(|(start, scheme)| {
         let rest = &line[start + scheme.len()..];

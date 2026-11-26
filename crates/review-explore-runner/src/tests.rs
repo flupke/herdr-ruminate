@@ -18,13 +18,10 @@ pub(super) fn comparison() -> Comparison {
     }
 }
 
-/// The turn's data for `request`, with nothing unreviewed and no earlier decisions.
 fn prepare(request: &TurnRequest, comparison: &Comparison) -> String {
     prepare_with(request, comparison, &EarlierDecisions::default())
 }
 
-/// The turn's data for `request`, with nothing unreviewed and the `earlier`
-/// decisions of the review.
 pub(super) fn prepare_with(
     request: &TurnRequest,
     comparison: &Comparison,
@@ -43,8 +40,6 @@ pub(super) fn prepare_with(
     ))
 }
 
-/// The turn's data for `request`, whose answer answers the question the reviewer's screens
-/// number `answered`.
 fn prepare_answered(request: &TurnRequest, comparison: &Comparison, answered: usize) -> String {
     data(&TurnInstructions::prepare(
         request,
@@ -56,7 +51,6 @@ fn prepare_answered(request: &TurnRequest, comparison: &Comparison, answered: us
     ))
 }
 
-/// The texts of the files of `turn` that hold data: the round's, then the turn's.
 fn data(turn: &TurnInstructions) -> String {
     format!(
         "{}\n{}",
@@ -65,8 +59,6 @@ fn data(turn: &TurnInstructions) -> String {
     )
 }
 
-/// What the turn's own data says after the rule that heads it: identity, unreviewed lines and
-/// answer.
 fn turn_input(data: &str) -> &str {
     let rule = include_str!("rules/turn.md");
     &data[data
@@ -172,7 +164,6 @@ fn wakeup_delivers_full_selected_text_and_comment_with_plain_identity() {
     assert_eq!(prompt.matches(&request.instance).count(), 1);
     assert_eq!(prompt.matches(&request.request).count(), 1);
     assert!(prompt.contains("Review unit: r\nCheckpoint: c\n"));
-    // The answer and identity stay small beside the fixed later-turn rules.
     assert!(turn_input(&prompt).len() < 1_000);
 }
 
@@ -306,7 +297,6 @@ fn a_wakeup_names_the_cancelled_answers_before_the_answer_that_replaces_them() {
     ));
 }
 
-/// The kickoff prompt for a change with `base` as its identity.
 fn kickoff(base: serde_json::Value) -> String {
     let mut comparison = comparison();
     comparison.base = Some(serde_json::from_value(base).unwrap());
@@ -369,7 +359,6 @@ fn git_working_trees_and_undescribed_changes_have_no_description() {
     }
 }
 
-/// The turn `request` of a round on `comparison`, with nothing unreviewed.
 fn prepared(request: &TurnRequest, comparison: &Comparison) -> TurnInstructions {
     TurnInstructions::prepare(
         request,
@@ -381,8 +370,6 @@ fn prepared(request: &TurnRequest, comparison: &Comparison) -> TurnInstructions 
     )
 }
 
-/// The first turn of a round on `comparison` that `setup` sets up, or its turn after an answer
-/// when `kickoff` is false.
 fn turn_of(
     comparison: &Comparison,
     kickoff: bool,
@@ -397,7 +384,6 @@ fn turn_of(
     prepared(&request, comparison)
 }
 
-/// The text of the file `name` of `turn`, when the turn has one.
 fn file<'a>(turn: &'a TurnInstructions, name: &str) -> Option<&'a str> {
     turn.files()
         .iter()
@@ -409,12 +395,10 @@ fn names(turn: &TurnInstructions) -> Vec<&'static str> {
     turn.files().iter().map(|file| file.name).collect()
 }
 
-/// The first line of a rule file: its heading.
 fn heading(rules: &str) -> &str {
     rules.lines().next().unwrap()
 }
 
-/// The section of `index` that holds `rules`, from their heading to the next section.
 fn section<'a>(index: &'a str, rules: &str) -> &'a str {
     let start = index.find(heading(rules)).expect(index);
     let end = index[start + 1..]
@@ -471,7 +455,6 @@ fn only_a_round_with_a_challenger_has_its_script_on_every_turn() {
                 challenger,
                 "kickoff: {kickoff}"
             );
-            // The field the script asks for appears nowhere else.
             assert_eq!(
                 turn.files()
                     .iter()
@@ -537,7 +520,6 @@ fn a_round_has_the_rules_of_its_own_writing_style_only() {
                 .replace(&request.request, ""),
         );
     }
-    // The style changes the rules only, never what the turn brings.
     assert_eq!(inputs[0], inputs[1]);
     assert_eq!(inputs[0], inputs[2]);
 }
@@ -594,7 +576,6 @@ fn the_index_names_every_other_file_once_and_sends_the_turns_data_and_steps_firs
         for name in ["diagrams.md", "conclusion.md", "conversation.md"] {
             assert!(entry(name) > later, "{name}");
         }
-        // The round's data is new on the first turn, and known after it.
         assert_eq!(entry("round.md") < later, kickoff);
     }
 }
@@ -633,9 +614,6 @@ fn the_prompt_of_a_round_on_the_reviewer_s_model_ends_with_the_line_that_names_i
     );
 }
 
-/// The prompts that name the round's model, which the tests of the plugin's hooks module switch
-/// on (`crates/claude-hooks/plugin/hooks/round-prompts.ts`): a round's turn, its Implement and its
-/// Post review.
 fn round_prompts() -> [String; 3] {
     let comparison = comparison();
     let mut request = Exploration::new(Arc::new(comparison.clone()))
@@ -682,8 +660,6 @@ fn the_hooks_module_s_tests_switch_on_the_prompts_the_reviewer_sends() {
     );
 }
 
-/// The models of a round on Fable 5.2 at max effort, implemented on Opus at high effort when
-/// `worker`.
 fn models(worker: bool) -> review_explore_model::ExploreModels {
     use review_explore_model::{Effort, ModelEffort};
     review_explore_model::ExploreModels {
@@ -726,11 +702,9 @@ fn implement_has_a_fresh_subagent_on_the_worker_s_model_do_the_tasks_and_reviews
         added.ends_with("\n\nExplore runs on claude-fable-5-2 at max effort.\n\n"),
         "the agent goes on on the round's model: {added}"
     );
-    // The worker's model and effort, as the Agent tool takes them.
     for named in ["`opus`", "`high`"] {
         assert!(added.contains(named), "{named}: {added}");
     }
-    // Without the worker's model, the agent implements the list itself, on the round's model.
     let no_worker = implementation_prompt(&request, ChangeAuthor::Reviewer, Some(&models(false)));
     assert_eq!(
         no_worker,
@@ -739,7 +713,6 @@ fn implement_has_a_fresh_subagent_on_the_worker_s_model_do_the_tasks_and_reviews
             "Explore runs on claude-fable-5-2 at max effort.\n\nTasks from the reviewer:"
         )
     );
-    // Someone else's change gets no subagent: posting the review is the whole scope.
     let posted = implementation_prompt(&request, ChangeAuthor::Other, Some(&models(true)));
     assert_eq!(
         posted,
@@ -750,7 +723,6 @@ fn implement_has_a_fresh_subagent_on_the_worker_s_model_do_the_tasks_and_reviews
     );
 }
 
-/// The strings `value` holds as an enum value or a constant, at any depth.
 fn constants(value: &serde_json::Value, found: &mut Vec<String>) {
     match value {
         serde_json::Value::Object(object) => {
@@ -859,11 +831,9 @@ fn the_design_rules_ask_for_the_theses_and_every_part_of_the_design() {
             .collect()
     };
     let required = |schema: &serde_json::Value| schema["required"].as_array().unwrap().len();
-    // The change's thesis, then its four parts.
     let parts = fields(&design);
     assert_eq!(parts.len(), 5, "{parts:?}");
     assert_eq!(required(&design), 5, "{design}");
-    // Each part: its thesis, then its Markdown.
     let part = &design["$defs"]["DesignPart"];
     let part_fields = fields(part);
     assert_eq!(part_fields.len(), 2, "{part_fields:?}");
@@ -1025,8 +995,6 @@ fn every_turn_carries_the_reviewers_notes_quoted() {
     }
 }
 
-/// The turn after the reviewer sent the agent of a round on `comparison` that `setup` sets up
-/// back to the drawing board.
 fn at_drawing_board(
     comparison: &Comparison,
     setup: impl FnOnce(&mut Exploration),
@@ -1034,8 +1002,6 @@ fn at_drawing_board(
     sent_back_with(comparison, setup, "")
 }
 
-/// The turn after the reviewer sent the agent back to the drawing board with the comment
-/// `comment`.
 fn sent_back_with(
     comparison: &Comparison,
     setup: impl FnOnce(&mut Exploration),
@@ -1075,7 +1041,6 @@ fn the_comment_that_sends_the_agent_back_to_the_drawing_board_is_the_reviewer_s_
 #[test]
 fn a_turn_at_the_drawing_board_has_its_own_steps_in_place_of_the_next_turns_and_the_quizs() {
     let comparison = comparison();
-    // The agent concludes alone, even in a round with a challenger.
     let turn = at_drawing_board(&comparison, |round| round.challenger = true);
     let index = file(&turn, INDEX).unwrap();
     let steps = index.find("- `drawing-board.md`:").expect(index);
@@ -1088,7 +1053,6 @@ fn a_turn_at_the_drawing_board_has_its_own_steps_in_place_of_the_next_turns_and_
     assert!(data.contains("Back to the drawing board"), "{data}");
     assert!(!data.contains("Selected option"), "{data}");
     let rules = file(&turn, "drawing-board.md").unwrap();
-    // The fields the tool refuses a turn at the drawing board on, as the tool names them.
     let conclusion =
         serde_json::to_value(schemars::schema_for!(review_explore::ConclusionSubmission)).unwrap();
     for field in [
@@ -1116,7 +1080,6 @@ fn every_file_a_turn_names_is_a_file_of_that_turn() {
                 round.challenger = challenger;
                 round.author = author;
             };
-            // No kickoff: the turn at the drawing board.
             let turn = match kickoff {
                 Some(kickoff) => turn_of(&comparison, kickoff, setup),
                 None => at_drawing_board(&comparison, setup),

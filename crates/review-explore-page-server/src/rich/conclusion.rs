@@ -1,6 +1,3 @@
-//! The conclusion of the rich data set: a long summary, a list of ten tasks to implement, future
-//! work, and a quiz of three items with their proofs.
-
 use review_explore::{Conclusion, Interpretation, QuizItem, SourceSide, TopicStatus};
 use review_explore_page::TurnResponse;
 
@@ -39,7 +36,6 @@ Make the idle delay and the size cap settings once a reviewer asks for other num
 number of waiting replies in the pane's footer, which would also tell the reviewer that the \
 agent has not heard about them yet.";
 
-/// The conclusion: with its quiz when `quiz`, or else with the reason it has none.
 pub(super) fn conclusion(quiz: bool) -> Conclusion {
     Conclusion {
         summary: SUMMARY.into(),
@@ -52,7 +48,6 @@ pub(super) fn conclusion(quiz: bool) -> Conclusion {
     }
 }
 
-/// What the agent says back to the reviewer's last answer above its conclusion.
 pub(super) fn conclusion_response() -> TurnResponse {
     TurnResponse {
         interpretations: vec![Interpretation {

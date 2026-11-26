@@ -1,8 +1,3 @@
-//! Discarding forks: each is stopped, its transcript deleted, and its record says why. Forks go
-//! when their question no longer waits, when the agent's session moved, when run-ahead is
-//! turned off and when the reviewer closes; a reopened reviewer discards those a stopped
-//! reviewer left.
-
 use std::collections::HashSet;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -12,11 +7,9 @@ use review_run_ahead::{DiscardReason, Failure, ForkEnd, ForkTrace, PlainReason, 
 use super::{Event, RoundKey, RunAheadInput, TakenFork};
 use crate::{ExploreSession, Input};
 
-/// How long a closing reviewer waits for its forks to stop: SIGTERM, three seconds, SIGKILL.
 pub(super) const CLOSE_WAIT: Duration = Duration::from_secs(6);
 
 impl ExploreSession {
-    /// Stops watching the question that waits, and discards its forks for `reason`.
     pub(crate) fn run_ahead_discard(&mut self, reason: DiscardReason) {
         if self.run_ahead.armed.is_none() {
             return;
@@ -25,7 +18,6 @@ impl ExploreSession {
         self.run_ahead.armed = None;
     }
 
-    /// Discards the forks taken for the question that waits, for `reason`, and keeps watching.
     pub(super) fn discard_taken(&mut self, reason: DiscardReason) {
         let Some(armed) = self.run_ahead.armed.as_mut() else {
             return;
@@ -37,7 +29,6 @@ impl ExploreSession {
         self.discard_forks(&round, &taken.forks, reason);
     }
 
-    /// Discards `forks` of `round` for `reason`: each is stopped and its session deleted.
     pub(super) fn discard_forks(
         &mut self,
         round: &RoundKey,
@@ -52,8 +43,6 @@ impl ExploreSession {
             .log(&format!("{} forks discarded: {reason:?}", forks.len()));
     }
 
-    /// Stops the fork `fork` of `round` and deletes its transcript; its record says so once
-    /// both are done.
     pub(super) fn discard_in_background(&self, round: &RoundKey, fork: ForkTrace<'_>) {
         let inbox = self.inbox.clone();
         let cleaned = Event::Cleaned {
@@ -66,8 +55,6 @@ impl ExploreSession {
         );
     }
 
-    /// Records `forks` as discarded for `reason`, and refuses their calls from now on, by their
-    /// access value or their session.
     fn mark_discarded(&mut self, round: &RoundKey, forks: &[TakenFork], reason: DiscardReason) {
         let sessions: HashSet<_> = forks.iter().map(|fork| &fork.session).collect();
         self.run_ahead.discarded.extend(
@@ -89,17 +76,12 @@ impl ExploreSession {
         }
     }
 
-    /// The reviewer closes: discards the forks of the question that waits, and the one an answer
-    /// waits for, and waits for them to stop, at most six seconds. The host lets the discards
-    /// already under way finish.
     pub(crate) fn run_ahead_close(&mut self) {
         let waiting = self.run_ahead.armed.take().and_then(|armed| {
             let taken = armed.taken?;
             Some((armed.asked.round, taken.forks))
         });
         let finishing = self.run_ahead.finishing.take().map(|finishing| {
-            // Once reopened, the answer waits for Retry, which sends it to the agent in the pane.
-            // A closing reviewer shows nothing and counts no failure: only the record changes.
             let request = finishing.turn.request.request;
             let _ = self.update_forks(&finishing.asked.round, |forks| {
                 if let Some(answer) = forks.answer_mut(&request) {
@@ -152,10 +134,6 @@ impl ExploreSession {
         ));
     }
 
-    /// The reviewer opened a review: discards the forks a stopped reviewer left running or on
-    /// disk, in the rounds of every review of the repository. Forks of a reviewer that still
-    /// runs stay its own, and a fork whose session the pane's agent may run stays until the
-    /// agent settles.
     pub(crate) fn run_ahead_restore(&mut self) {
         let reviewer = self.run_ahead.reviewer;
         let Ok(rounds) = self.rounds.rounds_with_forks(|forks| {
@@ -171,7 +149,6 @@ impl ExploreSession {
         }
     }
 
-    /// Discards the forks of `round` that a stopped reviewer left.
     fn discard_left(&mut self, round: &RoundKey) {
         let reviewer = self.run_ahead.reviewer;
         let now = review_explore::now_ms();
@@ -200,8 +177,6 @@ impl ExploreSession {
         }
     }
 
-    /// The fork `session` of `round` ended: its record keeps how, and its tokens. A fork that
-    /// ended without a turn before it was discarded failed: a failure of run-ahead.
     pub(super) fn run_ahead_ended(&mut self, round: &RoundKey, session: &str, end: &ForkEnd) {
         if let Some(fork) = self.run_ahead.fork_mut(session) {
             fork.ended = true;
@@ -242,7 +217,6 @@ impl ExploreSession {
         self.run_ahead_waited_fork_ended(session);
     }
 
-    /// Counts `failure` of run-ahead in `round`: too many in a row stop run-ahead for the round.
     pub(super) fn run_ahead_failed(&mut self, round: &RoundKey, failure: Failure) {
         let now = review_explore::now_ms();
         let line = format!("run-ahead failed: {failure}");
@@ -262,12 +236,8 @@ impl ExploreSession {
         }
     }
 
-    /// Run-ahead failed too many times in a row in `round`, as `notice` says: it stops for the
-    /// round. The forks of the question that waits are discarded, the reviewer hears of it once,
-    /// and answers run the plain chain until the round ends.
     pub(super) fn halt(&mut self, round: &RoundKey, notice: String) {
         self.run_ahead.log(&notice);
-        // A round the reviewer left stops quietly.
         if self
             .state
             .round
@@ -292,7 +262,6 @@ impl ExploreSession {
         }
     }
 
-    /// The fork `session` of `round` is stopped and its transcript deleted.
     pub(super) fn run_ahead_cleaned(&mut self, round: &RoundKey, session: &str) {
         let _ = self.update_forks(round, |forks| {
             if let Some(record) = forks.fork_mut(session) {

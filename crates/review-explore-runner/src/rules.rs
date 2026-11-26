@@ -1,6 +1,3 @@
-//! The files of a turn: the rule files the round's setup needs, the turn's own data, and the
-//! index that says which to read now and when to read each of the others.
-
 use std::fmt::Write as _;
 
 use markdown_marks::{Callout, Mark, StatusMark};
@@ -10,28 +7,20 @@ use review_repository::repository::SnapshotIdentity;
 
 use crate::INDEX;
 
-/// One file of a turn's directory.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TurnFile {
     pub name: &'static str,
     pub text: String,
 }
 
-/// The file of the turn's own data: its identity, and the reviewer's answer after the first.
 const TURN: &str = "turn.md";
-/// The file of the round's data, the same on every turn, which the index describes.
 const ROUND: &str = "round.md";
 
-/// The heading of the index's list of the files to read at the start of the turn.
 const READ_NOW: &str = "## Read now";
-/// The heading of the index's list of the files to read once the agent reaches what each covers.
 pub(crate) const READ_LATER: &str = "## Read when you need it";
 
-/// When the agent reads a file, as the index says.
 enum When {
-    /// At the start of the turn; the text says what the file holds.
     Now(&'static str),
-    /// Once the agent reaches what the file covers, which the text names.
     On(&'static str),
 }
 
@@ -51,9 +40,6 @@ impl Rule {
     }
 }
 
-/// The files of the turn `request` of a round on `comparison`, whose own data is `input` and
-/// whose round's data is `round`: the index, the turn's and the round's data, then the rules the
-/// round's setup needs that the index does not hold.
 pub(super) fn files(
     request: &TurnRequest,
     comparison: &Comparison,
@@ -82,7 +68,6 @@ pub(super) fn files(
     files
 }
 
-/// The rule files of the turn `request` beside its index: only those its round's setup needs.
 fn rules(request: &TurnRequest) -> Vec<Rule> {
     let drawing_board = request.at_drawing_board();
     let mut rules = vec![if request.is_kickoff() {
@@ -111,7 +96,6 @@ fn rules(request: &TurnRequest) -> Vec<Rule> {
             When::Now("how a review of someone else's change differs, which overrides the rest"),
         ));
     }
-    // At the drawing board, the agent concludes alone.
     if request.challenger && !drawing_board {
         rules.push(Rule::new(
             "challenger.md",
@@ -124,7 +108,6 @@ fn rules(request: &TurnRequest) -> Vec<Rule> {
         diagrams(),
         When::On("before you draw a diagram"),
     ));
-    // At the drawing board, its own file says how to conclude.
     if !drawing_board {
         rules.push(Rule::new(
             "conclusion.md",
@@ -140,9 +123,6 @@ fn rules(request: &TurnRequest) -> Vec<Rule> {
     rules
 }
 
-/// The index of the turn `request` of a round on `comparison`, whose rule files are `rules`:
-/// what the round is, which files to read now and when to read each of the others, how the turn
-/// ends, then the rules that every turn needs, so that one read gives them.
 fn index(request: &TurnRequest, comparison: &Comparison, rules: &[Rule]) -> String {
     let kickoff = request.is_kickoff();
     let data = if kickoff {
@@ -191,8 +171,6 @@ fn index(request: &TurnRequest, comparison: &Comparison, rules: &[Rule]) -> Stri
     index
 }
 
-/// How to read the sources, with the commands of the version control the round's change comes
-/// from, or of both when the round does not say.
 fn sources(comparison: &Comparison) -> String {
     let jj = include_str!("rules/sources-jj.md");
     let git = include_str!("rules/sources-git.md");
@@ -204,8 +182,6 @@ fn sources(comparison: &Comparison) -> String {
     format!("{}\n{commands}", include_str!("rules/sources.md"))
 }
 
-/// How to write the texts the reviewer reads, with the markers of their callouts and status
-/// marks, and the rules of the round's writing style when it has some.
 fn texts(writing: WritingStyle) -> String {
     fn markers<M: Mark>() -> String {
         M::ALL
@@ -236,7 +212,6 @@ fn texts(writing: WritingStyle) -> String {
     texts
 }
 
-/// How the page draws a diagram, and how to avoid parse errors.
 fn diagrams() -> String {
     format!(
         "# Diagrams\n\nA diagram is a fenced block that opens with ```` ```{} ````, which the \

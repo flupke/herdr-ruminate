@@ -78,7 +78,6 @@ fn a_reset_closes_the_rounds_page_and_opens_a_new_one_for_the_next_round() {
     );
 }
 
-/// A socket open to `path` of the page at `address`, behind the token of `url`.
 fn socket(
     address: std::net::SocketAddr,
     url: &str,
@@ -102,7 +101,6 @@ fn socket(
     client(upgrade, stream).unwrap().0
 }
 
-/// The view of the first message `socket` reads.
 fn first_view(
     socket: &mut tokio_tungstenite::tungstenite::WebSocket<TcpStream>,
 ) -> serde_json::Value {

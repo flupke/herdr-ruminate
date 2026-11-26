@@ -1,6 +1,3 @@
-//! Taking the forks of the question that waits: one per choice the setting names, each told
-//! the prompt the agent would get after that answer, under the identities reserved for it.
-
 use std::collections::BTreeMap;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
@@ -21,9 +18,6 @@ use crate::turn_files::TurnFiles;
 use crate::unreviewed_diffs::UnreviewedDiffs;
 use crate::{ExploreSession, Input};
 
-/// The files the forks of one question read: the unreviewed diffs their turns name, written
-/// from a copy of the review marks with the question's marks applied, and each fork's
-/// instructions, by its session.
 pub(super) struct ForkFiles {
     _marks: TempDir,
     diffs: UnreviewedDiffs,
@@ -31,29 +25,22 @@ pub(super) struct ForkFiles {
 }
 
 impl ForkFiles {
-    /// The unreviewed diffs the forks' turns name.
     pub(super) fn diffs(&self) -> &UnreviewedDiffs {
         &self.diffs
     }
 
-    /// The unreviewed diffs and the instructions of the fork whose session is `session`, which
-    /// outlive the copy of the review marks the diffs were written from.
     pub(super) fn into_fork(mut self, session: &str) -> (UnreviewedDiffs, Option<TurnFiles>) {
         let turn = self.turns.remove(session);
         (self.diffs, turn)
     }
 }
 
-/// Why no fork is taken for the question that waits.
 struct Refusal {
     why: String,
-    /// Whether run-ahead failed: a check or a step it needs could not be made, rather than
-    /// the forks waiting for something or the question needing none.
     failed: bool,
 }
 
 impl Refusal {
-    /// Run-ahead failed, for `why`.
     fn failed(why: impl std::fmt::Display) -> Self {
         Self {
             why: why.to_string(),
@@ -74,7 +61,6 @@ impl From<&str> for Refusal {
     }
 }
 
-/// The forks to start for the question that waits.
 struct ForkPlan {
     point: ForkPoint,
     files: ForkFiles,
@@ -82,7 +68,6 @@ struct ForkPlan {
 }
 
 impl ExploreSession {
-    /// Takes the forks of the question that waits, or logs why none can be taken.
     pub(super) fn run_ahead_take(&mut self) {
         match self.fork_plan() {
             Ok(plan) => self.start_forks(plan),
@@ -99,8 +84,6 @@ impl ExploreSession {
         }
     }
 
-    /// No fork could be taken for the question that waits, for `why`, a failure of run-ahead:
-    /// it counts once per question, however often the refusal repeats.
     fn no_forks_failed(&mut self, why: String) {
         let Some(armed) = self.run_ahead.armed.as_mut() else {
             return;
@@ -112,7 +95,6 @@ impl ExploreSession {
         self.run_ahead_failed(&round, Failure::NoForks { why });
     }
 
-    /// The forks of the question that waits, prompts included, or why none can be taken.
     fn fork_plan(&mut self) -> Result<ForkPlan, Refusal> {
         let armed = self.run_ahead.armed.as_ref().ok_or("no question waits")?;
         if self.run_ahead.switching.is_some() {
@@ -134,14 +116,12 @@ impl ExploreSession {
         let agent = self.agent_to_fork(&pane)?;
         let choices = self.choices_to_prepare(&question)?;
         let point = self.run_ahead.host.point(&agent).map_err(Refusal::failed)?;
-        // A prepared turn runs on the round's model and effort, as the agent's would.
         let models = review_explore_model::ExploreModels::of_agent(&*self.agents, &agent);
         let round = self.state.round.clone().ok_or("no round")?;
         let comparison = self.state.comparison.clone().ok_or("no change captured")?;
         let (unreviewed, mut files, diverged) = self
             .unreviewed_after_answer(&round)
             .map_err(|error| Refusal::failed(format!("{error:#}")))?;
-        // A fork's turn carries the round's data as the agent's would.
         let round_data = self
             .round_data(
                 &comparison.checkpoint.review_unit,
@@ -159,7 +139,6 @@ impl ExploreSession {
                 }
             }
         }
-        // Kept while the question waits: forks taken again are told the same.
         let armed = self.run_ahead.armed.as_mut().ok_or("no question waits")?;
         let turns = choices
             .iter()
@@ -184,7 +163,6 @@ impl ExploreSession {
                 )
             })
             .collect::<Result<Vec<_>, _>>();
-        // The forks' turns number the lines like the code they were written from.
         let requests: Vec<String> = choices
             .iter()
             .filter_map(|choice| armed.reserved.get(&choice.id))
@@ -217,14 +195,12 @@ impl ExploreSession {
         })
     }
 
-    /// Discards the forks `unrecorded`, whose records were never saved: no record names them.
     fn forget<'a>(&self, unrecorded: impl IntoIterator<Item = review_run_ahead::ForkTrace<'a>>) {
         for fork in unrecorded {
             self.run_ahead.host.discard(fork, Box::new(|| {}));
         }
     }
 
-    /// The agent of `pane`, once its session may be forked now, or why not.
     fn agent_to_fork(&mut self, pane: &PaneId) -> Result<Agent, Refusal> {
         let agent = self
             .agents
@@ -234,8 +210,6 @@ impl ExploreSession {
         if !agent.agent_status.waits_for_prompt() {
             return Err(format!("the agent is {:?}", agent.agent_status).into());
         }
-        // Forks taken from a session the round does not match would prepare turns of another
-        // interview: the idle agent settles first, by itself once.
         if let Some((round, fork)) = self.unsettled() {
             let reason = format!(
                 "the agent may run the session of the fork {}, whose turn the round did not take",
@@ -250,7 +224,6 @@ impl ExploreSession {
                 return Err(reason.into());
             }
         }
-        // Run-ahead hears what the agent does through its hooks alone.
         let unavailable = self
             .run_ahead
             .host
@@ -263,7 +236,6 @@ impl ExploreSession {
         }
     }
 
-    /// The choices of `question` the reviewer's settings prepare.
     fn choices_to_prepare(&self, question: &Question) -> Result<Vec<Alternative>, Refusal> {
         let run_ahead = self.rounds.run_ahead().map_err(Refusal::failed)?;
         let choices: Vec<_> = question
@@ -282,9 +254,6 @@ impl ExploreSession {
         Ok(choices)
     }
 
-    /// The unreviewed lines as the turn after an answer lists them: the current ones, less the
-    /// lines the question's turn marks once the reviewer answers, worked out on a copy of the
-    /// review marks.
     fn unreviewed_after_answer(
         &self,
         round: &ExploreRound,
@@ -298,7 +267,6 @@ impl ExploreSession {
             .tracker
             .copy_into(snapshot.identity.review_unit(), marks.path())?;
         if let Some(update) = round.exploration.waiting_turn() {
-            // Who marks does not change which lines stay unreviewed.
             let author = MarkAuthor::Explore {
                 answer: "run-ahead".into(),
             };
@@ -317,7 +285,6 @@ impl ExploreSession {
         ))
     }
 
-    /// Saves the record of the forks of `plan`, then starts them.
     fn start_forks(&mut self, plan: ForkPlan) {
         let round = self
             .run_ahead
@@ -393,10 +360,6 @@ impl ExploreSession {
         }
     }
 
-    /// Saves the records of the forks of `plan`, for the question that waits in `round`, before
-    /// they start, so that a reviewer that dies meanwhile leaves their sessions named for the next
-    /// one to delete. Checked under the lock of the record, so that two reviewers do not both
-    /// fork the question. Returns when the forks were taken, once they may start.
     fn save_records(&mut self, round: &RoundKey, plan: &ForkPlan) -> Option<u64> {
         let armed = self.run_ahead.armed.as_ref().expect("a question waits");
         let (question, reviewer) = (armed.asked.question.clone(), self.run_ahead.reviewer);
@@ -448,7 +411,6 @@ impl ExploreSession {
         }
     }
 
-    /// Where the fork `fork` of `round` reports its end: the session's inbox.
     fn ended_report(
         &self,
         round: &RoundKey,
@@ -466,9 +428,6 @@ impl ExploreSession {
     }
 }
 
-/// Why no fork may be taken for `question`, as the forks of its round stand: run-ahead stopped
-/// for the round, or forks of another reviewer that still runs answer it. This `reviewer`
-/// takes the forks.
 fn refusal(forks: &RoundForks, question: &Question, reviewer: ProcessStamp) -> Option<String> {
     if let Some(notice) = forks.halt_notice() {
         return Some(notice);
@@ -483,19 +442,14 @@ fn refusal(forks: &RoundForks, question: &Question, reviewer: ProcessStamp) -> O
         .then(|| "another reviewer forks this question".to_owned())
 }
 
-/// What the turn of every fork of a question is written from.
 #[derive(Clone, Copy)]
 struct ForkTurnInputs<'a> {
     comparison: &'a Arc<Comparison>,
     unreviewed: &'a Unreviewed,
     round_data: &'a RoundData,
-    /// The models and the efforts of the round, if the reviewer knows them.
     models: Option<&'a review_explore_model::ExploreModels>,
 }
 
-/// The fork `created` that answers `question` with `choice`, and the files of its turn, whose
-/// prompt names them: the turn the agent would get after that answer, under the identities
-/// `reserved` for the choice, with the fork's own access value.
 fn fork_turn(
     round: &ExploreRound,
     question: &Question,

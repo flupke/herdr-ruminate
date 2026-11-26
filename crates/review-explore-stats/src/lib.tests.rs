@@ -1,32 +1,3 @@
-//! The numbers of three synthetic saved rounds, worked out by hand from the
-//! fixtures in `testdata`:
-//!
-//! - `answered.json`, started 2026-09-10 10:00 UTC, without a Challenger: two
-//!   questions, both answered, then a conclusion. Agent turns of 200, 120 and
-//!   30 s; the reviewer answered after 30 and 90 s. The first answer declined
-//!   the recommended choice and asked for a change; the second question had no
-//!   recommendation. The questions hold 18 and 15 words.
-//! - `challenger.json`, started 2026-09-20 10:00 UTC, with a Challenger: three
-//!   questions, two answered, no conclusion. Agent turns of 240, 180 and
-//!   150 s; the reviewer answered after 60 and 120 s. The first answer took the
-//!   recommendation, the second chose None of the above. No change was asked.
-//!   The questions hold 8, 10 and 5 words. The Challenger proposed five
-//!   questions: one asked, one kept on the first turn and merged on the
-//!   second, two retired and one still kept at the end.
-//!   Run-ahead watched both answers (`challenger.forks.json`). The first used the
-//!   prepared turn of its fork for "mutex", which had submitted 10 s before the
-//!   answer, so its 180 s are the agent's switch to the fork, no agent turn; the
-//!   other fork of that question had not. The second answer chose
-//!   None of the above: of its question's three forks, one was discarded by a
-//!   message in the round conversation before the answer, one had submitted 10 s before it, and
-//!   one, saved before forks kept when they submitted, had its turn when the
-//!   answer discarded it. The fork used spent 55,010 tokens, 50,000 of them read
-//!   from the cache; the others 92,705, 90,000 from the cache.
-//! - `unanswered.json`, saved before turns recorded their timing, without a
-//!   Challenger: one question of 6 words, never answered.
-//!
-//! The answered and unanswered rounds have no run-ahead record, as every round
-//! saved before run-ahead existed.
 use super::*;
 use proposals::ProposalCounts;
 use review_run_ahead::RoundForks;
@@ -41,7 +12,6 @@ const CHALLENGER: &str = include_str!("../testdata/challenger.json");
 const UNANSWERED: &str = include_str!("../testdata/unanswered.json");
 const CHALLENGER_FORKS: &str = include_str!("../testdata/challenger.forks.json");
 
-/// When the unanswered round was saved: 2026-09-25 10:00 UTC.
 const UNANSWERED_SAVED_AT_S: u64 = 1_790_330_400;
 
 fn saved(json: &str, saved_at: SystemTime) -> SavedRound {
@@ -238,7 +208,6 @@ fn proposals_count_once_at_their_latest_result_in_rounds_with_a_challenger() {
 #[test]
 fn back_to_the_drawing_board_declines_no_recommendation() {
     let mut stored: serde_json::Value = serde_json::from_str(ANSWERED).unwrap();
-    // The first answer declined the recommended choice: it sends the agent back instead.
     let answer = &mut stored["value"]["exploration"]["answers"][0];
     answer["option"] = serde_json::Value::Null;
     answer["drawing_board"] = true.into();
@@ -326,7 +295,6 @@ fn a_prepared_turn_whose_switch_did_not_end_was_not_used() {
 #[test]
 fn a_fork_taken_again_after_a_cancelled_answer_counts_at_the_next_answer() {
     let mut stored: serde_json::Value = serde_json::from_str(CHALLENGER_FORKS).unwrap();
-    // An answer to the second question, before its last forks were taken, then cancelled.
     stored["value"]["answers"].as_array_mut().unwrap().insert(
         1,
         serde_json::json!({

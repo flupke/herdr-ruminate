@@ -1,23 +1,3 @@
-//! Serves the Explore page alone, with no pane, no agent and no Herdr: for working on the page,
-//! and for its e2e tests (`tests/explore-page`).
-//!
-//! `explore-page-server [--port N] [--token T] [--data short|rich] [--dev DIR] [--fixed-clock]`
-//!
-//! It listens on the loopback address and prints the address of a page that shows the fixed
-//! question.
-//!
-//! - `--port 0` picks a free port.
-//! - `--token` chooses the token of that address; it is random otherwise.
-//! - `--data` picks what the agent posts ([`round_data`]): the `short` data set of the e2e
-//!   tests, the default, or the `rich` one of the screenshot gallery, as long as a real round.
-//! - `--dev` reads the templates and assets from `DIR`, the page crate's directory, on every
-//!   request, and loads an open page again when one of them changes. A release build refuses
-//!   it.
-//! - `--fixed-clock` stamps every start and every turn with the same time, so that two runs of
-//!   the screenshot gallery draw the same page.
-//!
-//! Each e2e test opens its own session through the routes of [`control`].
-
 mod changed_source;
 mod control;
 mod conversation;
@@ -131,8 +111,6 @@ fn serve(options: Options) -> Result<(), String> {
     })
 }
 
-/// The e2e run fails on a `csp violation` line in this log. The report comes from the browser:
-/// it is quoted, so it cannot write a line of its own.
 fn log(event: PageEvent) {
     match event {
         PageEvent::UnknownHost => println!("refused: unknown host"),

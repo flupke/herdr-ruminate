@@ -1,8 +1,6 @@
-//! The numbers of a set of rounds.
 use crate::{proposals::ProposalCounts, run_ahead::RunAheadSummary, sample::RoundSample};
 use std::{cmp::Ordering, time::Duration};
 
-/// How many of `whole` items were `part`.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct Share {
     pub(crate) part: usize,
@@ -15,7 +13,6 @@ impl Share {
         self.part += usize::from(counts);
     }
 
-    /// The share as a ratio, when there is a whole.
     #[allow(clippy::cast_precision_loss)]
     pub(crate) fn ratio(self) -> Option<f64> {
         (self.whole > 0).then(|| self.part as f64 / self.whole as f64)
@@ -31,7 +28,6 @@ impl Share {
     }
 }
 
-/// The median and range of a count.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Spread {
     pub(crate) median: f64,
@@ -50,7 +46,6 @@ impl Spread {
     }
 }
 
-/// Some values, at least one, in order.
 pub(crate) struct Sorted<T>(Vec<T>);
 
 impl<T: Copy> Sorted<T> {
@@ -71,7 +66,6 @@ impl<T: Copy> Sorted<T> {
         self.0[self.0.len() - 1]
     }
 
-    /// The middle value twice, or the two middle values.
     fn middle(&self) -> (T, T) {
         let upper = self.0[self.0.len() / 2];
         if self.0.len().is_multiple_of(2) {
@@ -101,7 +95,6 @@ impl Sorted<usize> {
 }
 
 impl Sorted<u64> {
-    /// The median of some times in milliseconds.
     pub(crate) fn median_time(milliseconds: impl IntoIterator<Item = u64>) -> Option<Duration> {
         let (lower, upper) = Self::of(milliseconds)?.middle();
         Some(Duration::from_millis(lower.midpoint(upper)))
@@ -115,25 +108,19 @@ impl Sorted<f64> {
     }
 }
 
-/// The numbers of some rounds. A round with no answer counts as a round and
-/// stays out of every number about answers.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct Summary {
     pub(crate) rounds: usize,
     pub(crate) answered: usize,
     pub(crate) concluded: usize,
-    /// Over answered rounds: an unanswered round has at most its first question.
     pub(crate) questions: Option<Spread>,
     pub(crate) change_requests: Share,
     pub(crate) declined_recommendations: Share,
     pub(crate) agent_turn: Option<Duration>,
     pub(crate) agent_turn_after_answer: Option<Duration>,
     pub(crate) reviewer_answer: Option<Duration>,
-    /// The median, over answered rounds, of the share of the round's time,
-    /// agent turns plus reviewer answers, that went to agent turns.
     pub(crate) waiting_share: Option<f64>,
     pub(crate) question_words: Option<f64>,
-    /// Over the rounds with a Challenger; none without one.
     pub(crate) proposals: Option<ProposalCounts>,
     pub(crate) run_ahead: RunAheadSummary,
 }
@@ -146,7 +133,6 @@ impl Summary {
             .copied()
             .filter(|sample| sample.answered)
             .collect();
-        // A prepared turn is no turn of the agent's: its time is a switch.
         let turns = || {
             samples
                 .iter()

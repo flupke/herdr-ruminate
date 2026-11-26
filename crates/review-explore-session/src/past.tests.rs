@@ -1,5 +1,3 @@
-//! The repository's saved rounds, as the Explore page on this machine lists and opens them.
-
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -10,12 +8,10 @@ use review_repository::diff::DiffRow;
 use super::*;
 use crate::past::SavedRoundsReader;
 
-/// The reader of the harness's saved rounds.
 fn reader(harness: &Harness) -> SavedRoundsReader {
     SavedRoundsReader::new(harness.store.clone(), harness.repository.clone())
 }
 
-/// The round of the harness, asking its first question, which cites `reviewed.rs`.
 fn asking() -> Harness {
     let mut harness = Harness::start();
     harness.capture();
@@ -25,7 +21,6 @@ fn asking() -> Harness {
     harness
 }
 
-/// The text of each row of the first citation of the question `stage` asks.
 fn cited(stage: &RoundStage) -> Vec<DiffRow> {
     let RoundStage::Question { citations, .. } = stage else {
         panic!("the round shows {stage:?}");
@@ -44,7 +39,6 @@ fn a_reset_round_opens_where_it_stopped_with_the_code_it_cited_then() {
     let mut harness = asking();
     let instance = harness.exploration().instance.clone();
     harness.session.handle(Input::Command(Command::Reset));
-    // The working copy moved on since the round cited it.
     harness
         .files
         .write("reviewed.rs", b"pub fn rewritten() {}\n");
@@ -84,7 +78,6 @@ fn a_round_saved_while_the_agent_worked_shows_where_it_stopped() {
         panic!("the round shows {:?}", past.stage());
     };
     assert_eq!(request.as_deref(), Some(answer.request.as_str()));
-    // The prompt reached the agent, whose turn never came back.
     assert_eq!(*interruption, Interruption::Stopped);
     let sent = sent.as_ref().expect("the answer the turn carries");
     assert_eq!(sent.kept.comment, "Keep it.");
@@ -95,7 +88,6 @@ fn the_saved_rounds_are_listed_by_change_the_change_with_the_newest_round_first(
     let harness = asking();
     let saved = harness.saved();
     let records = harness.store.lock_explore(&harness.unit).unwrap();
-    // A later round of the same change, and a round of another change saved since.
     let mut later = saved.clone();
     later.exploration.instance = "later-1".into();
     records.create_round(&later).unwrap();
@@ -182,7 +174,6 @@ fn a_round_saved_in_an_earlier_format_is_neither_listed_nor_opened() {
 fn a_change_is_named_by_the_pull_request_that_its_newest_round_to_find_one_saved() {
     let harness = asking();
     let first = harness.exploration().instance.clone();
-    // A later round of the same change, which found the change's pull request.
     let mut later = review_explore::ExploreRound::new(review_explore::Exploration::new(
         harness.saved().exploration.comparison.clone(),
     ));
@@ -198,7 +189,6 @@ fn a_change_is_named_by_the_pull_request_that_its_newest_round_to_find_one_saved
         }),
         tickets: Vec::new(),
     };
-    // The newest round found nothing, gh being offline: an older round's find still names it.
     let records = harness.store.lock_explore(&harness.unit).unwrap();
     records.save_change_references(&first, &references).unwrap();
     records
@@ -212,7 +202,6 @@ fn a_change_is_named_by_the_pull_request_that_its_newest_round_to_find_one_saved
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].title, "Fix the login page");
     assert_eq!(changes[0].references, references);
-    // Each round of the change opens under the name the list gives it.
     for round in [first.as_str(), "later-1"] {
         let opened = reader.open(round).unwrap();
         assert_eq!(opened.review().title, "Fix the login page", "{round}");

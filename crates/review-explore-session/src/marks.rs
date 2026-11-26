@@ -1,9 +1,3 @@
-//! Review marks an agent turn asks for: the lines an answer settled, the
-//! reviewed lines it made matter again, and the lines the agent read and
-//! found to hold no decision. A question's marks wait for its answer; a
-//! conclusion's apply when it is accepted. Once the code changed since the
-//! round started, they apply only on the files whose diff did not change.
-
 use std::ops::Range;
 
 use review_explore::{
@@ -17,22 +11,18 @@ use review_types::MarkAuthor;
 
 use crate::ExploreSession;
 
-/// The marks a turn asks for on one changed file.
 struct FileRequest<'a> {
     file: &'a ChangedFile,
     reviewed: Vec<&'a CodeLocation>,
     reopened: Vec<&'a CodeLocation>,
 }
 
-/// One step of a turn's marks: first what an answer settled and reopened, file by file, then
-/// each line range the agent found not relevant, with its mark.
 struct MarkStep<'a> {
     request: FileRequest<'a>,
     not_relevant: Option<&'a NotRelevantMark>,
 }
 
 impl<'a> MarkStep<'a> {
-    /// The steps of `update`'s marks, on the files where they apply.
     fn of(
         snapshot: &'a Snapshot,
         update: &'a InterviewUpdate,
@@ -58,7 +48,6 @@ impl<'a> MarkStep<'a> {
             .collect()
     }
 
-    /// Whether `update` names `file`.
     fn names(update: &InterviewUpdate, file: &ChangedFile) -> bool {
         update
             .reviewed
@@ -68,8 +57,6 @@ impl<'a> MarkStep<'a> {
             .any(|location| location.names(file))
     }
 
-    /// What `update` names that its marks cannot reach, in snapshot order: the files whose
-    /// diff changed since the round started, then the paths no changed file has any more.
     fn unmarkable(
         snapshot: &'a Snapshot,
         update: &'a InterviewUpdate,
@@ -88,7 +75,6 @@ impl<'a> MarkStep<'a> {
             .filter(|file| !markable.allows(file) && !markable.unread(file))
             .filter(|file| named.iter().any(|location| location.names(file)))
             .map(|file| file.review_path().display());
-        // A path no changed file has: renamed or reverted since the round started.
         let gone = named
             .iter()
             .filter(|_| moved)
@@ -104,8 +90,6 @@ impl<'a> MarkStep<'a> {
     }
 }
 
-/// Applies the marks `update` asks for to `tracker`, which holds a copy of the review marks,
-/// as `author`, and tells nobody: the review marks as they will be once the reviewer answers.
 pub(crate) fn mark_copy(
     tracker: &ReviewTracker,
     snapshot: &Snapshot,
@@ -118,7 +102,6 @@ pub(crate) fn mark_copy(
     }
 }
 
-/// The marks a turn changed on one file.
 #[derive(Default)]
 struct FileChange {
     reviewed: Vec<CodeLocation>,
@@ -126,7 +109,6 @@ struct FileChange {
 }
 
 impl FileChange {
-    /// One-based locations of zero-based lines, a range per run on each side.
     fn locations(file: &ChangedFile, selection: &LineSelection) -> Vec<CodeLocation> {
         let mut locations = Vec::new();
         for (side, lines) in [
@@ -140,8 +122,6 @@ impl FileChange {
         locations
     }
 
-    /// The reviewed lines `after` no longer has, or has from another author,
-    /// by who had marked them.
     fn reopened(
         file: &ChangedFile,
         before: &ReviewedLines,
@@ -152,7 +132,6 @@ impl FileChange {
             (SourceSide::Old, &before.removed, &after.removed),
             (SourceSide::New, &before.added, &after.added),
         ] {
-            // Gone, or now someone else's.
             let gone = before
                 .iter()
                 .filter(|(line, author)| after.get(*line) != Some(*author))
@@ -167,9 +146,6 @@ impl FileChange {
         reopened
     }
 
-    /// What changed between two states of a file's lines. A reviewed line
-    /// `author` took over from another author counts as reopened from that
-    /// author and marked again, so cancelling the turn can give it back.
     fn between(
         file: &ChangedFile,
         before: &FileLines,
@@ -202,17 +178,11 @@ impl FileChange {
 }
 
 impl ExploreSession {
-    /// Apply the marks of the question `request` answers, now that the
-    /// reviewer answered it: review progress moves on the reviewer's action.
-    /// The round with the record of what changed, or `None` when there is
-    /// nothing to apply or the answer already applied it.
     pub(crate) fn apply_answered_marks(
         &mut self,
         request: &TurnRequest,
         round: &ExploreRound,
     ) -> Option<ExploreRound> {
-        // The code changes at the drawing board: the question's lines wait for its new version,
-        // and Implement reopens those of the earlier answers.
         if request.at_drawing_board() {
             return None;
         }
@@ -226,13 +196,10 @@ impl ExploreSession {
             .iter()
             .find(|turn| turn.update.request == answer.in_reply_to)?
             .update;
-        // A conclusion's marks were applied when it was accepted.
         update.next.as_ref()?;
         self.apply_marks(update, round, Some(answer.id.clone()))
     }
 
-    /// Apply the marks of an accepted conclusion at once, as the answer it
-    /// follows.
     pub(crate) fn apply_conclusion_marks(
         &mut self,
         update: &InterviewUpdate,
@@ -249,8 +216,6 @@ impl ExploreSession {
         self.apply_marks(update, round, answer)
     }
 
-    /// Apply the marks a turn asked for as `answer`, and record what changed;
-    /// the round with that record, or `None` when the turn asked for none.
     fn apply_marks(
         &mut self,
         update: &InterviewUpdate,
@@ -297,8 +262,6 @@ impl ExploreSession {
         }
     }
 
-    /// The current snapshot, and the files of it on which the marks of the turn `request` of
-    /// `round` apply.
     fn marked_snapshot(
         &self,
         round: &ExploreRound,
@@ -317,11 +280,6 @@ impl ExploreSession {
         Ok((snapshot, markable))
     }
 
-    /// Apply a turn's marks: first what an answer settled and reopened, then
-    /// the lines the agent found not relevant, each with its mark's reason.
-    /// All carry the author of the answer that applies them, so cancelling it
-    /// gives them back; a conclusion that opens the round follows no answer
-    /// and its marks carry the turn's own.
     fn mark(
         &self,
         snapshot: &Snapshot,
@@ -338,7 +296,6 @@ impl ExploreSession {
         for step in MarkStep::of(snapshot, update, markable) {
             let change = self.apply(snapshot, &step.request, &author, &mut marks);
             match step.not_relevant {
-                // One mark at a time, so the lines it marks keep its reason and test.
                 Some(mark) => {
                     marks
                         .not_relevant
@@ -371,7 +328,6 @@ impl ExploreSession {
             });
         }
         if let Some(unmarked) = unmarkable_problem(&unmarkable, kept_no_diffs) {
-            // After any file's own failure, which the marks of the other files may follow.
             marks.problem = Some(match marks.problem.take() {
                 Some(failure) => format!("{failure}; {unmarked}"),
                 None => unmarked,
@@ -380,10 +336,6 @@ impl ExploreSession {
         marks
     }
 
-    /// Apply one file's marks and tell the UI its new review state. Lines
-    /// taken over from another author are recorded as reopened, so
-    /// cancelling the turn can give them back; the newly marked lines are
-    /// returned for the caller to record under the right heading.
     fn apply(
         &self,
         snapshot: &Snapshot,
@@ -407,8 +359,6 @@ impl ExploreSession {
 }
 
 impl<'a> FileRequest<'a> {
-    /// The marks of a turn grouped by the changed file they name, in
-    /// snapshot order.
     fn group(
         snapshot: &'a Snapshot,
         reviewed: &'a [CodeLocation],
@@ -429,8 +379,6 @@ impl<'a> FileRequest<'a> {
             .collect()
     }
 
-    /// Reopen, then mark, and report the lines that changed state, also
-    /// when a step failed after another succeeded.
     fn apply(
         &self,
         tracker: &ReviewTracker,
@@ -457,8 +405,6 @@ impl<'a> FileRequest<'a> {
         }
     }
 
-    /// Reopen, then mark. A whole-file mark also covers open changes with
-    /// no line to name: reviewed lines the current file deleted.
     fn edit(
         &self,
         tracker: &ReviewTracker,
@@ -482,14 +428,11 @@ impl<'a> FileRequest<'a> {
             .any(|location| location.lines.is_none())
             && !tracker.lines(snapshot, self.file)?.open.is_empty()
         {
-            // Hunk by hunk, so the lines others marked keep their authors.
             tracker.review_hunks_where(snapshot, self.file, true, author, |_| true)?;
         }
         Ok(())
     }
 
-    /// Marks on a file without lines to mark one by one: binary and other
-    /// non-text changes are marked or reopened whole.
     fn apply_whole(
         &self,
         tracker: &ReviewTracker,
@@ -519,9 +462,6 @@ impl<'a> FileRequest<'a> {
     }
 }
 
-/// Why the marks on the `unmarkable` paths were not applied, or `None` when every file took its
-/// marks. A round saved before rounds kept their diffs (`round_kept_no_diffs`) can tell no file
-/// apart once the code changed.
 fn unmarkable_problem(unmarkable: &[String], round_kept_no_diffs: bool) -> Option<String> {
     if unmarkable.is_empty() {
         return None;
@@ -542,7 +482,6 @@ fn unmarkable_problem(unmarkable: &[String], round_kept_no_diffs: bool) -> Optio
     })
 }
 
-/// Consecutive lines with the same value, in order.
 pub(crate) fn runs<T: Clone + Eq>(lines: impl Iterator<Item = (u32, T)>) -> Vec<(Range<u32>, T)> {
     let mut runs: Vec<(Range<u32>, T)> = Vec::new();
     for (line, value) in lines {
@@ -554,7 +493,6 @@ pub(crate) fn runs<T: Clone + Eq>(lines: impl Iterator<Item = (u32, T)>) -> Vec<
     runs
 }
 
-// A child module, so giving marks back shares how marks name lines.
 #[path = "unmark.rs"]
 mod unmark;
 

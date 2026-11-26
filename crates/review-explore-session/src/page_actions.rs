@@ -1,17 +1,9 @@
-//! The actions the Explore page offers to recover or close a round, as the pane offers them:
-//! Stop waiting, Retry, Cancel answer, Reset, and the recoveries of an implementation request.
-//! Each is refused as stale when the round no longer offers it, then carried out by the path the
-//! pane's command takes, so that it saves the same result and sends the same prompt; the pane
-//! hears of it through the events it follows.
-
 use review_explore::{Command, DispatchState};
 use review_explore_page::{CommandRefusal, Waiting};
 
 use crate::ExploreSession;
 
 impl ExploreSession {
-    /// Stops waiting, as Stop waiting in the pane: for the start or the agent's turn `waiting`
-    /// names.
     pub(crate) fn stop(&mut self, waiting: &Waiting) -> Result<(), CommandRefusal> {
         let waits = match waiting {
             Waiting::Start(start) => {
@@ -27,15 +19,11 @@ impl ExploreSession {
             .round
             .as_ref()
             .map(|round| round.exploration.instance.clone());
-        // The pane hears of the stop before what it leads to, such as the answer that waited for
-        // its fork going to the agent in the pane.
         let _ = self.events.send(ui_events::ExplorePageStopped { round });
         self.command(Command::Cancel);
         Ok(())
     }
 
-    /// Whether this process sends the prompt of the agent's turn `request`, or the agent works
-    /// on it.
     fn delivering(&self, request: &str) -> bool {
         self.state
             .pending
@@ -49,9 +37,6 @@ impl ExploreSession {
             })
     }
 
-    /// Sends the agent's turn `request` again, as Retry in the pane, when the round waits for it
-    /// after its attempt `attempt`, and the agent is not working on it. A repeat of a Retry that
-    /// went through finds the turn on its way; one after a later attempt failed sends nothing.
     pub(crate) fn retry_from_page(
         &mut self,
         request: &str,
@@ -72,8 +57,6 @@ impl ExploreSession {
         if !retried {
             return Err(CommandRefusal::Stale);
         }
-        // As the pane does: a turn saved as pending that no prompt of this process carries waits
-        // for Retry.
         let mut exploration = round.exploration;
         exploration.pause_delivery();
         let request = exploration
@@ -82,9 +65,6 @@ impl ExploreSession {
         self.retry(request).map_err(CommandRefusal::Failed)
     }
 
-    /// Cancels the reviewer's answer `answer` with every answer after it, as Cancel answer in
-    /// the pane does the latest, while the latest answer can be cancelled: the page offers it on
-    /// that answer and on the earlier questions'.
     pub(crate) fn cancel_answer_from_page(&mut self, answer: String) -> Result<(), CommandRefusal> {
         let offered = self.cancellable().is_some()
             && self.state.round.as_ref().is_some_and(|round| {
@@ -101,7 +81,6 @@ impl ExploreSession {
             .map_err(|error| CommandRefusal::Failed(error.to_string()))
     }
 
-    /// Closes the round `round`, as Reset in the pane, while it is the round the session shows.
     pub(crate) fn reset_round(&mut self, round: &str) -> Result<(), CommandRefusal> {
         let shown = self
             .state
@@ -118,8 +97,6 @@ impl ExploreSession {
         Ok(())
     }
 
-    /// Cancels the implementation request `delivery`, as the pane's Cancel implementation, while
-    /// this process sends it.
     pub(crate) fn cancel_implementation_from_page(
         &mut self,
         delivery: &str,
@@ -139,9 +116,6 @@ impl ExploreSession {
         Ok(())
     }
 
-    /// Sends again, as it is, the implementation request `delivery` of the conclusion of the turn
-    /// `conclusion`, which an earlier process saved but did not send, or which the agent did not
-    /// start on: as "Send saved implementation request" or Retry in the pane.
     pub(crate) fn resend_from_page(
         &mut self,
         conclusion: &str,
@@ -150,7 +124,6 @@ impl ExploreSession {
     ) -> Result<(), CommandRefusal> {
         let round = self.saved_round()?;
         let latest = round.latest_implementation(conclusion);
-        // A repeat of a resend that went through finds the request on its way, or received.
         let resent = latest.is_some_and(|latest| {
             latest.request.delivery == delivery
                 && match latest.state {
@@ -169,7 +142,6 @@ impl ExploreSession {
                 latest.request.delivery == delivery
                     && latest.attempt == attempt
                     && match latest.state {
-                        // Queued in this process: on its way already.
                         DispatchState::Queued => self.state.implementation.is_none(),
                         DispatchState::NotStarted => true,
                         _ => false,

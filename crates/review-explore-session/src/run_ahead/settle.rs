@@ -1,17 +1,3 @@
-//! Settling the session the pane's agent runs, after a switch to a fork that did not end with
-//! the round taking the fork's turn: the switch failed once the agent was told to resume the
-//! fork's session, which it may still do late; the reviewer withdrew the answer, or the fork's
-//! turn could not be saved, once the agent ran the fork's session; or the reviewer stopped
-//! while the switch ran.
-//!
-//! The agent's session must match the round: a session that holds a turn the round does not
-//! have would take the answer a second time. So before any prompt reaches the agent, and
-//! before forks are taken again, the agent resumes the session the forks were taken from, which
-//! holds neither the answer nor the fork's turn, and its next prompt runs the plain chain. Only
-//! when the round took the fork's turn does the agent resume the fork's session instead. No
-//! prompt reaches the agent while it settles; a turn saved meanwhile waits, then goes out, or
-//! waits for Retry when the agent could not be settled.
-
 use herdr_client::protocol::{Agent, PaneId};
 use review_explore::ConversationBinding;
 use review_run_ahead::{Continuation, DiscardReason, ForkRecord, SwitchFailure, TurnPath};
@@ -20,40 +6,28 @@ use review_thread_service::{PinnedAgent, PromptHold};
 use super::{Event, Move, RoundKey, RunAheadInput};
 use crate::{ExploreSession, Input};
 
-/// The pane's agent being put on the session its round needs.
 pub(super) struct Settling {
     round: RoundKey,
-    /// The fork whose session the agent may run.
     fork: ForkRecord,
     target: Target,
-    /// Why the switch did not end with the round taking the fork's turn.
     reason: String,
     trigger: Trigger,
-    /// No prompt reaches the agent while it settles.
     _hold: PromptHold,
 }
 
-/// What has the agent settle.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Trigger {
-    /// A prompt to the agent, which waits for it.
     Prompt,
-    /// Run-ahead itself: after a switch, or before it takes forks.
     RunAhead,
 }
 
-/// The session the agent is put on.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Target {
-    /// The session the fork was taken from: the round did not take the fork's turn.
     Origin,
-    /// The fork's session: the round took the fork's turn.
     Fork,
 }
 
 impl ExploreSession {
-    /// Puts the agent of `pane`, which may run the session of `fork` of `round`, on the
-    /// session the round needs, for `reason`, as `trigger` has it. Returns whether it started.
     pub(super) fn settle(
         &mut self,
         round: &RoundKey,
@@ -104,7 +78,6 @@ impl ExploreSession {
                 Move::switch(fork.trace())
             }
         };
-        // Held before anything is typed in the pane.
         let hold = self.prompts.hold();
         to.start_once_drained(&self.run_ahead.host, &hold, pane, done);
         self.run_ahead.settling = Some(Settling {
@@ -118,7 +91,6 @@ impl ExploreSession {
         true
     }
 
-    /// Whether the round `round` took the turn of the fork `fork`.
     fn round_took(&self, round: &RoundKey, fork: &ForkRecord) -> bool {
         let Ok(forks) = self.rounds.forks(&round.unit, &round.instance) else {
             return false;
@@ -139,8 +111,6 @@ impl ExploreSession {
             })
     }
 
-    /// The fork of the session's round whose session the pane's agent may run, though no
-    /// switch to it runs in this reviewer, nor in another that still runs.
     pub(super) fn unsettled(&self) -> Option<(RoundKey, ForkRecord)> {
         let saved = self.state.round.as_ref()?;
         let round = RoundKey {
@@ -168,8 +138,6 @@ impl ExploreSession {
         Some((round, fork))
     }
 
-    /// Holds the saved turn `turn` while the pane's agent may run a fork's session the round
-    /// did not take, and starts to settle it. Returns whether it holds the turn.
     pub(super) fn settle_before(&mut self, turn: &crate::turn::SavedTurn) -> bool {
         if self.run_ahead.settling.is_none() {
             let Some((round, fork)) = self.unsettled() else {
@@ -199,11 +167,6 @@ impl ExploreSession {
         true
     }
 
-    /// Whether the agent `agent`, which may run the session of the fork `fork` of `round`, can
-    /// be put on the session the round needs. One without the reviewer's hooks, which a move
-    /// needs, restarted since it was told to resume the fork's session: it runs the session it
-    /// started with, which the fork's record then says, so that no later move takes it off
-    /// that session. One the host cannot move at all stays where it is.
     pub(super) fn can_settle(
         &mut self,
         round: &RoundKey,
@@ -225,9 +188,6 @@ impl ExploreSession {
         false
     }
 
-    /// The agent restarted since it was told to resume the session of the fork `fork` of
-    /// `round`, and runs without the hooks a move needs, for `why`: the fork is no longer the
-    /// agent's, and goes.
     fn agent_restarted(&mut self, round: &RoundKey, fork: &ForkRecord, why: &str) {
         let now = review_explore::now_ms();
         let saved = self.update_forks(round, |forks| {
@@ -250,8 +210,6 @@ impl ExploreSession {
         ));
     }
 
-    /// The settling of the agent, which may have run the session of the fork `fork` of
-    /// `round`, ended with `result`.
     pub(super) fn run_ahead_settled(
         &mut self,
         round: &RoundKey,
@@ -271,8 +229,6 @@ impl ExploreSession {
         }
     }
 
-    /// The agent `agent` runs the session the round needs: the prompt that waited goes out,
-    /// and forks may be taken again.
     fn settled(&mut self, settling: &Settling, agent: &Agent) {
         let Settling {
             round,
@@ -294,7 +250,6 @@ impl ExploreSession {
                 Target::Fork => Continuation::Switched { at_ms: now },
             });
             match target {
-                // The agent left the fork's session: it goes, as a fork the answer did not use.
                 Target::Origin => record.discard(DiscardReason::Answered, now),
                 Target::Fork => forks.prepared_turn_used(),
             }
@@ -303,8 +258,6 @@ impl ExploreSession {
             self.run_ahead
                 .host
                 .log(&format!("the agent's session was not recorded: {error}"));
-            // The record still says the agent may run the fork's session: this reviewer knows
-            // better.
             self.run_ahead.left_unrecorded.insert(fork.session.clone());
         }
         match target {
@@ -335,8 +288,6 @@ impl ExploreSession {
         self.after_agent_moved();
     }
 
-    /// The agent was not put on the session the round needs, for `failure`: its session stays
-    /// unsettled, and a prompt that waited waits for Retry.
     fn not_settled(&mut self, settling: &Settling, failure: &SwitchFailure) {
         let Settling {
             round,
@@ -349,7 +300,6 @@ impl ExploreSession {
             "the agent was not settled after the fork {}: {}",
             fork.session, failure.error
         ));
-        // A resume typed in vain is not typed again unasked, lest it be typed again and again.
         if *trigger == Trigger::RunAhead && failure.typed {
             self.run_ahead.settle_failed.insert(fork.session.clone());
         }
@@ -384,9 +334,6 @@ impl ExploreSession {
         }
     }
 
-    /// The pane's agent `agent` ran a new session for `round`: the session pins it, and the
-    /// round records it as the agent's latest session.
-    /// Nothing changes for a round the session no longer runs, as after a Reset.
     pub(super) fn follow_agent(&mut self, round: &RoundKey, agent: &Agent) {
         if self
             .state
@@ -410,13 +357,10 @@ impl ExploreSession {
         }
     }
 
-    /// The agent's session moved, by a switch or a settling: unless it must settle still, the
-    /// prompt that waited goes out, and a question that waits is forked.
     pub(super) fn after_agent_moved(&mut self) {
         if self.run_ahead.switching.is_some() || self.run_ahead.settling.is_some() {
             return;
         }
-        // Another fork's session may still need settling before the prompt goes out.
         if let Some(held) = self.run_ahead.held.take()
             && self.still_waits(&held)
             && !self.settle_before(&held)
@@ -433,7 +377,6 @@ impl ExploreSession {
         }
     }
 
-    /// Whether the held turn `held` still waits for its prompt.
     fn still_waits(&self, held: &crate::turn::SavedTurn) -> bool {
         self.state
             .is_pending(&held.request.instance, &held.request.request)

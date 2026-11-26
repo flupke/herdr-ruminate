@@ -1,11 +1,7 @@
-//! The quiz the standalone server's agent puts in its conclusion, about the fixed change: two
-//! items, each with its proof in `src/drafts.rs`.
-
 use review_explore::{QuizItem, SourceSide};
 
 use super::change;
 
-/// The correct answer of the first item.
 pub(super) const FIRST_CORRECT: &str = "The answer typed before closing";
 
 pub(super) fn items() -> Vec<QuizItem> {

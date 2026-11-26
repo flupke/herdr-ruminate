@@ -1,5 +1,3 @@
-//! The data of a turn and of its round, as the agent reads them; full questions and answers
-//! remain in reviewer history.
 use review_explore::{ChangeAuthor, ReviewerAnswer, TopicStatus, TurnRequest};
 use std::{fmt, path::Path};
 
@@ -7,30 +5,21 @@ pub(super) struct TurnInput<'a> {
     pub(super) request: &'a TurnRequest,
     pub(super) access: &'a str,
     pub(super) unreviewed: &'a crate::Unreviewed,
-    /// The number the reviewer's screens give the question the answer answers.
     pub(super) answered: Option<review_types::QuestionNumber>,
 }
 
-/// What the round started with, the same on every turn: where the reviewed change is, what it
-/// says it does, who wrote it, what the reviewer decided in the review's earlier rounds and
-/// what the reviewer asks of every round.
 pub(super) struct Round<'a> {
     pub(super) repository_root: &'a Path,
     pub(super) description: Option<&'a str>,
     pub(super) decisions: &'a crate::EarlierDecisions,
-    /// Who wrote the change, and the reviewer's name when they gave one.
     pub(super) author: ChangeAuthor,
     pub(super) reviewer: Option<&'a str>,
-    /// What the reviewer asks of every round.
     pub(super) notes: Option<&'a str>,
 }
 
-/// The heading of the comment of an answer that sends the agent back to the drawing board.
 pub(crate) const DRAWING_BOARD_REASON: &str =
     "Why the reviewer sends you back to the drawing board, in their words";
 
-/// Text quoted line by line, so none of its lines can pass for a field of
-/// the prompt.
 pub(super) struct Quoted<'a>(pub(super) &'a str);
 
 impl fmt::Display for Quoted<'_> {
@@ -42,8 +31,6 @@ impl fmt::Display for Quoted<'_> {
     }
 }
 
-/// An option's outcome or an interpretation's status, as a prompt and the
-/// tools name it.
 pub(super) struct Outcome(pub(super) TopicStatus);
 
 impl fmt::Display for Outcome {
@@ -76,7 +63,6 @@ impl fmt::Display for Round<'_> {
         if self.author == ChangeAuthor::Other {
             writeln!(output, "\nChange author: someone else")?;
             if let Some(reviewer) = self.reviewer {
-                // One line: the round keeps the first line of what the reviewer typed.
                 writeln!(output, "Reviewer: {reviewer}")?;
             }
         }
@@ -151,8 +137,6 @@ impl TurnInput<'_> {
             )?;
             writeln!(output, "\nSelected option:\n{}", option.text)?;
         }
-        // White space is no comment. The comment of the answer that sends the agent back to the
-        // drawing board says why; a reply to the conclusion there stays a comment.
         if !answer.text.trim().is_empty() {
             let heading = if answer.sends_to_drawing_board() {
                 DRAWING_BOARD_REASON

@@ -1,9 +1,3 @@
-//! The repository's saved rounds, which the Explore page on this machine lists and opens read
-//! only as past rounds. A past round never goes through the session's round: this reads it from
-//! the store, and derives what the page shows of it with the code that derives the session's own
-//! round, as a round that offers no action. Its cited code is read at the round's own
-//! checkpoint, else from its saved diff, never from today's working copy.
-
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
@@ -20,21 +14,15 @@ use review_store::{ReviewStore, SavedRoundFile};
 
 use crate::page::{CitedCode, LatestTurn, PageCitations, interrupted, latest_turn, sent_answer};
 
-/// What a change with no description is called in the list.
 const NO_DESCRIPTION: &str = "No description";
 
-/// The saved rounds of one repository, read from its review store.
 pub struct SavedRoundsReader {
     store: ReviewStore,
     repository: Repository,
-    /// The heading of each round file read so far, by its path, with the time it was written
-    /// when it was read: a file written since is read again. `None` for a file that cannot be
-    /// read, such as a round saved in an earlier format.
     headings: Mutex<HashMap<PathBuf, (SystemTime, Option<RoundHeading>)>>,
 }
 
 impl SavedRoundsReader {
-    /// The saved rounds of `store`, whose cited code `repository` holds.
     pub fn new(store: ReviewStore, repository: Repository) -> Self {
         Self {
             store,
@@ -43,8 +31,6 @@ impl SavedRoundsReader {
         }
     }
 
-    /// The saved rounds, as the page reaches them: their list, which `refresh` keeps current,
-    /// and the round the page opens.
     pub fn serve(self) -> (PastRounds, PastRoundsRefresh) {
         let reader = Arc::new(self);
         let publisher = PastRoundsPublisher::default();
@@ -53,8 +39,6 @@ impl SavedRoundsReader {
         (rounds, PastRoundsRefresh::start(reader, publisher))
     }
 
-    /// Every saved round of the repository, grouped by change, the change with the newest round
-    /// first, and each change's rounds newest first. A round that cannot be read is left out.
     pub(crate) fn list(&self) -> Vec<PastChange> {
         let mut by_review: BTreeMap<String, Vec<(SystemTime, RoundHeading)>> = BTreeMap::new();
         for (saved_at, heading) in self.headings() {
@@ -92,10 +76,7 @@ impl SavedRoundsReader {
         changes.into_iter().map(|(_, change)| change).collect()
     }
 
-    /// The saved round `id`, as the page shows a past round; `None` when no saved round has
-    /// that identity, or when it cannot be read.
     pub(crate) fn open(&self, id: &str) -> Option<PastRound> {
-        // Read again: a round may have been saved since the list was last read.
         let mut rounds = self.headings();
         let (saved_at, heading) = rounds
             .iter()
@@ -107,7 +88,6 @@ impl SavedRoundsReader {
             .ok()
             .flatten()?;
         let threads = self.store.load_threads(&heading.review_unit).ok();
-        // The change's, as the list names it.
         rounds.retain(|(_, round)| round.review_unit == heading.review_unit);
         newest_first(&mut rounds);
         let references = self.change_references(rounds.iter().map(|(_, round)| round));
@@ -128,9 +108,6 @@ impl SavedRoundsReader {
         ))
     }
 
-    /// The pull request and the tickets of the change whose rounds are `rounds`, newest first,
-    /// as its rounds saved them ([`ChangeReferences::of_rounds`]). A round saved before they
-    /// were looked for, or while they are, saved none.
     fn change_references<'a>(
         &self,
         rounds: impl IntoIterator<Item = &'a RoundHeading>,
@@ -147,8 +124,6 @@ impl SavedRoundsReader {
         ChangeReferences::of_rounds(&saved)
     }
 
-    /// The heading of every saved round that can be read, with when it was saved, reading only
-    /// the files written since they were last read.
     fn headings(&self) -> Vec<(SystemTime, RoundHeading)> {
         let files = self.store.saved_explore_round_files().unwrap_or_default();
         let mut headings = self.headings.lock().unwrap_or_else(PoisonError::into_inner);
@@ -171,18 +146,12 @@ impl SavedRoundsReader {
     }
 }
 
-/// Keeps the list of saved rounds current: each [`refresh`](Self::refresh) has a thread of its
-/// own read the saved rounds again and publish their list, so that the reviewer's other work
-/// never waits for it. Refreshes that come while it reads are read once. The thread ends once
-/// every clone is dropped.
 #[derive(Clone)]
 pub struct PastRoundsRefresh(mpsc::Sender<()>);
 
 impl PastRoundsRefresh {
-    /// Publishes the list of `reader`'s rounds through `publisher` now, and at each refresh.
     fn start(reader: Arc<SavedRoundsReader>, publisher: PastRoundsPublisher) -> Self {
         let (refresh, refreshes) = mpsc::channel::<()>();
-        // Without its thread the list stays empty: the page lists no past round.
         let _ = std::thread::Builder::new()
             .name("past-rounds".into())
             .spawn(move || {
@@ -195,15 +164,11 @@ impl PastRoundsRefresh {
         Self(refresh)
     }
 
-    /// The saved rounds changed on disk: their list is read again.
     pub fn refresh(&self) {
         let _ = self.0.send(());
     }
 }
 
-/// The page's view of `round`, a saved round of the change `review`, whose review's threads are
-/// `threads`, last saved at `saved_at_ms`: read only, its citations read at its checkpoint in
-/// `repository`.
 fn past_round(
     round: &ExploreRound,
     repository: &Repository,
@@ -230,7 +195,6 @@ fn past_round(
         design: exploration.design(),
         changed_files: comparison.files.len(),
         author: exploration.author,
-        // A past round offers no action, whatever these say.
         cancellable: None,
         earlier: true,
         overview: &overview,
@@ -239,9 +203,6 @@ fn past_round(
     PastRound::new(published, stage, review, references, threads, saved_at_ms)
 }
 
-/// Where `round` stopped, as the page shows the session's round once nothing in this process
-/// works on it: a turn it saved as pending, or one waiting for Retry, as interrupted; otherwise
-/// the question or the conclusion of its latest turn.
 fn saved_stage(
     round: &ExploreRound,
     citations: &mut PageCitations,
@@ -267,9 +228,6 @@ fn saved_stage(
     )
 }
 
-/// What the list calls the change `heading` reviewed, whose pull request and tickets are
-/// `references`: the title of its pull request, else of its ticket; else the first line of its
-/// description as the round saved it, "Git working tree" for a Git working tree.
 fn title(heading: &RoundHeading, references: &ChangeReferences) -> String {
     references
         .title()
@@ -284,12 +242,10 @@ fn title(heading: &RoundHeading, references: &ChangeReferences) -> String {
         .to_owned()
 }
 
-/// Sorts the rounds of a change, each with when it was saved, newest first.
 fn newest_first(rounds: &mut [(SystemTime, RoundHeading)]) {
     rounds.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.instance.cmp(&b.1.instance)));
 }
 
-/// `time` in milliseconds since the epoch.
 fn millis(time: SystemTime) -> u64 {
     time.duration_since(UNIX_EPOCH).map_or(0, |elapsed| {
         u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)

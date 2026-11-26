@@ -1,5 +1,3 @@
-//! Diagram errors the Explore page reports: saved with their question.
-
 use review_explore::DiagramError;
 use review_explore_page::{CommandRefusal, CommandReply, PageCommand};
 
@@ -14,7 +12,6 @@ fn broken(question: &str) -> DiagramError {
     }
 }
 
-/// A session whose agent asked its first question, `q1`.
 fn asked() -> Harness {
     let mut harness = Harness::start();
     harness.capture();
@@ -25,7 +22,6 @@ fn asked() -> Harness {
 }
 
 impl Harness {
-    /// Report `error` from the Explore page, and return the session's reply.
     fn report_diagram_error(&mut self, error: DiagramError) -> Result<(), CommandRefusal> {
         let (reply, replied) = CommandReply::channel();
         self.session.handle(Input::Page {

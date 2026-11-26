@@ -1,5 +1,3 @@
-//! Interview turns: persist the reviewer's request, then prompt the pinned agent.
-
 use std::sync::Arc;
 
 use eyre::WrapErr;
@@ -14,7 +12,6 @@ use vision_turns::TurnLog;
 use crate::turn_log::SentTurn;
 use crate::{ExploreSession, Input, dispatch::DurableDispatch};
 
-/// A turn saved in the round, and the attempt that delivers it to the agent.
 #[derive(Clone)]
 pub(crate) struct SavedTurn {
     pub(crate) request: TurnRequest,
@@ -22,8 +19,6 @@ pub(crate) struct SavedTurn {
 }
 
 impl ExploreSession {
-    /// Sends the turn `request` again to the selected agent, and tells the front ends through
-    /// `ExplorePosted`. Errs, with the reason, only when the turn was not saved again.
     pub(crate) fn retry(&mut self, request: TurnRequest) -> Result<(), String> {
         let retry = match self.retry_agent().and_then(|agent| {
             let pinned =
@@ -42,23 +37,15 @@ impl ExploreSession {
         self.deliver_turn(request, Some((&retry.0, retry.1)))
     }
 
-    /// Saves the turn `posted`, then prompts the agent with it, and tells the front ends
-    /// through `ExplorePosted`. Errs, with the reason, only when the turn was not saved: a
-    /// prompt that fails after the save leaves the turn waiting for Retry. A new answer that
-    /// picks a choice run-ahead prepared is saved under the identities reserved for it; the
-    /// front ends hear of the turn as they posted it.
     pub(crate) fn deliver_turn(
         &mut self,
         posted: TurnRequest,
         retry_agent: Option<(&Agent, PinnedAgent)>,
     ) -> Result<(), String> {
-        // A kickoff saves the agent it selects with the new round.
         let kickoff = self.state.round.is_none();
-        // Preserve the posted contribution even when its subsequent wakeup cannot be sent.
         if retry_agent.is_none() && kickoff {
             self.admit_kickoff(&posted)?;
         }
-        // A Retry finds no question waiting: its turn keeps the identities it was saved with.
         let request = self.with_reserved_ids(posted.clone());
         let persisted =
             self.persist_request(&request, retry_agent.as_ref().map(|(agent, _)| *agent));
@@ -72,13 +59,11 @@ impl ExploreSession {
         if retry_agent.is_none() && !kickoff {
             let _ = self.select_agent();
         }
-        // Before the prompt, so its unreviewed diffs leave out what the answer marked.
         let round = self.apply_answered_marks(&request, &round).unwrap_or(round);
         match retry_agent {
             Some((_, pinned)) => self.state.agent = Some(pinned),
             None => self.publish_turn(&request),
         }
-        // Each prompt has its own MCP access, so an earlier recipient cannot answer a Retry.
         self.state.renew_access();
         self.state.round = Some(round.clone());
         let _ = self.events.send(ui_events::ExplorePosted {
@@ -89,16 +74,12 @@ impl ExploreSession {
             attempt: round.turns[&request.request].attempt.clone(),
             request,
         };
-        // A turn a fork prepared needs no prompt: the pane's agent continues as the fork. A
-        // turn saved while the agent switches to a fork waits for the switch.
         if !self.run_ahead_answer(&turn) && !self.run_ahead_hold(&turn) {
             self.send_turn(turn);
         }
         Ok(())
     }
 
-    /// Prompts the agent with the saved turn `turn`; a prompt that fails leaves the turn
-    /// waiting for Retry.
     pub(crate) fn send_turn(&mut self, turn: SavedTurn) {
         let SavedTurn { request, attempt } = turn;
         let (prompt, sent, agent) = match self.prepare(&request) {
@@ -137,8 +118,6 @@ impl ExploreSession {
         });
     }
 
-    /// What records the delivery of the turn `request`, as its attempt `attempt`, in the saved
-    /// round; `turn` is the prompt, for a vision session's record of what was sent.
     pub(crate) fn dispatch_of(
         &self,
         request: &TurnRequest,
@@ -160,12 +139,7 @@ impl ExploreSession {
         }
     }
 
-    /// Refuses the kickoff `request` when its start was stopped, or when nothing is left to
-    /// review, as Jev or another reviewer may have marked the rest since the start; otherwise
-    /// selects the agent the new round saves.
     fn admit_kickoff(&mut self, request: &TurnRequest) -> Result<(), String> {
-        // A kickoff that arrives after its start was stopped, from the page while the pane
-        // posted it, starts nothing, and leaves no failed start.
         if self.state.start.starting().is_none() {
             let error = "The start of this round was stopped".to_owned();
             let _ = self.events.send(ui_events::ExplorePosted {
@@ -181,10 +155,6 @@ impl ExploreSession {
         Ok(())
     }
 
-    /// Tells the front ends that the turn `request` was not saved, for `error`, and returns
-    /// the reason. A refused turn leaves the pending prompt, its implementation and its agent
-    /// alone: a second answer must not cancel the first one's queued prompt. A refused kickoff
-    /// ends the start.
     fn turn_refused(&mut self, request: TurnRequest, error: &eyre::Report) -> String {
         let error = error.to_string();
         if self.state.round.is_none() {
@@ -197,7 +167,6 @@ impl ExploreSession {
         error
     }
 
-    /// The prompt for `request`, the record of it, and the agent to send it to.
     fn prepare(
         &mut self,
         request: &TurnRequest,
@@ -206,8 +175,6 @@ impl ExploreSession {
         let agent = self.active_agent()?;
         let access = self.state.access.clone();
         let (prompt, unreviewed) = self.turn_prompt(request, &comparison, &access)?;
-        // The prompt numbers the lines like the code it was written from: where that differs
-        // from the round's, the turn's line numbers may name other lines than the round's.
         let diverged = std::mem::take(&mut self.prompt_diverged);
         crate::records::merge_diverged(
             self.prompted_diverged
@@ -229,7 +196,6 @@ impl ExploreSession {
         Ok((prompt, sent, agent))
     }
 
-    /// The change the round of `request` explores.
     pub(crate) fn turn_comparison(&self, request: &TurnRequest) -> eyre::Result<Arc<Comparison>> {
         let comparison = self
             .state
@@ -243,8 +209,6 @@ impl ExploreSession {
         Ok(comparison.clone())
     }
 
-    /// The agent's prompt for `request` of `comparison`, granting `access`, and the unreviewed
-    /// lines it lists. The session keeps the turn's files and the diffs until the next prompt.
     pub(crate) fn turn_prompt(
         &mut self,
         request: &TurnRequest,
@@ -253,7 +217,6 @@ impl ExploreSession {
     ) -> eyre::Result<(String, Unreviewed)> {
         let unreviewed = self.turn_unreviewed()?;
         let turn = self.turn_instructions(request, comparison, access, &unreviewed)?;
-        // An earlier prompt's files go: each prompt has a directory of its own.
         self.turn_files = None;
         let files = crate::turn_files::TurnFiles::write(&turn)
             .wrap_err("Explore could not write the turn's instructions")?;
@@ -262,8 +225,6 @@ impl ExploreSession {
         Ok((prompt, unreviewed))
     }
 
-    /// The unreviewed lines of the next turn, written as diffs the session keeps until the next
-    /// prompt. A failure is also shown to the reviewer.
     pub(crate) fn turn_unreviewed(&mut self) -> eyre::Result<Unreviewed> {
         self.unreviewed().inspect_err(|error| {
             let _ = self.events.send(ui_events::ToastRequested {
@@ -273,9 +234,6 @@ impl ExploreSession {
         })
     }
 
-    /// What the round of `instance` in the review `unit` started with, the same on every turn:
-    /// the decisions of the review's earlier rounds and the reviewer's notes. Notes that cannot
-    /// be read cost the round nothing but themselves; the reviewer hears of it when `kickoff`.
     pub(crate) fn round_data(
         &self,
         unit: &ReviewUnit,
@@ -297,8 +255,6 @@ impl ExploreSession {
         Ok(RoundData { earlier, notes })
     }
 
-    /// The instructions of the agent's turn for `request` of `comparison`, granting `access`,
-    /// which list `unreviewed`.
     pub(crate) fn turn_instructions(
         &self,
         request: &TurnRequest,
@@ -402,7 +358,6 @@ impl ExploreSession {
                 .and_then(ConversationBinding::from_agent);
             self.state.loaded_unit = Some(request.checkpoint.review_unit.clone());
             let round = self.rounds.create(round)?;
-            // The thread saves what it finds; the round never waits for it.
             drop(self.rounds.find_references(&round));
             return Ok(round);
         }

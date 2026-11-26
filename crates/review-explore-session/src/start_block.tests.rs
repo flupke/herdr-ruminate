@@ -1,6 +1,3 @@
-//! A review whose changed lines are all marked as reviewed cannot start a round, from the pane,
-//! from the page or through the session directly; a round already running goes on.
-
 use review_explore::StartBlock;
 use review_explore_page::{CommandRefusal, CommandReply, PageCommand, RoundStage};
 use review_repository::repository::Snapshot;
@@ -10,13 +7,10 @@ use review_types::MarkAuthor;
 use super::*;
 
 impl Harness {
-    /// Mark every changed file as reviewed, as another component of the reviewer would; returns
-    /// the snapshot and the review states the marks leave.
     fn review_everything(&self) -> (Snapshot, Vec<ReviewState>) {
         self.mark_every_file(true)
     }
 
-    /// Unmark every changed file; returns the snapshot and the review states left.
     fn unreview_everything(&self) -> (Snapshot, Vec<ReviewState>) {
         self.mark_every_file(false)
     }
@@ -37,7 +31,6 @@ impl Harness {
         (snapshot, states)
     }
 
-    /// Start a round from the page, as the reviewer's worker does; return the reply.
     fn start_from_page(&mut self) -> Result<(), CommandRefusal> {
         let (reply, replied) = CommandReply::channel();
         let start = self.offered_start();
@@ -105,7 +98,6 @@ fn a_fully_reviewed_review_cannot_start_a_round_from_the_page() {
     assert!(matches!(harness.page.stage(), RoundStage::NoRound { .. }));
     assert!(harness.agents.prompts().is_empty());
 
-    // Once a line is unreviewed, the same session starts one.
     let (snapshot, unreviewed) = harness.unreview_everything();
     harness.session.marks_changed(&snapshot, &unreviewed);
     assert_eq!(harness.start_from_page(), Ok(()));
@@ -118,8 +110,6 @@ fn a_fully_reviewed_review_cannot_start_a_round_from_the_page() {
 
 #[test]
 fn a_start_that_finds_nothing_left_to_review_sends_no_kickoff() {
-    // Jev, or another reviewer, marks the rest between the capture and the kickoff: from the
-    // pane, and from the page.
     for from_page in [false, true] {
         let mut harness = Harness::start();
         let kickoff = if from_page {
@@ -186,13 +176,11 @@ fn a_page_post_does_not_bypass_the_rule() {
         reply,
     });
 
-    // The session learns of the marks only as it captures the change.
     assert_eq!(replied.blocking_recv().unwrap(), Ok(()));
     assert_eq!(failure(&harness), Some(nothing_to_review()));
     assert!(harness.agents.prompts().is_empty());
 }
 
-/// Why the latest start failed, as the page shows it.
 fn failure(harness: &Harness) -> Option<String> {
     match harness.page.stage() {
         RoundStage::StartFailed { failure, .. } => Some(failure),

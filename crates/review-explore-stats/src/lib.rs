@@ -1,5 +1,3 @@
-//! Numbers from the saved Explore rounds of a repository, to see whether a
-//! change to Explore helps the reviewer.
 mod period;
 mod proposals;
 mod run_ahead;
@@ -14,7 +12,6 @@ use sample::RoundSample;
 use std::fmt;
 use summary::Summary;
 
-/// The numbers of some rounds, for all of them and split by Challenger.
 #[derive(Debug)]
 struct Columns {
     all: Summary,
@@ -32,7 +29,6 @@ impl Columns {
     }
 }
 
-/// The numbers of every saved round, and of the rounds started in a period.
 #[derive(Debug)]
 pub struct Report {
     unreadable: usize,

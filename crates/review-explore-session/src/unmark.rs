@@ -1,8 +1,3 @@
-//! Giving back the review marks of a cancelled turn: the lines its answer's
-//! author still holds reopen, and the lines it reopened return to whoever
-//! had marked them. A round implemented at the drawing board reopens the
-//! lines of every turn, and gives none back.
-
 use std::collections::BTreeMap;
 
 use review_explore::{
@@ -15,14 +10,12 @@ use review_types::MarkAuthor;
 
 use crate::ExploreSession;
 
-/// The marks a cancelled turn changed on one file.
 struct FileUnmark<'a> {
     file: &'a ChangedFile,
     reopened: Vec<&'a ReopenedLines>,
 }
 
 impl<'a> FileUnmark<'a> {
-    /// The files `marks` changed, in snapshot order.
     fn group(snapshot: &'a Snapshot, marks: &'a TurnMarks) -> Vec<Self> {
         snapshot
             .files
@@ -49,8 +42,6 @@ impl<'a> FileUnmark<'a> {
             .collect()
     }
 
-    /// Reopen what `author` holds, then give back what it reopened when the
-    /// code still has the lines it named; whether lines stayed open.
     fn apply(
         &self,
         tracker: &ReviewTracker,
@@ -87,7 +78,6 @@ impl<'a> FileUnmark<'a> {
         Ok(false)
     }
 
-    /// A file without lines to mark one by one is held or reopened whole.
     fn apply_whole(
         &self,
         tracker: &ReviewTracker,
@@ -113,7 +103,6 @@ impl<'a> FileUnmark<'a> {
     }
 }
 
-/// The reviewed lines `author` marked.
 fn held_by(lines: &FileLines, author: &MarkAuthor) -> LineSelection {
     let mine = |side: &BTreeMap<u32, MarkAuthor>| {
         side.iter()
@@ -128,15 +117,9 @@ fn held_by(lines: &FileLines, author: &MarkAuthor) -> LineSelection {
 }
 
 impl ExploreSession {
-    /// Reopen every line the turns of `round` marked, as Implement does for a
-    /// round concluded at the drawing board: the code will change, and a new
-    /// round reviews it. Lines a turn took over from another author stay open
-    /// too, since the decisions they hold were made for the rejected design.
-    /// Every turn is tried; the error says which files kept lines reviewed.
     pub(crate) fn reopen_round_marks(&mut self, round: &ExploreRound) -> eyre::Result<()> {
         let mut failed = Vec::new();
         for (request, marks) in &round.marks {
-            // With no lines reopened to give back, only what the turn holds reopens.
             let held = TurnMarks {
                 reopened: Vec::new(),
                 ..marks.clone()
@@ -151,10 +134,6 @@ impl ExploreSession {
         Ok(())
     }
 
-    /// Give back the review marks a cancelled turn changed as `author`, file
-    /// by file, failing when any file failed so the cancel can be tried again.
-    /// Lines it reopened stay open in a file whose diff changed since the round
-    /// started; the returned problem says so.
     pub(crate) fn unmark(
         &mut self,
         round: &ExploreRound,

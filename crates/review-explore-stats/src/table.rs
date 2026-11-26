@@ -1,4 +1,3 @@
-//! A table of numbers: one row per measure, one column per set of rounds.
 use crate::{
     Columns,
     proposals::ProposalCounts,
@@ -9,13 +8,11 @@ use std::{fmt, time::Duration};
 const LABEL: usize = 42;
 const COLUMN: usize = 15;
 
-/// One row: its label and how it shows a column's value.
 struct Row {
     label: &'static str,
     value: fn(&Summary) -> Cell,
 }
 
-/// One value of a table, or a dash when the rounds have none.
 enum Cell {
     Count(Option<usize>),
     Number(Option<f64>),
@@ -109,7 +106,6 @@ impl Row {
         },
     ];
 
-    /// The run-ahead rows before the reasons an answer used no prepared turn.
     const RUN_AHEAD: [Row; 3] = [
         Row {
             label: "Rounds with run-ahead",
@@ -125,7 +121,6 @@ impl Row {
         },
     ];
 
-    /// The run-ahead rows after the reasons.
     const RUN_AHEAD_COSTS: [Row; 8] = [
         Row {
             label: "Wait after an answer, prepared, median",
@@ -166,7 +161,6 @@ impl Row {
     }
 }
 
-/// One row of a table: its label, then its value in each column.
 fn line(output: &mut fmt::Formatter<'_>, label: &str, cells: [Cell; 3]) -> fmt::Result {
     let [all, challenger, without_challenger] = cells;
     writeln!(
@@ -178,7 +172,6 @@ fn line(output: &mut fmt::Formatter<'_>, label: &str, cells: [Cell; 3]) -> fmt::
     )
 }
 
-/// `12`, `2.5`, `1-6`, `25%`, `45s`, `2m 05s`, `1h 02m`, or tokens as `950`, `12.5k` or `3.2M`.
 impl fmt::Display for Cell {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -248,7 +241,6 @@ impl Columns {
         Ok(())
     }
 
-    /// The value of each column.
     fn map(&self, value: impl Fn(&Summary) -> Cell) -> [Cell; 3] {
         [
             value(&self.all),
@@ -257,7 +249,6 @@ impl Columns {
         ]
     }
 
-    /// Why answers used no prepared turn, the most frequent first.
     fn not_prepared_reasons(&self) -> Vec<&'static str> {
         let counts = &self.all.run_ahead.not_prepared;
         let mut reasons: Vec<_> = counts.keys().copied().collect();

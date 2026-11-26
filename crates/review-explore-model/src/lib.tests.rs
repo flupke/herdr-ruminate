@@ -5,8 +5,6 @@ use herdr_client::protocol::Agent;
 
 use super::{Effort, ExploreModels, ModelEffort};
 
-/// herdr-bowtie's self-review agent file, as its launch writes it (herdr-bowtie's
-/// `launch::self_review_agent`).
 const AGENT_FILE: &str = "---\nname: bt-self-review\ndescription: \"A self-review of a change, on the reviewer settings: claude-fable-5-2 at max effort.\"\nmodel: claude-fable-5-2\neffort: max\n---\n\nDo the review.\n";
 
 fn agent(kind: &str) -> Agent {
@@ -17,7 +15,6 @@ fn agent(kind: &str) -> Agent {
     .unwrap()
 }
 
-/// A folder that holds `text` as herdr-bowtie's self-review agent file.
 fn prompts_folder(text: &str) -> tempfile::TempDir {
     let folder = tempfile::tempdir().unwrap();
     let agents = folder.path().join(".claude/agents");
@@ -33,7 +30,6 @@ fn fable() -> ModelEffort {
     }
 }
 
-/// The models of a round on Fable at max effort, implemented on `worker`.
 fn on_fable(worker: Option<(&str, Effort)>) -> ExploreModels {
     ExploreModels {
         round: fable(),
@@ -50,7 +46,6 @@ fn a_claude_code_agent_started_by_herdr_bowtie_runs_the_round_on_the_reviewer_s_
     let folder = prompts_folder(AGENT_FILE);
     let port = InMemoryAgents::default();
     let added = folder.path().to_str().unwrap();
-    // As herdr-bowtie starts a worker: another folder before it, and its kickoff after `--`.
     port.set_command(
         &agent("claude").pane_id,
         &[
@@ -178,7 +173,6 @@ fn an_agent_file_without_a_known_effort_or_a_one_word_model_names_no_model() {
         "---\nmodel: claude-fable-5-2\n---\n",
         "---\nmodel: two words\neffort: max\n---\n",
         "model: claude-fable-5-2\neffort: max\n",
-        // Past the front matter, a line is the subagent's prompt.
         "---\nname: bt-self-review\n---\nmodel: claude-fable-5-2\neffort: max\n",
     ] {
         assert_eq!(ModelEffort::of_agent_file(text), None, "{text}");
@@ -191,7 +185,6 @@ fn the_round_s_line_names_its_model_and_effort_as_the_plugin_s_hooks_module_read
         on_fable(None).round_line(),
         "Explore runs on claude-fable-5-2 at max effort."
     );
-    // The module's pattern, as its source spells it.
     let module = include_str!("../../claude-hooks/plugin/hooks/register.ts");
     let pattern = r"/^Explore runs on (\S+) at (low|medium|high|xhigh|max) effort\.$/m";
     assert!(
