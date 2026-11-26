@@ -1,6 +1,3 @@
-//! The settings of the Explore page in the Explore tab: shown with their values on every screen,
-//! changed in place, and saved one at a time with the reviewer's other settings.
-
 use super::*;
 use crate::ExplorePageAction;
 use review_explore_page_settings::{ExplorePageSetting, ExplorePageSettings, PaneStarts};
@@ -8,7 +5,6 @@ use ui_events::{ExplorePageOffNetwork, ExplorePageSettingsLoaded, ExplorePageSha
 
 const URL: &str = "http://192.168.1.23:8790/?token=0123456789abcdef0123456789abcdef";
 
-/// The Explore page setting that `actions` save, if they save one.
 fn saved(actions: &[Action]) -> Option<ExplorePageSetting> {
     actions.iter().find_map(|action| match action {
         Action::Settings(SettingsAction::SaveExplorePage(setting)) => Some(setting.clone()),
@@ -234,7 +230,6 @@ fn a_round_in_the_pane_shows_the_settings_and_turns_network_access_off() {
     let (mut fixture, request) = ExploreUi::new();
     fixture.respond(&request, 1);
     fixture.app.publish(ExplorePageShared(URL.into()));
-    // The settings come at the end of the round's page.
     fixture.app.update(UserInput::MouseScroll {
         column: 0,
         row: 4,

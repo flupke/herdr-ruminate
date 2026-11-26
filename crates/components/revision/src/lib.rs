@@ -1,5 +1,3 @@
-//! Navigation between parent and child revisions.
-
 mod core;
 mod ui;
 

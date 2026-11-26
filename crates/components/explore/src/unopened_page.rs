@@ -1,8 +1,3 @@
-//! The Explore page the browser could not open, for Start, Start with Challenger, Open the Explore
-//! page or Past rounds on the Explore page: the pane says why and gives the page's address to open
-//! by hand, until the next start or the next try. A click on the address copies it to the
-//! clipboard.
-
 use ui_events::ExplorePageNotOpened;
 use ui_theme::Palette;
 
@@ -13,7 +8,6 @@ impl ExploreComponent {
         self.unopened_page = Some(event.0.clone());
     }
 
-    /// Why the browser did not open the page, and the address to open it at.
     pub(super) fn lay_out_unopened_page(&self, layout: &mut ConversationLayout, palette: Palette) {
         let Some(page) = &self.unopened_page else {
             return;

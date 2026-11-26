@@ -1,7 +1,3 @@
-//! The start screen: whose change the next round reviews, and, with nothing left to review,
-//! its four buttons stay, inactive, and a line says why, until a line is unreviewed again; the
-//! past rounds open on the Explore page either way, without a round.
-
 use std::sync::Arc;
 
 use component_core::ComponentEventBus;
@@ -26,7 +22,6 @@ struct Pane {
 }
 
 impl Pane {
-    /// The pane on its start screen.
     fn starting() -> Self {
         let mut bus = ComponentEventBus::<Action>::new();
         let target = bus.mount(|events| {
@@ -49,7 +44,6 @@ impl Pane {
         self.bus.get_mut::<ExploreComponent>(self.target).unwrap()
     }
 
-    /// Presses `key`, and returns the actions the pane asks for.
     fn press(&mut self, key: char) -> Vec<Action> {
         self.bus
             .dispatch_input(
@@ -63,7 +57,6 @@ impl Pane {
             .collect()
     }
 
-    /// Captures the change of the round being started, and returns the kickoff the pane sends.
     fn capture(&mut self) -> TurnRequest {
         let comparison = Arc::new(Comparison {
             checkpoint: ReviewCheckpoint::new("review", "checkpoint"),
@@ -94,7 +87,6 @@ impl Pane {
         self.bus.publish(ExploreStartBlock(block)).unwrap();
     }
 
-    /// The start screen as the pane lays it out.
     fn layout(&mut self) -> ConversationLayout {
         let mut layout = ConversationLayout::new(Rect::new(0, 0, 120, 40));
         self.component()
@@ -102,7 +94,6 @@ impl Pane {
         layout
     }
 
-    /// The labels of the start screen's buttons, and whether each one acts.
     fn buttons(&mut self) -> Vec<(String, bool)> {
         self.layout()
             .items
@@ -118,8 +109,6 @@ impl Pane {
     }
 }
 
-/// The start screen's buttons, inactive or not; while they act, the one that says whose change
-/// it is comes first. Past rounds comes last, and acts either way.
 fn labels(active: bool) -> Vec<(String, bool)> {
     active
         .then(|| ("Whose change: mine".to_owned(), true))
@@ -133,7 +122,6 @@ fn labels(active: bool) -> Vec<(String, bool)> {
         .collect()
 }
 
-/// The action that opens the Explore page on its past rounds.
 fn past_rounds() -> Vec<Action> {
     vec![Action::ExplorePage(ExplorePageAction::Open(
         PageScreen::PastRounds,
@@ -274,7 +262,6 @@ fn a_start_that_failed_offers_the_inactive_starts_in_place_of_retry_once_nothing
 fn once_a_line_is_unreviewed_the_starts_are_active_again() {
     let mut pane = Pane::starting();
     pane.block(Some(StartBlock::NothingToReview));
-    // Whose change has no button while nothing can start, and its key does nothing.
     pane.press('a');
 
     pane.block(None);
@@ -300,7 +287,6 @@ fn a_kickoff_with_nothing_left_to_review_returns_the_pane_to_its_start_screen() 
         pane.component().exploration.as_ref().unwrap().instance
     );
 
-    // Jev marked the rest before the kickoff went out.
     pane.block(Some(StartBlock::NothingToReview));
     pane.bus
         .publish(ExplorePosted {

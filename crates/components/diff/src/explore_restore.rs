@@ -1,4 +1,3 @@
-//! Reopen selected evidence from a stored patch, or the legacy repository readers.
 use crate::{LoadedDocument, SourceViewer};
 use review_explore::{CodeLocation, Comparison, SourceSide};
 use review_repository::{

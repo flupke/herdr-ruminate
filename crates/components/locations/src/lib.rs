@@ -1,5 +1,3 @@
-//! Language-server location selection.
-
 use std::path::PathBuf;
 
 use component_core::{AnyInput, Component, ComponentSubscriptions, EventPublisher, InputScope};
@@ -19,7 +17,6 @@ use ui_panes::SelectionPane;
 use ui_shortcuts::Key;
 use ui_theme::Palette;
 
-/// LSP result-list state, input, and rendering.
 pub struct LocationsComponent {
     events: EventPublisher,
     repository_root: PathBuf,
@@ -269,7 +266,6 @@ impl Component<Action> for LocationsComponent {
     }
 }
 
-/// Why a list may miss locations, and how to complete it.
 fn unindexed_text(files: usize) -> String {
     let (files, them) = if files == 1 {
         ("1 file that changed on disk".to_owned(), "it")

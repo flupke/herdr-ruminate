@@ -1,5 +1,3 @@
-//! Modal overlays and application notifications.
-
 mod commit_message;
 mod confirmation;
 mod context_menu;
@@ -39,7 +37,6 @@ enum ModalOverlay {
     Confirmation,
 }
 
-/// Application overlays with their input, state, and rendering.
 pub struct OverlayComponent {
     snapshot_id: String,
     source_session: Option<String>,
@@ -273,8 +270,6 @@ impl OverlayComponent {
         Vec::new()
     }
 
-    /// Whether `key` closes the commit message: the key that opened it, or the
-    /// application's clear key.
     fn closes_commit_message(key: Key) -> bool {
         OverlayShortcut::bound_to(key) == Some(OverlayShortcut::ShowCommitMessage)
             || ApplicationShortcut::bound_to(key) == Some(ApplicationShortcut::Clear)

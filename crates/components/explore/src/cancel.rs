@@ -1,7 +1,3 @@
-//! Cancelling the reviewer's latest answer, or following an earlier answer cancelled on the
-//! Explore page with every answer after it: the question it answered comes back with the
-//! answer ready to edit and send again.
-
 use review_explore::{Command, ExplorePage, ReviewerAnswer};
 use ui_actions::Action;
 use ui_events::ExploreAnswerCancelled;
@@ -10,7 +6,6 @@ use super::{ComposeScope, EditorTarget, ExploreComponent, Progress};
 use comment_editor::CommentEditor;
 
 impl ExploreComponent {
-    /// Whether `answer` is the latest answer and can still be cancelled.
     pub(super) fn can_cancel(&self, answer: &ReviewerAnswer) -> bool {
         self.durable.enabled
             && !self.durable.historical
@@ -42,8 +37,6 @@ impl ExploreComponent {
     }
 
     pub(super) fn answer_cancelled(&mut self, event: &ExploreAnswerCancelled) {
-        // An answer cancelled on the Explore page, with the answers after it: the pane follows it
-        // as its own, when it shows the answer.
         let later = self.exploration.as_ref().and_then(|exploration| {
             let index = exploration
                 .answers
@@ -51,8 +44,6 @@ impl ExploreComponent {
                 .position(|answer| answer.id == event.answer)?;
             Some(exploration.answers.len() - index - 1)
         });
-        // The pane's own cancel of another answer, if one is on its way, fails once the round
-        // lost that answer.
         let ours = self.cancelling.as_ref() == Some(&event.answer);
         let elsewhere = !ours && event.result.is_ok() && later.is_some();
         if !ours && !elsewhere {
@@ -79,7 +70,6 @@ impl ExploreComponent {
         else {
             return;
         };
-        // Keep the current page's text before its page may disappear.
         self.save_draft();
         self.adopt(round);
         self.durable.posting = None;
@@ -101,7 +91,6 @@ impl ExploreComponent {
         self.reopen_answer(&answer);
     }
 
-    /// Show the page `answer` answered with its choice and text ready to send.
     fn reopen_answer(&mut self, answer: &ReviewerAnswer) {
         let Some(page) = self
             .exploration
@@ -138,7 +127,6 @@ impl ExploreComponent {
         self.editor = CommentEditor::new(&answer.text, &self.keymap);
     }
 
-    /// Drop the drafts and conclusions of pages the cancelled turn posted.
     fn forget_removed_pages(&mut self) {
         let Some(exploration) = &self.exploration else {
             return;

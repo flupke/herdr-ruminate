@@ -8,7 +8,6 @@ use super::super::Candidate;
 pub(super) use super::super::optimized::Boundaries;
 use super::dataset::{Case, coordinate};
 
-/// Target ownership is disjoint; context can overlap any part of the original hunk.
 pub(super) struct Window<'a> {
     pub(super) case: &'a Case,
     pub(super) rows: &'a [DiffRow],

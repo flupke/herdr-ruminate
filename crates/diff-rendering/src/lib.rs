@@ -1,5 +1,3 @@
-//! Diff frame and source-target rendering primitives.
-
 mod frame;
 
 pub use frame::{DiffFrame, FrameRule};
@@ -13,45 +11,31 @@ use review_source::DiffTarget;
 use ui_events::{DisplayedDiffRow, DisplayedDiffViewport};
 use unicode_width::UnicodeWidthStr;
 
-/// One frame border cell drawn over a diff row.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameBorderCell {
-    /// Zero-based column inside the diff content area.
     pub column: usize,
-    /// Border character.
     pub symbol: char,
-    /// Visible frame style.
     pub style: Style,
 }
 
-/// One complete visual row produced by a frame.
 pub struct FramedRow {
-    /// Styled row content.
     pub line: Line<'static>,
-    /// Border cells that must preserve the background below them.
     pub border_cells: Vec<FrameBorderCell>,
-    /// Presented diff row that owns this frame row.
     pub source_row: usize,
 }
 
-/// One frame layer row positioned inside the visible diff content area.
 pub struct FrameOverlayRow {
-    /// Zero-based row inside the diff content area.
     pub row: u16,
-    /// Optional frame text or rule for this row.
     pub line: Option<Line<'static>>,
-    /// Border cells drawn after the diff row to preserve its background.
     pub border_cells: Vec<FrameBorderCell>,
 }
 
-/// The visible frame layer produced while the diff viewport is composed.
 pub struct FrameOverlay {
     area: Rect,
     rows: Vec<FrameOverlayRow>,
 }
 
 impl FrameOverlay {
-    /// Create an empty frame layer.
     pub fn empty() -> Self {
         Self {
             area: Rect::default(),
@@ -59,12 +43,10 @@ impl FrameOverlay {
         }
     }
 
-    /// Create a frame layer for one visible diff content area.
     pub fn new(area: Rect, rows: Vec<FrameOverlayRow>) -> Self {
         Self { area, rows }
     }
 
-    /// Draw the frame layer after the diff surface.
     pub fn render(&self, buffer: &mut Buffer) {
         for row in &self.rows {
             let y = self.area.y.saturating_add(row.row);
@@ -86,7 +68,6 @@ impl FrameOverlay {
     }
 }
 
-/// Find the tight changed-row range for one source target in one viewport.
 pub fn target_rows(
     viewport: &DisplayedDiffViewport,
     target: &DiffTarget,

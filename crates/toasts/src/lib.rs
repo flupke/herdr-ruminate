@@ -1,5 +1,3 @@
-//! Toast state and rendering.
-
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -15,12 +13,10 @@ use uuid::Uuid;
 
 const LONG_TOAST_DELAY: Duration = Duration::from_millis(250);
 
-/// Identifies one toast across asynchronous work.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ToastId(Uuid);
 
 impl ToastId {
-    /// Generate a new toast ID.
     pub fn generate() -> Self {
         Self(Uuid::new_v4())
     }
@@ -40,12 +36,10 @@ struct LongToast {
     started: Instant,
 }
 
-/// Active short and long toasts.
 #[derive(Debug)]
 pub struct ToastState {
     toasts: Vec<Toast>,
     long_toasts: VecDeque<LongToast>,
-    /// How long a long toast waits before it appears.
     long_toast_delay: Duration,
 }
 
@@ -55,7 +49,6 @@ impl Default for ToastState {
     }
 }
 
-/// Visual severity of a toast.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ToastKind {
     Info,
@@ -72,8 +65,6 @@ impl ToastKind {
 }
 
 impl ToastState {
-    /// Toasts whose long toasts appear `delay` after they start, in place of the long-toast
-    /// delay (250 ms by default).
     pub fn with_long_toast_delay(delay: Duration) -> Self {
         Self {
             toasts: Vec::new(),
@@ -82,7 +73,6 @@ impl ToastState {
         }
     }
 
-    /// Whether a toast appears or expires since the previous frame.
     pub fn changes_between(&self, previous: Instant, now: Instant) -> bool {
         self.toasts.iter().any(|toast| toast.expires <= now)
             || self.long_toasts.front().is_some_and(|toast| {
@@ -91,13 +81,10 @@ impl ToastState {
             })
     }
 
-    /// Add a short toast.
     pub fn push(&mut self, text: impl Into<String>, kind: ToastKind) {
         self.push_at(text, kind, Instant::now());
     }
 
-    /// Add a short toast shown from `now`. One that says what a shown toast says replaces it,
-    /// as the newest, so a failure repeated by each retry shows once.
     fn push_at(&mut self, text: impl Into<String>, kind: ToastKind, now: Instant) {
         let text = text.into();
         self.toasts
@@ -109,18 +96,14 @@ impl ToastState {
         });
     }
 
-    /// Remove expired short toasts.
     pub fn expire(&mut self, now: Instant) {
         self.toasts.retain(|toast| toast.expires > now);
     }
 
-    /// Add a toast that appears after the long-toast delay (250 ms by default) and remains until
-    /// finished.
     pub fn start_long_toast(&mut self, text: impl Into<String>) -> ToastId {
         self.start_long_toast_at(text, Instant::now())
     }
 
-    /// Add a long toast started at `now`.
     fn start_long_toast_at(&mut self, text: impl Into<String>, now: Instant) -> ToastId {
         let id = ToastId::generate();
         self.long_toasts.push_back(LongToast {
@@ -131,14 +114,12 @@ impl ToastState {
         id
     }
 
-    /// Remove a long toast.
     pub fn finish_toast(&mut self, id: ToastId) {
         if let Some(index) = self.long_toasts.iter().position(|toast| toast.id == id) {
             self.long_toasts.remove(index);
         }
     }
 
-    /// Render active toasts.
     pub fn render(&self, area: Rect, buffer: &mut Buffer, palette: Palette) {
         self.render_at(area, buffer, palette, Instant::now());
     }
@@ -154,7 +135,6 @@ impl ToastState {
             .iter()
             .rev()
             .map(|toast| (toast.text.as_str(), toast.kind));
-        // From the bottom up: the long toast, then the newest short toasts, as many as fit whole.
         let mut bottom = area.bottom();
         for (text, kind) in long_toast.into_iter().chain(short_toasts) {
             let view = ToastView::new(text, kind, area.width, palette);
@@ -172,10 +152,8 @@ impl ToastState {
     }
 }
 
-/// The columns a toast's border and padding take beside its text.
 const TOAST_MARGIN: u16 = 4;
 
-/// One toast, its text wrapped at the words to fit the width it may take.
 struct ToastView {
     lines: Vec<String>,
     kind: ToastKind,
@@ -191,7 +169,6 @@ impl ToastView {
         }
     }
 
-    /// The toast's width and height, with its border.
     fn size(&self) -> (u16, u16) {
         let text = self
             .lines
@@ -226,8 +203,6 @@ impl Widget for ToastView {
     }
 }
 
-/// `text` in lines of at most `width` columns, broken between words; a word wider than that
-/// stands alone on its line.
 fn wrap_words(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();

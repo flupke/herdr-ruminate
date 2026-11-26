@@ -2,8 +2,6 @@ use review_repository::diff::DiffRow;
 
 use super::coordinate;
 
-/// Align matching Rust functions inside a coarse replacement before splitting.
-/// Unrecognized or unmatched sections remain paired as one edit.
 pub(super) struct Sections<'a> {
     functions: Vec<&'a [DiffRow]>,
 }
@@ -76,7 +74,6 @@ impl<'a> Sections<'a> {
 
     fn text(row: &DiffRow) -> &str {
         match row {
-            // Parsed diff rows retain their single-character +/- prefix.
             DiffRow::Add { text, .. } | DiffRow::Delete { text, .. } => &text[1..],
             _ => "",
         }

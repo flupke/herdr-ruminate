@@ -1,5 +1,3 @@
-//! Opt-in experiments; none of these strategies changes production planning.
-
 mod dataset;
 mod metrics;
 mod plan;

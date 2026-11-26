@@ -1,4 +1,3 @@
-//! One projection for embedded rendering, pointer input and reply visibility.
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ui_text_selection::TextRegion;
@@ -58,7 +57,6 @@ impl ClippedViewport {
         }
     }
 
-    /// `region`, drawn in the window, where this viewport shows its rows.
     pub(super) fn place_text(self, region: &TextRegion) -> TextRegion {
         let area = region.area();
         let mut shown = (area.top()..area.bottom())

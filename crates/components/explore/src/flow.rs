@@ -1,4 +1,3 @@
-//! Document coordinates and clipping shared by drawing and pointer routing.
 use super::{
     Control, Reveal,
     controls::{Button, ControlVisual},
@@ -24,7 +23,6 @@ pub(super) enum Content {
     Text(Text<'static>, Option<Control>),
     EvidenceSplit(EvidenceList),
     Editor(super::EditorTarget),
-    /// The editor of the Explore page setting being typed.
     SettingEditor,
     Controls(Vec<Button>),
 }
@@ -86,7 +84,6 @@ impl ConversationLayout {
         self.paragraph(Text::styled(text.into(), color), control);
     }
 
-    /// An address, underlined as a link, that `control` acts on when clicked.
     pub(super) fn link(&mut self, url: impl Into<String>, color: Color, control: Control) {
         self.paragraph(
             Text::styled(url.into(), Style::new().fg(color).underlined()),
@@ -104,7 +101,6 @@ impl ConversationLayout {
         );
     }
 
-    /// `text` of `height` lines that fit the width, drawn as they are.
     pub(super) fn picture(&mut self, text: Text<'static>, height: u16, control: Option<Control>) {
         self.push(Content::Text(text, control), height);
     }
@@ -134,14 +130,10 @@ impl ConversationLayout {
         self.paragraph(Text::from(lines), None);
     }
 
-    /// Markdown under a label such as "Agent:". The label shares the first
-    /// paragraph's line.
     pub(super) fn labelled_prose(&mut self, label: &str, body: &str, palette: Palette) {
         self.prose(&Self::labelled(label, body), palette);
     }
 
-    /// `body` behind `label`, which stands alone before a heading, list,
-    /// quote, table or code block: these must start their own line.
     pub(super) fn labelled(label: &str, body: &str) -> String {
         let body = body.trim_start();
         let numbered = body
@@ -176,7 +168,6 @@ impl ConversationLayout {
         self.push_control_rows(Button::wrap(self.area.width, labels));
     }
 
-    /// Buttons that cannot be pressed now: they show, and clicks on them do nothing.
     pub(super) fn inactive_controls(&mut self, labels: impl IntoIterator<Item = String>) {
         let labels = labels.into_iter().map(|label| {
             (
@@ -210,8 +201,6 @@ impl ConversationLayout {
         if self.scroll >= self.height {
             self.scroll = self.maximum_scroll();
         }
-        // Retain enough trailing space to keep the visible anchor even when the document
-        // previously fit on screen. Idle frames must not clamp it back and shift the text.
         self.height = self
             .height
             .max(self.scroll.saturating_add(usize::from(self.area.height)));
@@ -400,7 +389,6 @@ impl ConversationLayout {
         })
     }
 
-    /// Full window sizes, independent of partial clipping by conversation scrolling.
     pub(super) fn viewports(&self) -> ExploreViewports {
         ExploreViewports(
             self.items

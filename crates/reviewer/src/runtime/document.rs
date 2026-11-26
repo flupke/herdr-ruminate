@@ -1,5 +1,3 @@
-//! File reads run independently of repository refresh and agent delivery.
-
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;

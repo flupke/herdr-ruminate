@@ -1,5 +1,3 @@
-//! Open, close, and toggle actions for the review pane.
-
 use herdr_client::protocol::{
     EntrypointId, HerdrReader, HerdrWriter, OpenPluginPane, PaneId, PanePlacement, PaneSize,
     PluginContext, PluginPane, TabId,
@@ -8,31 +6,21 @@ use review_repository::repository::Repository;
 
 const REVIEW_ENTRYPOINT: &str = "review";
 
-/// A manifest action for the review pane.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneAction {
-    /// Open or focus the review pane.
     Open,
-    /// Close the review pane if it exists.
     Close,
-    /// Close an open pane or open a missing pane.
     Toggle,
 }
 
-/// The visible result of one pane action.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaneActionResult {
-    /// A new pane was opened.
     Opened(PaneId),
-    /// An existing pane was focused.
     Focused(PaneId),
-    /// One or more panes were closed.
     Closed,
-    /// Close found no pane and changed nothing.
     AlreadyClosed,
 }
 
-/// Idempotent review-pane actions over a Herdr client.
 #[derive(Debug)]
 pub struct PaneActions<'a, C> {
     client: &'a C,
@@ -42,13 +30,10 @@ impl<'a, C> PaneActions<'a, C>
 where
     C: HerdrReader + HerdrWriter,
 {
-    /// Bind pane actions to one Herdr client.
     pub fn new(client: &'a C) -> Self {
         Self { client }
     }
 
-    /// Run one action on the review pane of the action's tab, using only the immutable action
-    /// context. A herdr-bowtie workspace holds a tab per task, each with its own review pane.
     pub fn run(
         &self,
         action: PaneAction,

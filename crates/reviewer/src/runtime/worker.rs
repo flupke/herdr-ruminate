@@ -1,5 +1,3 @@
-//! Repository work in arrival order: refreshes, revision edits, review marks and Explore.
-
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender};
@@ -36,13 +34,10 @@ pub(super) struct Worker {
     pub(super) commands: Sender<WorkerCommand>,
     pub(super) explore: ExploreSession,
     pub(super) jev: JevClassifier,
-    /// The Linear workspace and teams whose issues the header and the page link to.
     pub(super) linear: Option<LinearSettings>,
     pub(super) auto_review: Option<Arc<AtomicBool>>,
-    /// An Explore kickoff waiting for Jev to mark what it dismisses first.
     pub(super) held_kickoff: Option<review_explore::TurnRequest>,
     pub(super) documents: Sender<document::Command>,
-    /// The revisions of the latest history whose reviewed share is still to compute.
     pub(super) revision_progress: HistoryProgress,
 }
 
@@ -52,9 +47,7 @@ pub(super) enum WorkerCommand {
     Repository(RepositoryAction),
     Poll,
     AutoReviewFinished(Box<auto_review::AutoReview>),
-    /// Compute the reviewed share of the next revision of the latest history.
     RevisionProgress,
-    /// Block until the sender drops, keeping later work pending.
     #[cfg(test)]
     Hold(crossbeam_channel::Receiver<()>),
     Quit,
@@ -116,9 +109,6 @@ impl Worker {
         true
     }
 
-    /// Explore work: a kickoff, from the pane or a start on the page, waits for Jev's marks.
-    /// Once an input ends the round, from the pane or from the page, the round's own marks count
-    /// for the start screen.
     fn handle_explore(&mut self, input: explore_session::Input, messages: &ApplicationEventSender) {
         let ran = self.explore.runs_round();
         self.route_explore(input, messages);
@@ -142,8 +132,6 @@ impl Worker {
                     self.start_round(kickoff, messages);
                 }
             }
-            // Stop waiting and Reset from the page drop a kickoff that waits for Jev, as from
-            // the pane.
             explore_session::Input::Page {
                 command: PageCommand::Recover(recovery),
                 reply,
@@ -169,8 +157,6 @@ impl Worker {
         }
     }
 
-    /// Tell Explore what the review marks leave of the current snapshot to review: its start
-    /// screen says whether a round can start.
     fn marks_changed(&mut self) {
         let Some(snapshot) = &self.snapshot else {
             return;
@@ -220,8 +206,6 @@ impl Worker {
         }
     }
 
-    /// Loads the revision history, sends the shares still known at once, and queues the
-    /// computing of the others.
     fn load_revision_history(
         &mut self,
         load_id: RevisionHistoryLoadId,
@@ -254,8 +238,6 @@ impl Worker {
         }
     }
 
-    /// Computes the reviewed share of the next revision of the latest history, then queues the
-    /// one after it behind the commands that came meanwhile.
     fn next_revision_progress(&mut self, messages: &ApplicationEventSender) {
         let Some((load_id, change_id)) = self.revision_progress.next() else {
             return;
@@ -294,8 +276,6 @@ impl Worker {
         let _ = messages.send(RevisionEditFailed { message: failure });
     }
 
-    /// Publish the current comparison: documents get the snapshot before the
-    /// application hears of its files, and Explore restores the review's round last.
     pub(super) fn poll(&mut self, messages: &ApplicationEventSender) -> bool {
         let snapshot = match self.repository.poll() {
             Ok(PollResult::Complete(snapshot)) => snapshot,
@@ -343,8 +323,6 @@ impl Worker {
         true
     }
 
-    /// The Linear issues that the change of `identity` names, in its description, then its
-    /// bookmarks and its workspaces' names; none without the `[linear]` settings.
     fn linear_issues(&self, identity: &SnapshotIdentity) -> Vec<LinearIssue> {
         self.linear.as_ref().map_or_else(Vec::new, |linear| {
             linear.issues(
@@ -363,7 +341,6 @@ impl Worker {
         path: String,
         mark: &HunkMark,
     ) {
-        // Always answer: the diff waits for this result before the next mark.
         let result = (|| {
             let snapshot = self
                 .snapshot
@@ -416,7 +393,6 @@ impl Worker {
         });
     }
 
-    /// The state a stored mark left, or why it was not stored.
     fn marked_state(
         &self,
         snapshot: &Snapshot,
@@ -432,7 +408,6 @@ impl Worker {
     }
 }
 
-/// The changed file at `path` in the worker's snapshot.
 fn changed_file<'a>(snapshot: &'a Snapshot, path: &str) -> eyre::Result<&'a ChangedFile> {
     snapshot
         .files

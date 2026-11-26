@@ -1,14 +1,12 @@
 use super::*;
 use ui_actions::LspAction;
 
-/// A Files viewer driven directly, without the pane around it.
 struct Scrolling {
     _bus: ComponentEventBus<Action>,
     viewer: SourceViewer,
     shortcuts: ui_shortcuts::ShortcutMatcher<DiffPaneCommand>,
 }
 
-/// Receives the viewer's publications while nothing else listens.
 struct Detached;
 
 impl Component<Action> for Detached {

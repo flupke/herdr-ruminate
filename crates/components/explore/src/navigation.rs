@@ -20,10 +20,8 @@ pub(super) enum History {
     Conclusion,
 }
 
-/// Navigation bar labels, each with the control a click activates.
 pub(super) type Labels = Vec<(String, Option<Control>)>;
 
-/// History controls stay visible while the question and its evidence scroll.
 #[derive(Clone, Default)]
 pub(super) struct Navigation {
     items: Vec<Item>,
@@ -31,7 +29,6 @@ pub(super) struct Navigation {
 }
 
 impl Navigation {
-    /// Lay out `labels` from the left and `corner` in the top-right corner.
     fn new(area: Rect, labels: Labels, corner: Labels) -> Self {
         let mut result = Self::default();
         let width = area.width.saturating_sub(2);
@@ -40,8 +37,6 @@ impl Navigation {
                 .into_iter()
                 .map(|(label, control)| (ControlVisual::Text(label), control))
         };
-        // The corner's controls are buttons. A corner that does not fit beside the
-        // first label keeps only them.
         let corner: Vec<_> = corner
             .into_iter()
             .map(|(label, control)| {
@@ -140,7 +135,6 @@ impl Page {
     }
 }
 
-/// Questions and conclusions retain the order in which the agent posted them.
 struct HistoryPages {
     pages: Vec<Page>,
     current: usize,
@@ -209,7 +203,6 @@ impl ExploreComponent {
 
     pub(super) fn navigation_bar(&self, area: Rect) -> Navigation {
         if self.shows_page_round() {
-            // The questions are on the page: only Reset stays.
             return Navigation::new(area, Vec::new(), self.reset_controls());
         }
         let history = HistoryPages::new(self);

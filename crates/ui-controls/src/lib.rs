@@ -1,5 +1,3 @@
-//! Shared visual controls: actions are buttons, destinations are links.
-
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -13,9 +11,7 @@ use ui_theme::Palette;
 pub enum ButtonTone {
     Primary,
     Secondary,
-    /// An action that discards work.
     Danger,
-    /// An action that cannot be taken now; nearby text says why.
     Inactive,
 }
 
@@ -54,7 +50,6 @@ impl ActionButton {
         render_label(self.text(), self.style(palette), area, buffer);
     }
 
-    /// Render an already sized button label inside a composite line.
     pub fn span_with_text(&self, text: impl Into<String>, palette: Palette) -> Span<'static> {
         Span::styled(text.into(), self.style(palette))
     }
@@ -85,7 +80,6 @@ impl NavigationLink {
     }
 }
 
-/// A key and what it does, as the footer shows it: the key stands out, its label is dim.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct KeyHint {
     key: String,
@@ -100,7 +94,6 @@ impl KeyHint {
         }
     }
 
-    /// Width in terminal cells.
     pub fn width(&self) -> u16 {
         label_width(&self.key).saturating_add(1 + label_width(&self.label))
     }
@@ -125,7 +118,6 @@ fn render_label(text: String, style: Style, area: Rect, buffer: &mut Buffer) {
         .render(Rect::new(area.x, area.y, width, area.height.min(1)), buffer);
 }
 
-/// Width of a control label in terminal cells, as used when rendering it.
 pub fn label_width(text: &str) -> u16 {
     u16::try_from(Line::raw(text).width()).unwrap_or(u16::MAX)
 }

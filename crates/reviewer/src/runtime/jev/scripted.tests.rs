@@ -19,7 +19,6 @@ fn text(edits: &[(usize, &str)]) -> Vec<u8> {
         .collect()
 }
 
-/// The results the stand-in records for `script` over a two-hunk change.
 fn classify(script: Option<&str>) -> Vec<SignificanceResult> {
     let files = repository_fixture(RepoType::Git);
     files.write("file.rs", &text(&[]));

@@ -4,7 +4,6 @@ use crate::DiffControl;
 #[test]
 fn each_label_and_its_padding_select_its_control() {
     let controls = TitleControls::DIFF;
-    // The title ends against the right corner of a 40-cell pane.
     let start = 40 - 1 - u16::try_from(controls.width()).unwrap();
     let at = |offset| controls.at(40, start + offset);
 

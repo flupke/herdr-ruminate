@@ -1,5 +1,3 @@
-//! Terminal and worker integration for the review pane.
-
 mod actions;
 mod agent_environment;
 mod auto_review;
@@ -77,22 +75,16 @@ const HOST_EVENT_RECONNECT_DELAY: Duration = Duration::from_secs(1);
 const EVENT_BATCH_LIMIT: usize = 64;
 const EVENT_BATCH_BUDGET: Duration = Duration::from_millis(8);
 
-/// The running review pane.
 #[derive(Debug)]
 pub struct Runtime {
     repository: Repository,
     state_dir: PathBuf,
     workspace_id: WorkspaceId,
-    /// The review pane's tab: review prompts go only to an agent there.
     tab_id: TabId,
     initial_agent: Option<PaneId>,
-    /// Herdr, or herdr-core under herdr-app.
     host: Arc<dyn AgentHost>,
     theme: Theme,
-    /// Jev, when a `TypeSafe` API key enables it.
     jev: JevClassifier,
-    /// The Linear workspace and teams whose issues the header links to; none without the
-    /// `[linear]` table of `config.toml`.
     linear: Option<LinearSettings>,
 }
 
@@ -102,17 +94,12 @@ struct TerminalGuard {
 
 struct TerminalEventProducer {
     events: EventSender<EventEnvelope>,
-    /// Whether a pasted acknowledgement request is the vision core's, in a vision session, rather
-    /// than the user's text.
     acknowledges: bool,
     stop_requested: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
-/// The threads that produce the runtime's events, which stop together: the stop disconnects
-/// the channel they wait on, and ends the host's event stream they read.
 struct RuntimeEventProducers {
-    /// Dropped on stop, which disconnects `stopped`.
     stop: Option<EventSender<()>>,
     stopped: EventReceiver<()>,
     host_events: EventCanceller,
@@ -127,10 +114,7 @@ struct RuntimeEventLoop<'a, B: Backend> {
     events: &'a mut events::Inbox,
     timings: &'a timing::Recorder,
     last_frame: Instant,
-    /// How long a cycle takes the next queued event before it draws: `EVENT_BATCH_BUDGET`.
     batch_budget: Duration,
-    /// Whether the next frame paints every cell, not only those that changed since the last
-    /// frame: the terminal may have dropped what the last frame painted.
     repaint: bool,
 }
 
@@ -140,14 +124,8 @@ struct MouseClicks {
 }
 
 impl Runtime {
-    /// Read the pane context that Herdr, or herdr-app and its mod, supply.
-    ///
-    /// Under herdr-core, it first runs the program again with the environment of the agent it
-    /// opened beside, as it had under Herdr.
     pub fn from_env() -> eyre::Result<Self> {
         agent_environment::adopt();
-        // The state root may move the state Herdr kept: only once the pane runs in a host and
-        // a repository.
         let host = host::Host::from_env(env::args().skip(1))?;
         let config = ReviewerConfig::from_env()?;
         let repository = Repository::discover(env::current_dir()?)?;
@@ -166,7 +144,6 @@ impl Runtime {
         })
     }
 
-    /// Run until the user quits or Herdr stops the pane.
     pub fn run(self) -> eyre::Result<()> {
         let timings = timing::Recorder::from_env()?;
         let stopped = Arc::new(AtomicBool::new(false));
@@ -184,8 +161,6 @@ impl Runtime {
             settings.explore_round_settings()?,
         ));
         Self::draw_first_frame(&mut terminal, &mut app)?;
-        // Before anything reads the review state, while the pane shows: the first migration
-        // backs up the per-workspace states, which takes a moment.
         Self::migrate_workspace_states(&self.repository, &settings, &mut app);
 
         let (event_sender, events) = unbounded();
@@ -273,7 +248,6 @@ impl Runtime {
         result
     }
 
-    /// Draws the pane at the terminal's size, before the slower work of the start.
     fn draw_first_frame(
         terminal: &mut TerminalGuard,
         app: &mut ReviewApplication,
@@ -289,8 +263,6 @@ impl Runtime {
         Ok(())
     }
 
-    /// Merge the review states the repository's workspaces kept for themselves into the shared
-    /// one, and tell the reviewer what went wrong, if anything.
     fn migrate_workspace_states(
         repository: &Repository,
         store: &ReviewStore,
@@ -311,10 +283,6 @@ impl Runtime {
         });
     }
 
-    /// Serve the Explore page of the session's round, for the Herdr action that opens it, and
-    /// to the network for the pane's QR code as the `settings` say. The page on this machine
-    /// also lists and opens the repository's saved rounds, `past`. The page's commands join
-    /// the session's other inputs, and later settings reach the page through the `effects`.
     #[expect(
         clippy::too_many_arguments,
         reason = "each is one part of the page the runtime serves"
@@ -356,8 +324,6 @@ impl Runtime {
         Some(host)
     }
 
-    /// The review pane's place, which names the record of its Explore page for the Herdr action:
-    /// its tab, since the tabs of a workspace each hold a review pane of their own.
     fn page_place(&self) -> PanePlace {
         PanePlace {
             workspace: self.workspace_id.clone(),
@@ -365,8 +331,6 @@ impl Runtime {
         }
     }
 
-    /// Saved Explore state changed by another reviewer reaches the Explore session, and the
-    /// list of saved rounds the page shows (`past`).
     fn watch_explore_storage(
         watcher: &RepositoryWatcher,
         settings: &ReviewStore,
@@ -401,8 +365,6 @@ impl Runtime {
         Ok(())
     }
 
-    /// Forwards the host's events until `canceller` ends the stream; subscribes again after
-    /// the host dropped it, unless `stopped` disconnects meanwhile.
     fn start_host_events(
         host: Arc<dyn AgentHost>,
         events: EventSender<EventEnvelope>,
@@ -428,7 +390,6 @@ impl Runtime {
         })
     }
 
-    /// Forwards the language server's events until `stopped` disconnects.
     fn start_lsp_events(
         lsp_events: EventReceiver<review_lsp::Event>,
         events: EventSender<EventEnvelope>,
@@ -451,8 +412,6 @@ impl Runtime {
         })
     }
 
-    /// Sends a tick and the refreshes the watcher calls for every `TIMER_INTERVAL`, until
-    /// `producers_stopped` disconnects, or a signal sets `stopped`.
     fn start_periodic_events(
         events: EventSender<EventEnvelope>,
         stopped: Arc<AtomicBool>,
@@ -536,12 +495,10 @@ where
         Ok(false)
     }
 
-    /// A tick with nothing to animate or expire.
     fn is_idle(&self, route: &Route<'_>) -> bool {
         matches!(route, Route::Tick(now) if !self.app.needs_tick(self.last_frame, *now))
     }
 
-    /// Handle one event; `Continue` says whether the screen may have changed.
     fn handle_event(&mut self, event: &EventEnvelope) -> eyre::Result<ControlFlow<(), bool>> {
         let route = Route::of(event);
         if self.is_idle(&route) {
@@ -563,7 +520,6 @@ where
         })
     }
 
-    /// Handle one event without timing it; true stops the runtime.
     fn dispatch_event(&mut self, event: &EventEnvelope) -> eyre::Result<bool> {
         Ok(self.dispatch(Route::of(event), event)?.is_break())
     }
@@ -650,23 +606,16 @@ where
     }
 }
 
-/// Test tooling only: whether the reviewer runs in a `make vision` session, which drives it
-/// through frame markers and acknowledgement requests (`vision-signal`).
 fn in_vision_session() -> bool {
     env::var_os("HERDR_REVIEWER_VISION").is_some()
 }
 
-/// Test tooling only: a `make vision` session names the directory its
-/// scripted agent reads the sent Explore prompts from. Without
-/// `HERDR_REVIEWER_VISION` the directory is ignored, because the turn files
-/// hold access values.
 fn vision_turns_from_env() -> Option<vision_turns::TurnLog> {
     env::var_os("HERDR_REVIEWER_VISION")?;
     let directory = env::var_os("HERDR_REVIEWER_VISION_TURNS")?;
     vision_turns::TurnLog::open(directory.into()).ok()
 }
 
-/// Hand the terminal to the user's editor, then take it back.
 fn open_in_editor<B: PaneBackend>(
     terminal: &mut Terminal<B>,
     terminal_events: Option<&mut TerminalEventProducer>,
@@ -707,9 +656,8 @@ impl TerminalGuard {
                 return Err(error.into());
             }
         };
-        // crossterm hears SIGWINCH from the moment its event source exists, which the first poll
-        // creates: before the first frame, a resize while the pane starts waits for the terminal
-        // reader, as herdr-app's shrink and regrow of a new pane do.
+        // crossterm hears SIGWINCH only once its event source exists, which the first poll creates;
+        // herdr-app shrinks and regrows a new pane while it starts.
         if let Err(error) = enter_terminal_modes(terminal.backend_mut())
             .and_then(|()| crossterm::event::poll(Duration::ZERO).map(|_| ()))
         {
@@ -795,8 +743,6 @@ impl TerminalEventProducer {
         })
     }
 
-    /// Reads terminal events with `read_event` until stopped. It gets how long to wait for an
-    /// event, `wait`; the producer sees that it is told to stop once a wait ends.
     fn start_with_reader(
         events: EventSender<EventEnvelope>,
         wait: Duration,
@@ -831,7 +777,6 @@ impl TerminalEventProducer {
         }
     }
 
-    /// Stop reading so a child process owns terminal input.
     fn suspend(&mut self) {
         self.stop_and_join();
     }
@@ -889,7 +834,6 @@ impl RuntimeEventProducers {
         self.threads.push(thread);
     }
 
-    /// Forwards the events of `host` to `events`, until stopped.
     fn forward_host_events(
         &mut self,
         host: Arc<dyn AgentHost>,
@@ -903,7 +847,6 @@ impl RuntimeEventProducers {
         ));
     }
 
-    /// A receiver that disconnects once the producers are told to stop.
     fn stopped(&self) -> EventReceiver<()> {
         self.stopped.clone()
     }

@@ -26,7 +26,6 @@ fn module_and_jsx_files_are_colored_as_their_language() {
         ("start-web.cjs", "start-web.js"),
         ("view.jsx", "view.tsx"),
         ("START-WEB.MJS", "start-web.js"),
-        // The languages of Markdown code blocks.
         ("mjs", "js"),
         ("jsx", "tsx"),
     ] {

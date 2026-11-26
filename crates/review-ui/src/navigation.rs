@@ -1,18 +1,9 @@
-//! The one owner of the navigation mode, pane focus, open modals and layout.
-//!
-//! Components receive the mode through `ReviewNavigationChanged` and ask for
-//! focus through `ReviewPaneFocusRequested`; neither event makes a component
-//! the owner. [`NavigationRequests`] collects those requests on the event
-//! bus, and the application applies them to [`Navigation`] after each
-//! dispatch.
-
 use component_core::{Component, ComponentSubscriptions};
 use ui_events::{ReviewNavigation, ReviewNavigationChanged, ReviewPane, ReviewPaneFocusRequested};
 
 use crate::Action;
 use crate::layout::{ScreenLayout, Viewport};
 
-/// The navigation state that decides what the reviewer sees and types into.
 pub(crate) struct Navigation {
     mode: ReviewNavigation,
     focus: ReviewPane,
@@ -21,7 +12,6 @@ pub(crate) struct Navigation {
     layout: ScreenLayout,
 }
 
-/// The pane focus each mode had when the reviewer last left it.
 #[derive(Clone, Copy)]
 struct FocusMemory {
     files: ReviewPane,
@@ -39,18 +29,14 @@ impl FocusMemory {
     }
 }
 
-/// A component shown in one of the two review panes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PaneComponent {
     Files,
     Threads,
     Explore,
-    /// The diff: its own pane in Files and Threads, and the evidence shown
-    /// inside Explore in Explore mode.
     Diff,
 }
 
-/// A component that takes all keyboard input while it is open.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Modal {
     Revision,
@@ -58,7 +44,6 @@ pub(crate) enum Modal {
     Locations,
 }
 
-/// Which modals are open; the first in precedence order takes input.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct OpenModals {
     pub(crate) revision: bool,
@@ -67,7 +52,6 @@ pub(crate) struct OpenModals {
 }
 
 impl Modal {
-    /// Open modals take input in this order.
     const PRECEDENCE: [Self; 3] = [Self::Revision, Self::Overlay, Self::Locations];
 }
 
@@ -116,7 +100,6 @@ impl Navigation {
         self.layout
     }
 
-    /// Apply the mode, then the focus, that components requested.
     pub(crate) fn apply(&mut self, requests: NavigationRequests) {
         if let Some(mode) = requests.mode
             && mode != self.mode
@@ -130,12 +113,10 @@ impl Navigation {
         }
     }
 
-    /// Move focus to one pane on the application's own behalf.
     pub(crate) fn focus_pane(&mut self, focus: ReviewPane) {
         self.focus = focus;
     }
 
-    /// Move focus to the other pane and return the new focus.
     pub(crate) fn toggle_focus(&mut self) -> ReviewPane {
         self.focus = match self.focus {
             ReviewPane::Navigation => ReviewPane::Detail,
@@ -144,7 +125,6 @@ impl Navigation {
         self.focus
     }
 
-    /// The component that owns keyboard focus when no modal is open.
     pub(crate) fn focused_pane(&self) -> PaneComponent {
         match self.focus {
             ReviewPane::Navigation => self.navigation_pane(),
@@ -152,7 +132,6 @@ impl Navigation {
         }
     }
 
-    /// The component shown in the navigation pane for the current mode.
     pub(crate) fn navigation_pane(&self) -> PaneComponent {
         match self.mode {
             ReviewNavigation::Files => PaneComponent::Files,
@@ -161,8 +140,6 @@ impl Navigation {
         }
     }
 
-    /// Whether the focused pane is shown inside another component that may
-    /// claim keys first: the Explore evidence, shown inside Explore.
     pub(crate) fn focus_is_enclosed(&self) -> bool {
         self.mode == ReviewNavigation::Explore && self.focus == ReviewPane::Detail
     }
@@ -175,21 +152,15 @@ impl Navigation {
         self.modals
     }
 
-    /// The modal that takes keyboard input, if any is open.
     pub(crate) fn modal(&self) -> Option<Modal> {
         self.modals.top()
     }
 
-    /// Recompute the layout that drawing and hit-testing share.
     pub(crate) fn relayout(&mut self, viewport: Viewport) {
         self.layout = ScreenLayout::new(viewport, self.mode, self.focus, self.modals.locations);
     }
 }
 
-/// Navigation requests published by components during one dispatch.
-///
-/// Only the latest mode and the latest focus count, as when several
-/// components ask in the same cascade.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct NavigationRequests {
     mode: Option<ReviewNavigation>,
@@ -197,7 +168,6 @@ pub(crate) struct NavigationRequests {
 }
 
 impl NavigationRequests {
-    /// Hand over the pending requests and start collecting afresh.
     pub(crate) fn take(&mut self) -> Self {
         std::mem::take(self)
     }

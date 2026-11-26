@@ -26,30 +26,21 @@ struct ConversationRows {
     frame: DiffFrame,
     width: u16,
     rows: Vec<CommentRow>,
-    /// The rows of the thread's original code.
     code: Range<usize>,
 }
 
-/// A thread laid out for a width, which a frame and a scroll step reuse until the width, the
-/// thread or its original code changes. The palette stays the same for the session.
 pub(super) struct LaidOutThread {
     width: u16,
     thread: Option<ReviewThread>,
-    /// The thread whose original code the rows show.
     original: Option<ThreadId>,
     rows: Vec<CommentRow>,
-    /// The rows of the thread's original code.
     code: Range<usize>,
 }
 
-/// The rows of the shown thread: its code and messages, laid out once, then the reply under them,
-/// laid out at each frame as the reviewer edits it.
 struct ConversationViewport<'a> {
     thread: Ref<'a, [CommentRow]>,
-    /// The rows of `thread` that hold its original code.
     code: Range<usize>,
     reply: Vec<CommentRow>,
-    /// Where the editor starts in `reply`: the view keeps it at its bottom.
     editor_start: usize,
     content_height: usize,
     height: usize,
@@ -91,7 +82,6 @@ impl<'a> ConversationViewport<'a> {
             .saturating_sub(self.content_height)
     }
 
-    /// The visible rows, from the top of the view, that show the thread's original code.
     fn code_rows(&self, scroll: usize) -> impl Iterator<Item = usize> + '_ {
         let scroll = scroll.min(self.scroll_limit());
         let shown = self
@@ -169,7 +159,6 @@ impl ConversationRows {
         self.line(&Line::raw(text.into()).style(style), None);
     }
 
-    /// The rows, each in the frame's borders.
     fn enclosed(mut self) -> Vec<CommentRow> {
         for row in &mut self.rows {
             if row.rendered.border_cells.is_empty() {
@@ -218,8 +207,6 @@ impl DiffComponent {
         self.conversation_text(body, &code_rows, buffer)
     }
 
-    /// The text of the view: the thread's original code from where code starts, each row a
-    /// line, at the visible `code_rows`; the rest is prose read inside the frame's padding.
     fn conversation_text(&self, body: Rect, code_rows: &[usize], buffer: &Buffer) -> TextRegion {
         let number_width = self
             .conversation
@@ -309,7 +296,6 @@ impl DiffComponent {
         ConversationRows::new(width, number_width, palette)
     }
 
-    /// The shown thread's code, its unread notice and its messages.
     fn lay_out_thread(&self, width: u16, palette: Palette) -> (Vec<CommentRow>, Range<usize>) {
         let mut output = self.new_conversation_rows(width, palette);
         let Some(thread) = self.conversation_thread() else {
@@ -356,8 +342,6 @@ impl DiffComponent {
         output.enclosed()
     }
 
-    /// Where the view scrolls to: what it keeps in sight as the thread opens, else where the
-    /// reviewer scrolled. The view clamps the end of the thread to its bottom.
     fn conversation_scroll(&self, rows: &[CommentRow]) -> usize {
         match &self.conversation.anchor {
             Some(ConversationAnchor::Reply(anchor)) => rows
@@ -371,13 +355,10 @@ impl DiffComponent {
         }
     }
 
-    /// Turns what the view kept in sight into a plain scroll position, as the reviewer starts to
-    /// scroll.
     pub(in crate::conversation) fn settle_conversation_scroll(&mut self) {
         if self.conversation.anchor.is_none() {
             return;
         }
-        // The view shows the reply clamped to the end: the scroll starts from what it shows.
         let scroll = {
             let viewport = self.pane_conversation_viewport();
             self.conversation_scroll(&viewport.thread)

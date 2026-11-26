@@ -5,7 +5,6 @@ use tempfile::tempdir;
 
 use super::*;
 
-/// What notified a watcher, in order, and the wake of a test that waits for it.
 #[derive(Default)]
 pub(super) struct Notifications {
     recorded: Mutex<Vec<Vec<PathBuf>>>,
@@ -13,8 +12,6 @@ pub(super) struct Notifications {
 }
 
 impl Notifications {
-    /// Records `paths` and runs `notify`, which raises the flag, under one lock: a
-    /// notification a test sees after [`Observer::skip_to_now`] raised the flag after it.
     pub(super) fn record(&self, paths: &[PathBuf], notify: impl FnOnce()) {
         let mut recorded = self.recorded.lock().unwrap_or_else(PoisonError::into_inner);
         notify();
@@ -23,10 +20,8 @@ impl Notifications {
     }
 }
 
-/// Follows the notifications of a watcher's state.
 struct Observer {
     state: Arc<WatchState>,
-    /// How many notifications it has seen.
     seen: usize,
 }
 
@@ -38,8 +33,6 @@ impl Observer {
         }
     }
 
-    /// Leaves out the notifications so far, the late ones of an earlier change among them:
-    /// called before a change, the next wait is about what follows it.
     fn skip_to_now(&mut self) {
         self.seen = self
             .state
@@ -50,14 +43,10 @@ impl Observer {
             .len();
     }
 
-    /// Waits for the next notification that `matches`, and returns it and every one before it
-    /// that this had not seen.
     fn wait_for(&mut self, matches: impl Fn(&[PathBuf]) -> bool) -> Vec<Vec<PathBuf>> {
         self.wait_for_each(&[&matches])
     }
 
-    /// Waits until each of `sentinels` matched a notification, and returns every notification
-    /// up to the last of these that this had not seen.
     fn wait_for_each(&mut self, sentinels: &[Sentinel<'_>]) -> Vec<Vec<PathBuf>> {
         let notifications = &self.state.notifications;
         let recorded = notifications
@@ -91,22 +80,17 @@ impl Observer {
     }
 }
 
-/// What a test looks for in a notification: the paths it is about.
 type Sentinel<'a> = &'a dyn Fn(&[PathBuf]) -> bool;
 
-/// Whether a notification is about `path`: a change of it or of a directory above it.
 fn about(path: &Path) -> impl Fn(&[PathBuf]) -> bool {
     let path = path.to_owned();
     move |paths| paths.iter().any(|changed| path.starts_with(changed))
 }
 
-/// Whether a notification is the one of watches that start.
 fn started(paths: &[PathBuf]) -> bool {
     paths.is_empty()
 }
 
-/// Waits for the notification `matches` and returns the notifications up to it, then checks
-/// that it calls for a refresh once the debounce passed.
 fn wait_for_refresh(
     watcher: &mut RepositoryWatcher,
     observer: &mut Observer,
@@ -118,8 +102,6 @@ fn wait_for_refresh(
     notified
 }
 
-/// Whether a refresh comes due, on a clock this advances by hand: a notification that
-/// arrives meanwhile starts the debounce again, and the clock follows it.
 fn refresh_comes_due(watcher: &mut RepositoryWatcher) -> bool {
     let mut now = Instant::now();
     for _ in 0..100 {
@@ -131,7 +113,6 @@ fn refresh_comes_due(watcher: &mut RepositoryWatcher) -> bool {
     false
 }
 
-/// A jj-style plan: only working-tree `.gitignore` files hide paths.
 fn working_tree_plan(root: &Path) -> WatchPlan {
     WatchPlan {
         root: root.to_owned(),
@@ -140,7 +121,6 @@ fn working_tree_plan(root: &Path) -> WatchPlan {
     }
 }
 
-/// A Git-style plan: the repository exclude file also hides paths.
 fn git_plan(root: &Path) -> WatchPlan {
     WatchPlan {
         git_excludes: Some(vec![root.join(".git/info/exclude")]),
@@ -161,15 +141,11 @@ fn displayed_ignored_tracked_source_refreshes_on_edit_delete_and_recreation() {
     let mut watcher =
         RepositoryWatcher::new(Repository::discover(files.root()).unwrap().watch_plan());
     let mut observer = Observer::of(&watcher);
-    // The watches of the repository start, then those of the source.
     observer.wait_for(started);
     watcher.source_requests().watch(Some(&path));
     wait_for_refresh(&mut watcher, &mut observer, started);
 
     let noise = files.root().join("ignored/nested/noise.log");
-    // A change that each watch reports, after the change it must not report: the source's
-    // watch reports the source, the repository's watch this file at its root. Each watch
-    // reports in order, so what it reported of the earlier change came before.
     let sentinel = files.root().join("sentinel.txt");
     observer.skip_to_now();
     fs::write(&noise, "ignored output").unwrap();
@@ -211,9 +187,6 @@ fn displayed_ignored_tracked_source_refreshes_on_edit_delete_and_recreation() {
     wait_for_refresh(&mut watcher, &mut observer, started);
     observer.skip_to_now();
     fs::write(&path, "old source is no longer displayed\n").unwrap();
-    // The watch of the old source is gone, and what it reported before is no longer about the
-    // displayed source: the definition's watch and the repository's are the ones that could
-    // report the old source.
     fs::write(&definition, "edited definition\n").unwrap();
     fs::write(&sentinel, "after the old source\n").unwrap();
     let notified = observer.wait_for_each(&[&about(&definition), &about(&sentinel)]);
@@ -296,7 +269,6 @@ fn changed_working_tree_files_are_kept_for_the_language_servers() {
     let mut observer = Observer::of(&watcher);
     observer.wait_for(started);
 
-    // The watcher handles events in order: the ignored file's came before the other's.
     fs::write(root.join("_build/compiled.ex"), "").unwrap();
     let source = root.join("page.ex");
     fs::write(&source, "").unwrap();

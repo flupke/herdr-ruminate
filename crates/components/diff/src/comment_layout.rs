@@ -1,5 +1,3 @@
-//! Inline conversation frames share the diff gutter, borders, and scrolling.
-
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
@@ -31,7 +29,6 @@ pub(super) struct CommentLayout {
     before: BTreeMap<usize, Vec<CommentRow>>,
     after: BTreeMap<usize, Vec<CommentRow>>,
     detached: Vec<CommentRow>,
-    // Keep resolved boxes outside frames shared by overlapping open threads.
     collapsed: BTreeMap<usize, Vec<CommentRow>>,
     ranges: Vec<RangeInclusive<usize>>,
 }
@@ -166,7 +163,6 @@ impl CommentLayout {
 }
 
 impl Comments {
-    /// The messages of a thread the conversation shows.
     pub(super) fn conversation_messages(
         thread: &ReviewThread,
         frame: DiffFrame,
@@ -175,7 +171,6 @@ impl Comments {
         ThreadLayout::new(frame, 0, palette).message_rows(thread)
     }
 
-    /// The reply under the messages of a thread the conversation shows.
     pub(super) fn conversation_reply(
         &self,
         thread: &ReviewThread,
@@ -273,7 +268,6 @@ impl Comments {
     }
 }
 
-/// The row a frame hangs from, or the end of the file when its anchor is gone.
 fn anchor_end(range: Option<&RangeInclusive<usize>>, file: &LoadedDocument) -> usize {
     range.map_or(file.document.diff.len().saturating_sub(1), |range| {
         *range.end()

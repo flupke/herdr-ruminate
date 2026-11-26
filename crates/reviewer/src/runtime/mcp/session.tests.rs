@@ -1,15 +1,13 @@
 use super::*;
 
 impl ConversationFixture {
-    /// Ends the agent, and runs another on the session `session`, or on none when it is
-    /// empty, which Herdr's own detection follows, shown idle.
     pub(super) fn replace_session(&self, session: &str) {
         self.server.stop_agent();
         self.server.start_agent(
             (!session.is_empty()).then_some(session),
             super::super::AgentLifecycle::Native,
         );
-        // Herdr's own detection shows the turns the new agent starts once it sees it idle.
+        // Herdr's own detection shows an agent's turns only once it saw the agent idle.
         self.status(AgentStatus::Idle);
     }
 }
@@ -30,7 +28,6 @@ fn mcp_notifies_agents_without_native_sessions_and_retries_with_the_same_access(
         1
     );
 
-    // Detecting an unfocused agent must not change the active target.
     let second = fixture.second_agent();
     let worker = fixture.worker.as_ref().unwrap();
     worker.send(Command::Observe(HerdrEvent::AgentDetected {

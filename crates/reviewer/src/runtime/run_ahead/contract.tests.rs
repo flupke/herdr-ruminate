@@ -1,11 +1,3 @@
-//! The run-ahead contract: what the fake agent assumes of Claude Code, checked against the real
-//! one. Each body runs twice. Its rehearsal runs the fake agent in the agent's pane, in `make
-//! check`: it finds the faults of the test itself, its assertions, timing and input box, but
-//! for a timing fault that only real Claude Code's pace brings out. Its
-//! contract check, ignored by default, runs real Claude Code there on the token's account,
-//! with a scratch configuration: it tells whether the real agent still behaves as the fake agent
-//! assumes. A body says which [`Assumption`] each of its steps rests on, and a failure names it.
-
 use std::ffi::OsString;
 use std::process::Command;
 
@@ -14,13 +6,9 @@ use review_run_ahead::ForkRecord;
 
 use super::*;
 
-/// The model of the real agent and its forks: the one the run-ahead trials use.
 const REAL_MODEL: &str = "claude-sonnet-5-5";
-/// How long a step may wait without news when the agent is real: a real turn.
 const REAL_TURN: Duration = Duration::from_secs(900);
 
-/// The change of the contract check: one that holds a decision, so that the real agent asks
-/// about it.
 const REAL_CHANGE: &[u8] =
     b"/// What a resolved review conversation does when the code it is attached to changes.\n\
       pub enum Reopen {\n    Never,\n    WhenItsLinesChange,\n    WhenItsFileChanges,\n}\n\n\
@@ -32,23 +20,12 @@ const REAL_CHANGE: &[u8] =
       Reopen::WhenItsLinesChange => lines_changed,\n        \
       Reopen::WhenItsFileChanges => file_changed,\n    }\n}\n";
 
-/// What the fake agent assumes of Claude Code, on which a step of a body rests.
 #[derive(Clone, Copy, Debug)]
 enum Assumption {
-    /// Claude Code starts in the agent's pane, logged in, runs Herdr's and the reviewer's hooks,
-    /// and takes an Explore turn through the reviewer's tools.
     Starts,
-    /// A fork that run-ahead starts with the agent's command line, as it builds it, takes its
-    /// turn and submits it with its own access.
     ForkCommandLine,
-    /// The agent moves to the session that a typed `/resume` names, and Herdr reports it there
-    /// once Claude Code's session hook ran.
     ResumeFollowed,
-    /// Claude Code takes what is typed in its pane in order: what is typed after a `/resume`
-    /// reaches the session that `/resume` moved the agent to.
     TypedInOrder,
-    /// Claude Code keeps a session's transcript where run-ahead finds it, and deletes it, under
-    /// `projects` in its configuration directory.
     Transcripts,
 }
 
@@ -78,27 +55,20 @@ impl Assumption {
     }
 }
 
-/// The agent in the pane of a contract body.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Agent {
-    /// The fake agent, whose turns and whose forks' turns the test plays.
     Fake,
-    /// Real Claude Code, which takes its turns and its forks' turns itself.
     Real,
 }
 
-/// A round with run-ahead on for every choice, whose agent is `agent`, and the assumption the
-/// step under way rests on, which a failure names.
 struct ContractRun {
     run: RunAheadFlow,
     agent: Agent,
-    /// The agent's own session.
     session: String,
     resting_on: Assumption,
 }
 
 impl ContractRun {
-    /// The round with the agent `agent`, whose forks' host waits as `waits` say.
     fn start(agent: Agent, waits: review_run_ahead::ForkWaits) -> Self {
         let (run, session) = match agent {
             Agent::Fake => (
@@ -123,12 +93,10 @@ impl ContractRun {
         }
     }
 
-    /// The steps from here on rest on `assumption`.
     fn rests_on(&mut self, assumption: Assumption) {
         self.resting_on = assumption;
     }
 
-    /// How long a step waits without news.
     fn patience(&self) -> Duration {
         match self.agent {
             Agent::Fake => GUARD,
@@ -140,7 +108,6 @@ impl ContractRun {
         self.run.herdr()
     }
 
-    /// The kickoff, and the question the agent asks on its turn.
     fn kickoff(&mut self) -> Question {
         let flow = &mut self.run.flow;
         let kickoff = flow.exploration.request(None, None).unwrap();
@@ -156,10 +123,6 @@ impl ContractRun {
             .expect("the agent asked a question")
     }
 
-    /// The agent takes its turn `version` on the prompt of `request`, which it read: the
-    /// fake agent submits a question as the test says, and real Claude Code as it sees fit, while
-    /// the test acknowledges each saved turn as the pane does. Returns once Herdr reports the
-    /// agent idle again.
     fn agent_turn(&mut self, request: &TurnRequest, version: u32) {
         let patience = self.patience();
         let statuses = self.herdr().server.agent_statuses(&self.herdr().pane_id);
@@ -168,8 +131,6 @@ impl ContractRun {
         let flow = &mut self.run.flow;
         match self.agent {
             Agent::Fake => {
-                // The fake agent holds its turn until it submitted, as an agent does that calls
-                // the reviewer's tools during its turn.
                 let accepted =
                     flow.submit(&super::super::explore_flow::agent_update(request, version));
                 assert_ne!(accepted.is_error, Some(true), "{accepted:?}");
@@ -202,8 +163,6 @@ impl ContractRun {
         statuses.wait_within(patience, herdr_client::protocol::AgentStatus::Idle);
     }
 
-    /// The forks of each of the `count` choices of the question take their turn, submit it
-    /// and end; returns the saved forks once they all ended.
     fn forks_take_turns(&mut self, count: usize) -> RoundForks {
         if self.agent == Agent::Fake {
             for session in self.run.wait_for_forks(count) {
@@ -221,8 +180,6 @@ impl ContractRun {
         saved
     }
 
-    /// A fork that prepared a turn, one that asked a question when one did, so that the agent
-    /// takes a next turn.
     fn fork_with_a_turn(saved: &RoundForks) -> ForkRecord {
         saved
             .forks
@@ -233,7 +190,6 @@ impl ContractRun {
             .clone()
     }
 
-    /// What `check` finds in the saved forks, once it finds something.
     fn wait_for_saved<T>(&self, what: &str, check: impl Fn(&RoundForks) -> Option<T>) -> T {
         self.run.flow.state.wait_within(
             self.patience(),
@@ -243,7 +199,6 @@ impl ContractRun {
         )
     }
 
-    /// Waits until the saved round has `count` turns of the agent, and returns it.
     fn wait_for_turns(&self, count: usize) -> ExploreRound {
         let flow = &self.run.flow;
         flow.state.wait_within(
@@ -257,7 +212,6 @@ impl ContractRun {
         )
     }
 
-    /// The sessions the agent resumed, once it resumed `count`.
     fn resumed(&self, count: usize) -> Vec<String> {
         self.herdr()
             .events()
@@ -267,7 +221,6 @@ impl ContractRun {
         self.herdr().resumed()
     }
 
-    /// The session Herdr reports the agent in the pane on.
     fn reported_session(&self) -> Option<String> {
         self.herdr()
             .client()
@@ -277,13 +230,10 @@ impl ContractRun {
             .map(|session| session.value)
     }
 
-    /// The transcripts of the agent's Claude Code configuration, the scratch one of the test.
     fn transcripts(&self) -> claude_fork::Transcripts {
         claude_fork::Transcripts::at(self.run.root().join(CLAUDE_CONFIG).join("projects"))
     }
 
-    /// Whether the prompt of `request` reached the agent on the session `session`: its
-    /// transcript holds the prompt, which names the turn's own directory.
     fn reached(&self, session: &str, request: &TurnRequest) -> bool {
         let explore_request = format!("Explore request: {}\n", request.request);
         let prompts = self.herdr().prompts();
@@ -315,7 +265,6 @@ impl Drop for ContractRun {
     }
 }
 
-/// What a failure of `agent` at a step that rests on `assumption` means.
 fn failed(agent: Agent, assumption: Assumption) -> String {
     let assumption = assumption.says();
     match agent {
@@ -330,9 +279,6 @@ fn failed(agent: Agent, assumption: Assumption) -> String {
     }
 }
 
-/// The forks of a question take their turns; the reviewer answers with the choice of one that
-/// prepared its turn and no comment, so the agent continues as that fork; the next answer, with a
-/// comment, reaches the fork's session, where the agent takes its turn.
 fn continue_as_the_fork_of_a_bare_answer(mut contract: ContractRun) {
     let question = contract.kickoff();
 
@@ -396,8 +342,6 @@ fn continue_as_the_fork_of_a_bare_answer(mut contract: ContractRun) {
 }
 
 impl ContractRun {
-    /// Checks that each fork of `saved` that prepared a turn submitted its own, in the round, and
-    /// said what it spent, and that no fork added a question to the round.
     fn check_prepared_turns(&self, saved: &RoundForks) {
         let prepared: Vec<_> = saved
             .forks
@@ -428,7 +372,6 @@ impl ContractRun {
         );
     }
 
-    /// No forks for the next questions: they would cost and prove nothing more.
     fn stop_running_ahead(&self) {
         self.run
             .flow
@@ -439,8 +382,6 @@ impl ContractRun {
             .unwrap();
     }
 
-    /// Waits until run-ahead stopped every fork but `fork`, whose session the agent runs, and
-    /// deleted their transcripts; checks that `fork`'s stays.
     fn check_only_the_fork_s_transcript_stays(&self, fork: &ForkRecord) {
         self.wait_for_saved("the other forks' clean-up", |saved| {
             saved
@@ -464,8 +405,6 @@ impl ContractRun {
         }
     }
 
-    /// Answers the latest question with its first choice and a comment, and returns once the
-    /// agent took its turn on it.
     fn answer_with_a_comment(&mut self) -> TurnRequest {
         let flow = &mut self.run.flow;
         let question = flow.exploration.questions.last().cloned().unwrap();
@@ -487,9 +426,6 @@ impl ContractRun {
     }
 }
 
-/// A switch that nobody confirms in time, since it waits no time: the agent resumes the fork's
-/// session, then, typed right after, its own, where it ends; the answer, retried, reaches its
-/// own session once.
 fn settle_back_on_the_agent_s_own_session(mut contract: ContractRun) {
     let question = contract.kickoff();
 
@@ -499,8 +435,7 @@ fn settle_back_on_the_agent_s_own_session(mut contract: ContractRun) {
 
     contract.rests_on(Assumption::ResumeFollowed);
     if contract.agent == Agent::Fake {
-        // Real Claude Code's hook reports the resume about 0.5 s after it is typed, after a
-        // switch that waits no time gave up; the fake agent's could come first.
+        // Real Claude Code's hook reports a resume about 0.5 s after it is typed.
         fs::write(contract.herdr().directory().unreported_resume(), "").unwrap();
     }
     contract.stop_running_ahead();
@@ -555,8 +490,6 @@ fn real_claude_code_continues_as_the_fork_of_a_bare_answer() {
     continue_as_the_fork_of_a_bare_answer(ContractRun::start(Agent::Real, test_waits()));
 }
 
-/// The waits of a switch that nobody confirms in time; the move back to the agent's own
-/// session waits as long as in production.
 fn unconfirmed_switch() -> review_run_ahead::ForkWaits {
     review_run_ahead::ForkWaits {
         resume: Duration::ZERO,
@@ -575,12 +508,8 @@ fn real_claude_code_settles_back_on_its_own_session() {
     settle_back_on_the_agent_s_own_session(ContractRun::start(Agent::Real, unconfirmed_switch()));
 }
 
-/// The variable that logs the real agent in: a token of `claude setup-token`.
 const TOKEN_VARIABLE: &str = "CLAUDE_CODE_OAUTH_TOKEN";
 
-/// A round whose agent is real Claude Code on the session `session`, with a configuration of
-/// its own under `claude-config` in the server's directory, gone with the server: the owner's
-/// is never read nor written.
 fn real_run(session: &str, waits: review_run_ahead::ForkWaits) -> RunAheadFlow {
     assert!(
         std::env::var_os(TOKEN_VARIABLE).is_some(),
@@ -603,7 +532,6 @@ fn real_run(session: &str, waits: review_run_ahead::ForkWaits) -> RunAheadFlow {
     });
     configuration.serve_reviewer(fixture.endpoint.address().port());
     let herdr = &fixture.herdr;
-    // The forks take the agent's environment.
     let mut command = vec!["pane", "run", &herdr.pane_id.0, "env"];
     let owner_s = owner_s_claude_variables();
     for name in &owner_s {
@@ -648,22 +576,17 @@ fn real_run(session: &str, waits: review_run_ahead::ForkWaits) -> RunAheadFlow {
     }
 }
 
-/// The variables of the real agent, its forks and the commands that set up its configuration,
-/// under the server's directory `root`.
 fn real_variables(root: &Path) -> [(&'static str, OsString); 3] {
     [
         ("CLAUDE_CONFIG_DIR", root.join(CLAUDE_CONFIG).into()),
         // Claude Code keeps its MCP servers' logs there, outside its configuration.
         ("XDG_CACHE_HOME", root.join("cache").into()),
-        // The agent and its forks run the owner's Claude Code as it is.
         ("DISABLE_AUTOUPDATER", "1".into()),
     ]
 }
 
-/// The variables of Claude Code and of its API in the test's environment, which the real agent
-/// does not take, but the token and the configuration directory, which the test sets: those of
-/// a Claude Code session the check runs under would load its plugins from `~/.claude` and
-/// reach that session.
+// The Claude Code variables of a session the check runs under would load its plugins from
+// `~/.claude` and reach that session.
 fn owner_s_claude_variables() -> Vec<String> {
     std::env::vars_os()
         .filter_map(|(name, _)| name.into_string().ok())
@@ -673,7 +596,6 @@ fn owner_s_claude_variables() -> Vec<String> {
 }
 
 impl IsolatedHerdrServer {
-    /// What the agent's pane shows; read as a test fails, so it never panics.
     fn screen(&self) -> String {
         Command::new(self.server.binary())
             .args(["pane", "read", &self.pane_id.0, "--source", "visible"])
@@ -687,15 +609,9 @@ impl IsolatedHerdrServer {
     }
 }
 
-/// The real agent's own Claude Code configuration directory.
 struct RealConfiguration(PathBuf);
 
 impl RealConfiguration {
-    /// Sets up the configuration of the agent in `herdr`'s pane, which works in `repository`:
-    /// Herdr's session hook, the reviewer's plugin with this build's `reviewer-control`, and the
-    /// hooks that report what the agent does as the fake agent reports it, each installed as its
-    /// owner installs it; the permissions of the tools an Explore turn and its forks use; no
-    /// first-run screen.
     fn write(herdr: &IsolatedHerdrServer, repository: &Path) -> Self {
         let root = herdr.server.root().join(CLAUDE_CONFIG);
         fs::create_dir_all(&root).unwrap();
@@ -734,7 +650,6 @@ impl RealConfiguration {
             settings["permissions"] = serde_json::json!({
                 "defaultMode": "dontAsk",
                 "allow": claude_fork::SUBMITS,
-                // The unreviewed diffs' directory.
                 "additionalDirectories": [std::env::temp_dir()],
             });
         });
@@ -755,7 +670,6 @@ impl RealConfiguration {
         configuration
     }
 
-    /// Serves the agent the reviewer's MCP server on `port`.
     fn serve_reviewer(&self, port: u16) {
         let bridge = effects::fixture::test_fork_tools()
             .control
@@ -774,8 +688,6 @@ impl RealConfiguration {
         });
     }
 
-    /// Runs `program` with `arguments` on the configuration of the agent in `herdr`'s pane,
-    /// outside the pane.
     fn run(herdr: &IsolatedHerdrServer, program: &Path, arguments: &[&str]) {
         let owner_s = owner_s_claude_variables();
         let output = Command::new(program)
@@ -800,7 +712,6 @@ impl RealConfiguration {
         );
     }
 
-    /// Changes the JSON file `name` of the configuration as `change` says.
     fn edit(&self, name: &str, change: impl FnOnce(&mut serde_json::Value)) {
         let path = self.0.join(name);
         let mut value = fs::read(&path).map_or_else(

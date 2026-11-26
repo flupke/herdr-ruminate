@@ -1,6 +1,3 @@
-//! The one way tests start [`Effects`]: against a temporary repository, with results
-//! collected from the same channels the runtime reads.
-
 use std::time::Duration;
 
 use component_core::{ApplicationEvent, EventEnvelope};
@@ -19,7 +16,6 @@ use super::{Effects, Outputs, RunAheadSetup, Setup};
 use crate::runtime::events;
 
 pub(in crate::runtime) struct EffectsFixture {
-    // Declared first so the workers stop before their repository disappears.
     pub(in crate::runtime) effects: Effects,
     pub(in crate::runtime) inbox: events::Inbox,
     pub(in crate::runtime) background: EventSender<EventEnvelope>,
@@ -31,12 +27,10 @@ pub(in crate::runtime) struct EffectsFixture {
 }
 
 impl EffectsFixture {
-    /// Effects for a fresh repository that never reach an agent.
     pub(in crate::runtime) fn new(kind: RepoType) -> Self {
         Self::start(repository_fixture(kind), |_| {})
     }
 
-    /// Effects for `files`, after `configure` adjusts the offline setup.
     pub(in crate::runtime) fn start(
         files: Box<dyn ReviewRepositoryFixture>,
         configure: impl FnOnce(&mut Setup),
@@ -94,14 +88,11 @@ impl EffectsFixture {
             state,
         };
         if offline {
-            // Without an endpoint, the conversation worker reports MCP as unavailable
-            // once; tests start after that notice.
             fixture.wait_for::<ui_events::ToastRequested>();
         }
         fixture
     }
 
-    /// Perform actions that never reach the terminal.
     pub(in crate::runtime) fn perform(&self, actions: impl IntoIterator<Item = Action>) {
         let flow = self
             .effects
@@ -112,13 +103,11 @@ impl EffectsFixture {
         assert!(flow.is_continue());
     }
 
-    /// Refresh and return every event up to the end of the refresh.
     pub(in crate::runtime) fn refresh(&mut self) -> Vec<EventEnvelope> {
         self.effects.refresh().unwrap();
         self.events_until::<RepositoryRefreshFinished>()
     }
 
-    /// Refresh and return the checkpoint it published.
     pub(in crate::runtime) fn refreshed_checkpoint(&mut self) -> ReviewCheckpoint {
         self.refresh()
             .iter()
@@ -128,7 +117,6 @@ impl EffectsFixture {
             .clone()
     }
 
-    /// The next event, or `None` after `timeout`.
     pub(in crate::runtime) fn recv_timeout(&mut self, timeout: Duration) -> Option<EventEnvelope> {
         self.inbox.recv_within(timeout)
     }
@@ -138,7 +126,6 @@ impl EffectsFixture {
             .expect("no event arrived")
     }
 
-    /// Every event up to and including the first `E`.
     pub(in crate::runtime) fn events_until<E: ApplicationEvent>(&mut self) -> Vec<EventEnvelope> {
         let mut events = Vec::new();
         loop {
@@ -151,17 +138,15 @@ impl EffectsFixture {
         }
     }
 
-    /// The next `E`, skipping other events.
     pub(in crate::runtime) fn wait_for<E: ApplicationEvent + Clone>(&mut self) -> E {
         let event = self.events_until::<E>().pop().unwrap();
         event.downcast_ref::<E>().unwrap().clone()
     }
 }
 
-/// The `reviewer-control` Cargo built beside the test binary, for run-ahead's forks.
 pub(in crate::runtime) fn test_fork_tools() -> claude_fork::ForkTools {
     let test = std::env::current_exe().unwrap();
-    // A test binary sits in `target/<profile>/deps`; the programs in `target/<profile>`.
+    // Cargo puts a test binary in `target/<profile>/deps`, and the programs in `target/<profile>`.
     let profile = test.parent().and_then(std::path::Path::parent).unwrap();
     claude_fork::ForkTools {
         control: profile.join("reviewer-control"),

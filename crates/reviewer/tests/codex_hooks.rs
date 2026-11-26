@@ -1,9 +1,3 @@
-//! A Codex TUI in a private Herdr server, on an app server started outside that Herdr, with a
-//! scratch Codex home where `reviewer-control codex-plugin install` installed and trusted the
-//! reviewer's Codex plugin, and a local model fixture: the plugin's hook confirms a prompt typed
-//! alone, and blocks text left in the input box that joined a typed prompt or `/resume`, so the
-//! agent stays on its session. It calls no model API.
-
 use std::ffi::OsStr;
 use std::fs;
 use std::process::Command;
@@ -17,7 +11,6 @@ use review_test_support::codex::{
 };
 use review_test_support::{GUARD, PrivateHerdrServer, TestPort};
 
-/// Why the reviewer blocks a prompt, as Codex shows it.
 const BLOCKED: &str = "The test reviewer stopped this prompt";
 
 #[test]
@@ -41,7 +34,6 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
     );
     plugin(&codex, "install");
     let runtime = tempfile::tempdir().unwrap();
-    // The daemon was started from a pane of another Herdr server.
     let _daemon = AppServer::start(
         &codex,
         &provider,
@@ -114,7 +106,6 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
     );
     drop(resume);
 
-    // The agent stayed on its session: its next prompt comes from there.
     let after = hooks.expect_prompt(&codex_agent, "still here", BLOCKED, OtherPrompts::Block);
     prompt(&herdr, &pane, "still here");
     assert_eq!(after.wait(GUARD), Some(Heard::Submitted));
@@ -128,13 +119,11 @@ fn the_codex_plugin_s_hook_hears_a_typed_prompt_and_blocks_text_left_in_the_inpu
     );
 }
 
-/// Types `text` in the agent's input box, without submitting it, and waits until it shows.
 fn leave_in_input_box(herdr: &PrivateHerdrServer, pane: &PaneId, text: &str) {
     herdr.run_cli(&["pane", "send-text", &pane.0, text]);
     wait_output(herdr, pane, text);
 }
 
-/// Runs `reviewer-control codex-plugin <action>` on `codex`'s home.
 fn plugin(codex: &CodexHome, action: &str) {
     let status = Command::new(env!("CARGO_BIN_EXE_reviewer-control"))
         .args(["codex-plugin", action])

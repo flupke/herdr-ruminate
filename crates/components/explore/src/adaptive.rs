@@ -56,10 +56,6 @@ impl ExploreComponent {
         }
     }
 
-    /// The marks the turn asking question `index` holds until the reviewer
-    /// answers it; once answered, they show below the answer that applied
-    /// them. Marks no answer applied, from rounds saved before marks waited
-    /// for an answer, show here too.
     pub(super) fn question_marks(
         &self,
         index: usize,
@@ -67,7 +63,6 @@ impl ExploreComponent {
         palette: Palette,
     ) {
         let exploration = self.exploration.as_ref().expect("question exploration");
-        // A version the agent revised waits for no answer: the revision carries its marks.
         let revised = exploration.questions.get(index).is_some_and(|question| {
             exploration.conversation.iter().any(|turn| {
                 turn.revision.is_some()
@@ -91,7 +86,6 @@ impl ExploreComponent {
                         .answers
                         .iter()
                         .any(|answer| &answer.in_reply_to == request);
-                    // A round from history takes no answer, so nothing is pending.
                     if !answered && !self.durable.historical {
                         self.pending_marks(position, layout, palette);
                     }
@@ -107,7 +101,6 @@ impl ExploreComponent {
         palette: Palette,
     ) {
         let exploration = self.exploration.as_ref().expect("reply exploration");
-        // A revised question keeps the reply of the version it revised, which shows there.
         if let Some(revision) = &turn.revision {
             layout.labelled_prose(
                 "Revised after your message in the round conversation",
@@ -133,7 +126,6 @@ impl ExploreComponent {
         layout.gap();
     }
 
-    /// The change's thesis, then each part under its heading: its thesis in bold, then its text.
     fn design(design: &Design, layout: &mut ConversationLayout, palette: Palette) {
         let thesis = Self::strong(&design.thesis());
         layout.section("Design of the change", &thesis, palette);
@@ -143,8 +135,6 @@ impl ExploreComponent {
         }
     }
 
-    /// `thesis` in bold, unless its own Markdown already uses bold, which a second pair would
-    /// break.
     fn strong(thesis: &str) -> String {
         if thesis.contains("**") {
             thesis.to_owned()

@@ -86,7 +86,6 @@ fn a_directory_that_appears_stands_for_the_files_it_holds() {
     for name in ["page.ex", "nested/view.ex", "_build/compiled.ex"] {
         fs::write(moved.join(name), "").unwrap();
     }
-    // A link back up is not followed, and not walked around in circles.
     std::os::unix::fs::symlink(directory.path(), moved.join("nested/up")).unwrap();
     let changes = FileChanges::default();
     changes.record(

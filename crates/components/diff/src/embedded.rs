@@ -1,5 +1,3 @@
-//! Explore's lazily opened evidence viewers, and how one viewer draws inside
-//! an Explore conversation.
 use crate::explore::EvidenceShown;
 use crate::{ClippedViewport, Role, Services, SourceViewer};
 use ratatui::buffer::Buffer;
@@ -13,19 +11,13 @@ use ui_events::{
 use ui_text_selection::TextRegion;
 use ui_theme::Palette;
 
-/// Every viewer Explore opened, and the one in front.
 #[derive(Default)]
 pub(super) struct ExploreViewers {
-    /// The pane shows Explore instead of the Files diff.
     shown: bool,
-    /// The viewer Explore shows before any evidence opens. It is `None`
-    /// until Explore first opens and while an evidence viewer is in front.
     base: Option<SourceViewer>,
     evidence: BTreeMap<EvidenceView, SourceViewer>,
     active: Option<EvidenceView>,
-    /// Recovered positions that wait for their viewer's first viewport.
     restored: Vec<EvidencePosition>,
-    /// The repository change the Files viewer applies once Explore closes.
     latest: Option<RepositoryFilesChanged>,
 }
 
@@ -34,8 +26,6 @@ impl ExploreViewers {
         self.shown
     }
 
-    /// Show Explore, opening its base viewer the first time, or hide it.
-    /// Returns the repository change deferred while Explore was shown.
     pub(super) fn show(
         &mut self,
         shown: bool,
@@ -49,12 +39,10 @@ impl ExploreViewers {
         self.latest.take()
     }
 
-    /// Keep the latest repository change for the Files viewer until Explore closes.
     pub(super) fn defer(&mut self, event: &RepositoryFilesChanged) {
         self.latest = Some(event.clone());
     }
 
-    /// The viewer in front: the active evidence viewer, else the base one.
     pub(super) fn current(&self) -> Option<&SourceViewer> {
         match self.active {
             Some(id) => self.evidence.get(&id),
@@ -69,12 +57,10 @@ impl ExploreViewers {
         }
     }
 
-    /// Every viewer.
     pub(super) fn viewers(&self) -> impl Iterator<Item = &SourceViewer> {
         self.base.iter().chain(self.evidence.values())
     }
 
-    /// Every viewer, each with whether it is in front.
     pub(super) fn viewers_mut(&mut self) -> impl Iterator<Item = (bool, &mut SourceViewer)> {
         let active = self.active;
         self.base.iter_mut().map(|viewer| (true, viewer)).chain(
@@ -84,7 +70,6 @@ impl ExploreViewers {
         )
     }
 
-    /// Open the base viewer the first time Explore is shown.
     fn open(&mut self, services: &Services) {
         if self.current().is_none() {
             self.base = Some(SourceViewer::new(
@@ -95,8 +80,6 @@ impl ExploreViewers {
         }
     }
 
-    /// Show `comparison` in the viewer in front, closing every other viewer.
-    /// Returns whether a viewer took it.
     pub(super) fn accept(&mut self, comparison: Arc<Comparison>) -> bool {
         let viewer = match self.active.take() {
             Some(id) => self.evidence.remove(&id),
@@ -112,8 +95,6 @@ impl ExploreViewers {
         true
     }
 
-    /// Bring the viewer of `event`'s evidence to the front, opening it on
-    /// first use with the threads the viewer in front already loaded.
     pub(super) fn activate(
         &mut self,
         services: &Services,
@@ -156,7 +137,6 @@ impl ExploreViewers {
         }
     }
 
-    /// The viewer showing `id`, while it is open.
     pub(super) fn view(&self, id: EvidenceView) -> Option<&SourceViewer> {
         self.evidence.get(&id)
     }
@@ -196,7 +176,6 @@ impl ExploreViewers {
         self.restored = positions.to_vec();
     }
 
-    /// The position of every question's evidence viewer, for Explore to save.
     pub(super) fn positions(&self) -> Vec<EvidencePosition> {
         if self.current().is_none() {
             return self.restored.clone();
@@ -208,7 +187,6 @@ impl ExploreViewers {
                 .iter()
                 .any(|saved| saved.turn == turn && saved.reference == reference)
             {
-                // The first viewport event has not applied this recovered position yet.
                 continue;
             }
             if let Some(file) = viewer.displayed_document() {
@@ -269,7 +247,6 @@ impl SourceViewer {
             .reveal_evidence(rows.range, rows.total, usize::from(viewport.height));
     }
 
-    /// Displayed source may differ from the question's immutable evidence after navigation.
     pub fn evidence_path(&self) -> Option<&str> {
         self.displayed_document()
             .map(|file| file.display_path.as_str())
@@ -279,8 +256,6 @@ impl SourceViewer {
         self.evidence.limitation.as_deref()
     }
 
-    /// Render a window through the native engine, then clip it to the conversation viewport.
-    /// Return its text, later regions on top.
     pub fn render_embedded(
         &self,
         viewport: ClippedViewport,

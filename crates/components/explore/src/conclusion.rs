@@ -19,13 +19,11 @@ enum Delivery {
     Sent(review_explore::ImplementationRequest),
     Failed(String),
     Paused(review_explore::ImplementationRequest),
-    /// The agent did not start on the request; Retry sends it again.
     NotStarted(review_explore::ImplementationRequest),
     Unknown(review_explore::ImplementationRequest),
 }
 
 impl Delivery {
-    /// The request whose text is fixed because the agent may have received it.
     fn submitted(&self) -> Option<&review_explore::ImplementationRequest> {
         match self {
             Self::Pending(request)
@@ -62,7 +60,6 @@ impl ConclusionView {
         self.delivery.can_edit()
     }
 
-    /// The list, named `name`.
     fn render_instructions(&self, name: &str, layout: &mut ConversationLayout, palette: Palette) {
         if let Some(request) = self.delivery.submitted() {
             layout.text(format!("{name} · read-only"), palette.focus, None);
@@ -131,7 +128,6 @@ impl ExploreComponent {
         self.open_conclusion(request);
     }
 
-    /// Show conclusion `request` with its draft, leaving the current draft as is.
     pub(super) fn open_conclusion(&mut self, request: String) {
         self.compose_scope = ComposeScope::Conclusion;
         self.general_context = Some(request);
@@ -174,7 +170,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Run a control of the implementation request: send it, start a new one, or cancel it.
     pub(super) fn implementation_control(&mut self, control: Control) -> Vec<Action> {
         match control {
             Control::Implement => self.implement(),
@@ -220,7 +215,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Whether the agent did not start on the implementation request of the shown conclusion.
     pub(super) fn implementation_not_started(&self) -> bool {
         self.conclusion()
             .is_some_and(|view| matches!(view.delivery, Delivery::NotStarted(_)))
@@ -265,7 +259,6 @@ impl ExploreComponent {
             layout.prose(reply, palette);
         }
         layout.section("Summary", &view.content.summary, palette);
-        // A conclusion that opens the round follows no answer to show its marks under.
         let opening = self.exploration.as_ref().is_some_and(|exploration| {
             exploration
                 .conversation
@@ -387,15 +380,12 @@ impl ExploreComponent {
         }
     }
 
-    /// Whether the conclusion's list is the review of someone else's change, which Post review
-    /// posts, rather than the tasks Implement implements.
     fn posts_review(&self) -> bool {
         self.exploration
             .as_ref()
             .is_some_and(|exploration| exploration.author == review_explore::ChangeAuthor::Other)
     }
 
-    /// The name of the conclusion's list.
     pub(super) fn list_name(&self) -> &'static str {
         if self.posts_review() {
             "Review to post"
@@ -404,7 +394,6 @@ impl ExploreComponent {
         }
     }
 
-    /// The name of the request that sends the conclusion's list, capitalized when `start`.
     fn request_name(&self, start: bool) -> &'static str {
         match (self.posts_review(), start) {
             (true, false) => "review request",
@@ -414,7 +403,6 @@ impl ExploreComponent {
         }
     }
 
-    /// The action that sends the conclusion's list.
     pub(super) fn implement_label(&self) -> &'static str {
         if self.posts_review() {
             "Post review"
@@ -445,7 +433,6 @@ impl ExploreComponent {
             return vec![];
         };
         match view.delivery {
-            // The hidden editor text may differ from the request the agent may hold.
             Delivery::Unknown(_) => {
                 view.delivery = Delivery::Ready;
                 self.edit_implementation();
@@ -510,7 +497,6 @@ impl ExploreComponent {
                 view.delivery = Delivery::shown(&progress.request, &progress.state);
             }
         } else if progress.state == ImplementationState::Sending {
-            // Another front end, the Explore page, authorized it: this process sends it now.
             view.delivery = Delivery::Pending(progress.request.clone());
             view.attempt = Some(progress.attempt.clone());
             if self.editor_target == EditorTarget::Implementation
@@ -523,7 +509,6 @@ impl ExploreComponent {
 }
 
 impl Delivery {
-    /// The request `request`, in the state the session decided for it.
     fn shown(request: &review_explore::ImplementationRequest, state: &ImplementationState) -> Self {
         match state {
             ImplementationState::Sending => Self::Pending(request.clone()),

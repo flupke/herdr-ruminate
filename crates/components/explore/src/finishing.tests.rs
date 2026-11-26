@@ -1,6 +1,3 @@
-//! The pane while the session waits for the fork that finishes the turn of the reviewer's bare
-//! answer.
-
 use std::time::{Duration, Instant};
 
 use review_turn_path::{PlainReason, TurnPath};
@@ -10,8 +7,6 @@ use super::*;
 
 const FINISHING: &str = "The agent is finishing a turn it started while you were thinking";
 
-/// The pane that answered the first question of its round with its first choice, as the
-/// session saved it, and the answer's turn.
 fn answered() -> (Pane, TurnRequest) {
     let round = asked_round();
     let mut pane = Pane::showing(&round);
@@ -34,8 +29,6 @@ fn answered() -> (Pane, TurnRequest) {
     (pane, request)
 }
 
-/// The session waits for the fork of `request`, which started it `ago` before the pane hears of
-/// it at `now`.
 fn finishing_at(pane: &mut Pane, request: &TurnRequest, ago: Duration, now: Instant) {
     const NOW_MS: u64 = 1_800_000_000_000;
     let started_at_ms = NOW_MS - u64::try_from(ago.as_millis()).expect("a short time");
@@ -47,7 +40,6 @@ fn finishing_at(pane: &mut Pane, request: &TurnRequest, ago: Duration, now: Inst
     pane.component().finishing_since(&event, NOW_MS, now);
 }
 
-/// The session waits for the fork of `request`, which started it `ago`.
 fn finishing(pane: &mut Pane, request: &TurnRequest, ago: Duration) {
     finishing_at(pane, request, ago, Instant::now());
 }

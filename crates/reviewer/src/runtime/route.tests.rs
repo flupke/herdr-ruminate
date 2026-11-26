@@ -24,7 +24,6 @@ struct Decision {
 fn decide(event: &EventEnvelope) -> Decision {
     let route = Route::of(event);
     Decision {
-        // The variant name, without its payload.
         route: format!("{route:?}")
             .split(['(', ' '])
             .next()

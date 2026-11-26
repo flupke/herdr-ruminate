@@ -1,20 +1,16 @@
 use review_threads::{MessageId, ReviewThreads, SavedDrafts, ThreadId, WakeupNotice};
 use review_types::ReviewUnit;
 
-/// Paste input delivered to the focused component.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextPasted(pub String);
 
-/// The persisted thread history for a logical review, with the drafts saved apart from it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewThreadsLoaded {
     pub review_unit: ReviewUnit,
     pub result: Result<ReviewThreads, String>,
-    /// Restoring a saved draft reopens its editor; it never posts it.
     pub drafts: SavedDrafts,
 }
 
-/// The durable outcome of an explicit reviewer post.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ThreadPostFinished {
     pub review_unit: ReviewUnit,
@@ -22,15 +18,12 @@ pub struct ThreadPostFinished {
     pub result: Result<(), String>,
 }
 
-/// What became of the latest wakeup for a review's pending comments: `None` while one is on its
-/// way, or why it waits to reach the agent, or why it did not reach it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ThreadWakeupReported {
     pub review_unit: ReviewUnit,
     pub notice: Option<WakeupNotice>,
 }
 
-/// The two review-wide navigation modes, independent of keyboard focus.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ReviewNavigation {
     #[default]
@@ -53,22 +46,17 @@ impl ReviewNavigation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReviewNavigationChanged(pub ReviewNavigation);
 
-/// One event is settled: the components handled it and every event they published, and the
-/// navigation took the mode and focus they asked for. Actions requested here run before the
-/// other actions of the event, so that state saved here is the state they start from.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EventSettled {
     pub mode: ReviewNavigation,
     pub focus: ReviewPane,
 }
 
-/// Select or clear a conversation without selecting or loading its anchored file.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ThreadSelectionChanged {
     pub thread_id: Option<ThreadId>,
 }
 
-/// Select All and jump to the first unread thread, including resolved threads.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NewRepliesRequested;
 
@@ -81,14 +69,12 @@ pub enum ReviewPane {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReviewPaneFocusRequested(pub ReviewPane);
 
-/// Paths retained solely because they contain review threads or unposted drafts.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ThreadFilesChanged {
     pub paths: Vec<String>,
 }
 
 impl super::FileSummary {
-    /// Build the same file association for thread lists, badges and navigation.
     pub fn thread_paths(files: &[Self]) -> review_threads::ThreadPaths {
         review_threads::ThreadPaths::new(files.iter().map(|file| {
             (

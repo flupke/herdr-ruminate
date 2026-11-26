@@ -1,5 +1,3 @@
-//! `reviewer-control stats` prints the numbers of the saved Explore rounds of
-//! the repository it runs in, the rounds its workspaces kept for themselves included.
 use std::fmt::Write as _;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -8,12 +6,8 @@ use review_store::ReviewStore;
 use review_test_support::GitFixture;
 use sha2::Digest;
 
-/// A synthetic answered round without a Challenger, started 2026-09-10.
 const ANSWERED: &str = include_str!("../../review-explore-stats/testdata/answered.json");
-/// A synthetic answered round with a Challenger, started 2026-09-20.
 const CHALLENGER: &str = include_str!("../../review-explore-stats/testdata/challenger.json");
-/// What run-ahead did in the round with a Challenger: one of its two answers used a prepared
-/// turn, the other chose None of the above.
 const CHALLENGER_FORKS: &str =
     include_str!("../../review-explore-stats/testdata/challenger.forks.json");
 
@@ -21,7 +15,6 @@ fn save(state: &Path, repository: &Path, json: &str) {
     save_with_forks(state, repository, json, None);
 }
 
-/// Saves the round `json`, and the run-ahead record `forks` beside it when given.
 fn save_with_forks(state: &Path, repository: &Path, json: &str, forks: Option<&str>) {
     let mut stored: serde_json::Value = serde_json::from_str(json).unwrap();
     let round: review_explore::ExploreRound =
@@ -55,7 +48,6 @@ fn stats(directory: &Path, environment: &[(&str, &Path)], arguments: &[&str]) ->
     command.output().unwrap()
 }
 
-/// The values of every row with `label`, one row per table.
 fn rows(output: &Output, label: &str) -> Vec<Vec<String>> {
     assert!(
         output.status.success(),

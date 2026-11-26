@@ -128,9 +128,6 @@ fn conclusion_task_and_reply_editors_keep_vim_escape_inside_the_active_field() {
     }
 }
 
-/// Explore keeps unbound keys from the diff behind it, but lets through
-/// every key the table binds to switching navigation, opening Files, Threads
-/// or help, and quitting.
 #[test]
 fn explore_lets_application_keys_through_while_no_answer_is_composed() {
     for key in ApplicationShortcut::Quit.keys() {
@@ -178,8 +175,6 @@ fn explore_lets_application_keys_through_while_no_answer_is_composed() {
     }
 }
 
-/// While an answer is composed only switching navigation leaves Explore;
-/// the other application keys are typed into the answer.
 #[test]
 fn explore_lets_only_navigation_switches_through_while_an_answer_is_composed() {
     for key in ApplicationShortcut::ToggleNavigation.keys() {

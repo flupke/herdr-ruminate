@@ -1,4 +1,3 @@
-//! Reveal complete evidence ranges, including historical lines outside diff hunks.
 use super::{LoadedDocument, SourceViewer, presentation::DiffPresentation};
 use review_explore::{Source, SourceSide};
 use review_source::SourceLineRange;

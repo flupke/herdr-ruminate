@@ -149,8 +149,6 @@ fn resolution_stops_mcp_work_and_wakeups_but_preserves_late_answers() {
 }
 
 impl ConversationFixture {
-    /// The access value of the latest of the comment notifications the second agent read, once
-    /// it read `wakeups` of them.
     fn second_access(&self, wakeups: usize) -> String {
         let received = self.server.events().wait_until(
             "the second agent's comment notifications",
@@ -247,8 +245,6 @@ fn comments_follow_the_active_agent(retrieved: bool) {
         });
 }
 
-/// In a herdr-bowtie session, the lead's agent has a tab of its own in the review's
-/// workspace. It never gets a comment, even when it was focused last.
 #[test]
 fn an_agent_in_another_tab_never_gets_the_comments() {
     let fixture = ConversationFixture::start("codex");

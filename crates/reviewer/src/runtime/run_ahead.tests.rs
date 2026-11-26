@@ -1,7 +1,3 @@
-//! Run-ahead on a private Herdr: a fake agent playing Claude Code in the agent's pane, forked by
-//! the reviewer as a real process through `reviewer-control fork-exec`, with the guard as its
-//! hook.
-
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -18,52 +14,33 @@ mod codex;
 #[path = "run_ahead/contract.tests.rs"]
 mod contract;
 
-/// The Claude Code configuration directory of the agent and its forks, in the server's
-/// directory.
 const CLAUDE_CONFIG: &str = "claude-config";
 
-/// The agent a test runs in the agent's pane.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum FakeAgent {
-    /// The fake agent alone, which keeps its transcripts under `claude-config` too.
     Plain,
-    /// A fake agent playing Claude Code, which run-ahead can fork; it and its forks keep their
-    /// transcripts under `claude-config` in the server's directory.
     Forkable,
-    /// The same, started without the reviewer's Claude Code plugin.
     Unhooked,
-    /// A forkable fake agent started with settings of its own, as herdr-bowtie starts its agents:
-    /// [`AGENT_SETTINGS`] in `agent-settings.json` of the server's directory.
     Configured,
-    /// The same, with [`MISCONFIGURED_SETTINGS`], which Claude Code skips as a whole.
     Misconfigured,
-    /// A forkable fake agent started as herdr-bowtie starts a worker: on its role's model and
-    /// effort, with a folder that holds its self-review's agent file, on the reviewer's.
     HerdrBowtie,
 }
 
-/// herdr-bowtie's self-review agent file of the [`FakeAgent::HerdrBowtie`] agent.
 const SELF_REVIEW_AGENT: &str =
     "---\nname: bt-self-review\nmodel: claude-fable-5-2\neffort: max\n---\n\nReview.\n";
 
-/// The settings of the [`FakeAgent::Configured`] agent, with a hook a fork must not run.
 const AGENT_SETTINGS: &str = r#"{"env": {"FORCE_HYPERLINK": "1"}, "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "agent-stop"}]}]}}"#;
 
-/// The settings of the [`FakeAgent::Misconfigured`] agent: an error makes Claude Code skip them,
-/// and a fork's guard with them.
+// An error in its settings makes Claude Code skip them as a whole.
 const MISCONFIGURED_SETTINGS: &str = r#"{"permissions": {"allow": "not a list"}}"#;
 
 impl FakeAgent {
-    /// The workspace variables the fake agent reads, under the server's directory `root`.
     pub(super) fn environment(self, root: &Path) -> Vec<String> {
-        // Claude Code runs the hooks of the reviewer's plugin.
         let plugin = format!(
             "{}={}",
             variables::HOOK,
             effects::fixture::test_fork_tools().control.display()
         );
-        // Every fake agent keeps transcripts there. Without it, the fake agent keeps them under
-        // `claude` in its directory, the server's, where the test links the fake agent as `claude`.
         let configuration = format!("CLAUDE_CONFIG_DIR={}", root.join(CLAUDE_CONFIG).display());
         match self {
             Self::Forkable | Self::Configured | Self::Misconfigured | Self::HerdrBowtie => {
@@ -73,8 +50,6 @@ impl FakeAgent {
         }
     }
 
-    /// The arguments the fake agent starts with, its files written under the server's directory
-    /// `root`.
     pub(super) fn arguments(self, root: &Path) -> Vec<String> {
         let content = match self {
             Self::HerdrBowtie => {
@@ -103,18 +78,13 @@ impl FakeAgent {
     }
 }
 
-/// A round whose agent is the forkable fake agent, with run-ahead on for every choice. The agent
-/// holds each turn until the test submitted it.
 struct RunAheadFlow {
     flow: ExploreFlow,
 }
 
-/// How long the forks' host waits in a test: as in production, but it asks Herdr where the
-/// agent stands more often.
 fn test_waits() -> review_run_ahead::ForkWaits {
     review_run_ahead::ForkWaits {
         resume_poll: Duration::from_millis(10),
-        // The fake agent writes the end of its turn before it reports it: no test waits for it.
         transcript: Duration::ZERO,
         ..review_run_ahead::ForkWaits::default()
     }
@@ -125,7 +95,6 @@ impl RunAheadFlow {
         Self::start_with(FakeAgent::Forkable, test_waits())
     }
 
-    /// The flow with the fake agent set up as `kind`, whose forks' host waits as `waits` say.
     fn start_with(kind: FakeAgent, waits: review_run_ahead::ForkWaits) -> Self {
         let repository_files = repository_fixture(RepoType::Git);
         repository_files.write("reviewed.rs", b"pub fn reviewed() {}\n");
@@ -152,8 +121,6 @@ impl RunAheadFlow {
         self.herdr().server.root()
     }
 
-    /// Waits until `count` forks started, and returns the sessions of the forks whose process
-    /// run-ahead recorded.
     fn wait_for_forks(&self, count: usize) -> Vec<String> {
         self.herdr()
             .events()
@@ -166,7 +133,6 @@ impl RunAheadFlow {
                     .count()
                     >= count
             });
-        // Run-ahead records the process of each fork it starts before it takes another input.
         self.flow.fixture.runtime.effects.flush();
         let ready: Vec<_> = self
             .saved()
@@ -201,7 +167,6 @@ impl RunAheadFlow {
             .unwrap()
     }
 
-    /// What `check` finds in the saved forks, once it finds something.
     fn wait_for_saved<T>(&self, what: &str, check: impl Fn(&RoundForks) -> Option<T>) -> T {
         self.flow.state.wait_until(
             what,
@@ -218,7 +183,6 @@ impl RunAheadFlow {
         fake_agent::transcript(&self.root().join(CLAUDE_CONFIG), session)
     }
 
-    /// Waits until run-ahead stopped the forks `forks` and deleted their transcripts.
     fn wait_until_gone(&self, forks: &[(String, ProcessStamp)]) {
         self.wait_for_saved("the forks' end", |saved| {
             forks
@@ -240,7 +204,6 @@ impl RunAheadFlow {
         }
     }
 
-    /// The sessions and processes of the saved forks.
     fn processes(&self) -> Vec<(String, ProcessStamp)> {
         self.saved()
             .forks
@@ -263,15 +226,12 @@ fn prompt_line(prompt: &str, label: &str) -> String {
         .to_owned()
 }
 
-/// The process group of the running process `pid`.
 fn process_group(pid: u32) -> String {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
     let (_, fields) = stat.rsplit_once(')').unwrap();
     fields.split_whitespace().nth(2).unwrap().to_owned()
 }
 
-/// The next question, as the fork told the prompt `prompt` submits it: its interpretation keeps
-/// the outcome of the choice it was told.
 fn fork_question(flow: &ExploreFlow, prompt: &str) -> serde_json::Value {
     let choice = prompt_line(prompt, "Selected option ID: ");
     let outcome = flow
@@ -327,7 +287,6 @@ fn a_fork_of_an_agent_with_settings_of_its_own_runs_them_with_its_guard_in_place
     );
 }
 
-/// The line of each prompt of a round of the [`FakeAgent::HerdrBowtie`] agent.
 const ON_FABLE: &str = "\nExplore runs on claude-fable-5-2 at max effort.\n";
 
 #[test]
@@ -424,7 +383,6 @@ fn forks_of_the_agent_take_each_answer_s_turn_which_is_kept_and_an_answer_stops_
         );
     }
 
-    // The fork for "keep" submits its turn, with its own access: kept, and shown to nobody.
     let keep = run.fork_file(&sessions[0], "prompt");
     let questions = run.flow.exploration.questions.len();
     run.flow.access = prompt_line(&keep, "Explore review access: ");
@@ -434,7 +392,6 @@ fn forks_of_the_agent_take_each_answer_s_turn_which_is_kept_and_an_answer_stops_
     assert!(run.saved().forks[0].turn.is_some());
     run.flow.access = pane_access;
 
-    // Its turn done, it ends; the reviewer keeps how and its tokens.
     run.herdr()
         .events()
         .send(&Role::fork(&sessions[0]), &fake_agent::Command::EndTurn);
@@ -465,8 +422,6 @@ fn forks_of_the_agent_take_each_answer_s_turn_which_is_kept_and_an_answer_stops_
 }
 
 impl RunAheadFlow {
-    /// The fork `session` submits the turn its prompt asks for, with its own access; its output
-    /// then says that its submit has its answer.
     fn fork_submits(&mut self, session: &str) {
         let prompt = self.fork_file(session, "prompt");
         let pane_access = std::mem::replace(
@@ -476,8 +431,6 @@ impl RunAheadFlow {
         let kept = self.flow.submit(&fork_question(&self.flow, &prompt));
         assert_ne!(kept.is_error, Some(true), "{kept:?}");
         self.flow.access = pane_access;
-        // The fork calls the reviewer's tool as Claude Code names it, and the tool's result
-        // reaches it.
         let submit = format!("mcp__{}__submit_question", review_types::MCP_SERVER);
         self.herdr().events().obey(
             &Role::fork(session),
@@ -485,7 +438,6 @@ impl RunAheadFlow {
         );
     }
 
-    /// The reviewer answers the latest question with `choice` and no comment, in the pane.
     fn answer_bare(&mut self, choice: &str) -> review_explore::TurnRequest {
         let question = self.flow.exploration.questions.last().cloned();
         let request = self
@@ -505,7 +457,6 @@ impl RunAheadFlow {
         self.flow.post_turn(&request)
     }
 
-    /// Waits until the saved round has `count` questions, and returns it.
     fn wait_for_questions(&self, count: usize) -> review_explore::ExploreRound {
         self.flow.state.wait_until(
             &format!("{count} questions"),
@@ -523,17 +474,11 @@ impl RunAheadFlow {
         )
     }
 
-    /// The sessions the agent in the pane resumed, in order, once the reviewer sent every
-    /// prompt its inputs so far lead to and the agent read what was typed in its pane. A
-    /// `/resume` that a thread of the forks' host types later is not among them.
     fn resumed(&self) -> Vec<String> {
         self.flow.fixture.settle();
         self.herdr().resumed()
     }
 
-    /// Checks that the answer `request`, which waited for its fork, reached the agent in the pane
-    /// on its own session as the prompt after the first `before`, and that its path says
-    /// `reason`.
     fn answer_reached_the_agent(
         &self,
         before: usize,
@@ -604,8 +549,6 @@ fn a_bare_answer_continues_as_its_fork_and_the_next_answer_reaches_the_fork_s_se
     let record = &run.saved().forks[0];
     assert!(record.discarded.is_none() && !record.cleaned);
 
-    // The next answer goes to the agent, which runs the fork's session, and its turn is
-    // accepted from that session.
     run.flow.exploration = saved.exploration;
     run.flow.turn(
         Some(AnswerInput {
@@ -623,7 +566,6 @@ fn a_bare_answer_continues_as_its_fork_and_the_next_answer_reaches_the_fork_s_se
             .contains("\"uuid\":\"prompt-2\""),
         "the prompt reached the fork's session"
     );
-    // The forks of the second question, then the first of the third's.
     let third = run.wait_for_forks(5)[4].clone();
     assert!(
         run.fork_file(&third, "args")
@@ -633,12 +575,8 @@ fn a_bare_answer_continues_as_its_fork_and_the_next_answer_reaches_the_fork_s_se
             .any(|pair| pair == ["--resume", fork.as_str()]),
         "forks of the next question copy the fork's session"
     );
-    // The agent resumed no other session: a settling move would type its `/resume` on a thread
-    // of its own, which no flush waits for, but run-ahead takes no forks while one runs, and it
-    // ends only once Herdr reports the agent where the `/resume` put it.
     assert_eq!(run.resumed(), std::slice::from_ref(&fork));
 
-    // Once the reviewer closes, the agent's project folder holds the agent's sessions only.
     let RunAheadFlow { flow } = run;
     let ExploreFlow { fixture, .. } = flow;
     let ReviewFlowFixture { runtime, herdr, .. } = fixture;
@@ -658,7 +596,6 @@ fn a_bare_answer_before_its_fork_submitted_waits_and_the_next_answer_reaches_the
     let other = run.processes()[1..].to_vec();
     let prompts = run.herdr().prompts();
 
-    // The reviewer answers while the fork for that choice still works.
     let request = run.answer_bare("keep");
 
     run.wait_until_gone(&other);
@@ -666,7 +603,6 @@ fn a_bare_answer_before_its_fork_submitted_waits_and_the_next_answer_reaches_the
     assert_eq!(run.resumed(), Vec::<String>::new(), "the agent waits");
     assert_eq!(run.herdr().prompts(), prompts, "the agent got no prompt");
 
-    // The fork submits, still running: the agent switches to it at once.
     run.fork_submits(&fork);
     let saved = run.wait_for_questions(2);
     assert_eq!(
@@ -679,7 +615,6 @@ fn a_bare_answer_before_its_fork_submitted_waits_and_the_next_answer_reaches_the
             .request,
         request.request
     );
-    // The reviewer answers the fork's question right away.
     run.flow.exploration = saved.exploration;
     run.flow.turn(
         Some(AnswerInput {
@@ -738,9 +673,6 @@ fn a_fork_that_ends_without_its_turn_gives_the_answer_to_the_agent() {
 
 #[test]
 fn a_switch_the_agent_never_confirms_puts_the_agent_back_and_retry_reaches_its_own_session_once() {
-    // The switch waits no time, in place of 20 seconds: neither the agent's hook nor Herdr
-    // confirms it. The agent's move back to its own session, which they confirm, waits as long
-    // as in production.
     let mut run = RunAheadFlow::start_with(
         FakeAgent::Forkable,
         review_run_ahead::ForkWaits {
@@ -757,7 +689,6 @@ fn a_switch_the_agent_never_confirms_puts_the_agent_back_and_retry_reaches_its_o
 
     let request = run.answer_bare("keep");
 
-    // The switch waits in vain, then the agent goes back to its own session.
     run.wait_for_saved("the switch undone", |saved| {
         matches!(saved.forks[0].continued, Some(Continuation::Undone { .. })).then_some(())
     });
@@ -787,7 +718,6 @@ fn a_switch_the_agent_never_confirms_puts_the_agent_back_and_retry_reaches_its_o
             .contains("\"uuid\":\"prompt-2\""),
         "the answer reached the agent's own session"
     );
-    // A settling move that started meanwhile holds the prompt until its `/resume` is read.
     assert_eq!(run.resumed(), [fork.clone(), "session".to_owned()]);
     assert_eq!(
         run.herdr()
@@ -809,7 +739,6 @@ fn text_left_in_the_input_box_is_blocked_with_the_resume_and_the_answer_waits_fo
     run.fork_submits(&fork);
     let processes = run.processes();
     let prompts = run.herdr().prompts().len();
-    // The reviewer left half a thought in the agent's input box.
     run.herdr().run_cli(&[
         "pane",
         "send-text",
@@ -831,7 +760,6 @@ fn text_left_in_the_input_box_is_blocked_with_the_resume_and_the_answer_waits_fo
             text: format!("half a thought /resume {fork}")
         }
     );
-    // The agent put the joined prompt back in its input box, which its user empties.
     run.herdr()
         .run_cli(&["pane", "send-keys", &run.herdr().pane_id.0, "ctrl+u"]);
     let typed = run.wait_for_saved("the failed switch", |saved| {
@@ -900,16 +828,13 @@ fn an_agent_in_code_mode_is_not_forked_and_its_answers_say_why() {
 
 #[test]
 fn an_agent_in_code_mode_without_the_plugin_is_not_told_to_restart() {
-    // A restart with the plugin would still leave it in Code Mode.
     answers_of_an_agent_in_code_mode_say_why(RunAheadFlow::start_with(
         FakeAgent::Unhooked,
         test_waits(),
     ));
 }
 
-/// Marks the session of `run`'s agent as Claude Code 2.1.329 marks a session started in Code
-/// Mode, which it resumes only in its interactive terminal; then checks that the question takes
-/// no fork, that the answer says why, and that run-ahead counts no failure.
+// Claude Code 2.1.329 resumes a session started in Code Mode only in its interactive terminal.
 fn answers_of_an_agent_in_code_mode_say_why(mut run: RunAheadFlow) {
     let transcript = run.transcript("session");
     fs::create_dir_all(transcript.parent().unwrap()).unwrap();
@@ -929,7 +854,6 @@ fn answers_of_an_agent_in_code_mode_say_why(mut run: RunAheadFlow) {
     .unwrap();
     run.flow.turn(None, 1);
     let prompts = run.herdr().prompts().len();
-    // The answer says why once run-ahead tried to take the question's forks.
     run.flow.state.wait_until(
         "run-ahead's refusal",
         || run.log().contains("Code Mode").then_some(()),
@@ -1046,7 +970,6 @@ fn a_closing_reviewer_stops_every_fork_and_deletes_its_transcript() {
     );
 }
 
-/// What the project folder of the fake agent's transcripts under `configuration` holds.
 fn project_folder(configuration: &Path) -> BTreeSet<String> {
     fs::read_dir(fake_agent::transcripts(configuration))
         .unwrap()

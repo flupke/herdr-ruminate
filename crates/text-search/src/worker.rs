@@ -4,7 +4,6 @@ use std::thread::{self, JoinHandle};
 
 use crate::{Request, Results, ripgrep::Engine};
 
-/// A single background search worker. New requests cancel and replace old work.
 pub struct Worker {
     shared: Arc<Shared>,
     thread: Option<JoinHandle<()>>,
@@ -34,8 +33,6 @@ impl Worker {
         }
     }
 
-    /// Submit the newest query, or cancel pending work with `None`.
-    ///
     /// # Panics
     /// Panics if another thread poisoned the search queue lock.
     pub fn submit(&self, request: Option<Request>) {

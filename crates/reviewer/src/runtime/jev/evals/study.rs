@@ -1,5 +1,3 @@
-//! Factorial study planning reuses the eval's recursive splitter and tokenizer.
-
 use std::{io::Write, path::PathBuf, time::Instant};
 
 use eyre::{Result, ensure};
@@ -75,7 +73,6 @@ impl RequestProfile {
         json!({"model":"jev-1.13.0", "state":state, "questions":self.questions})
     }
 
-    /// Budget state plus the longest question, including conservative JSON overhead.
     pub(super) fn tokens(body: &Value) -> usize {
         let tokenizer = tiktoken_rs::o200k_base_singleton();
         let question = body["questions"]

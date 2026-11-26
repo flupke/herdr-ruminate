@@ -1,5 +1,3 @@
-//! Application pane layout, shared by drawing and pointer hit-testing.
-
 use std::ops::Range;
 
 use ratatui::layout::Rect;
@@ -19,24 +17,18 @@ fn location_selector_panes(body: Rect, preferred_width: Option<u16>) -> SplitPan
     )
 }
 
-/// The Files, Threads and Explore tabs on the navigation pane's top
-/// border, laid out once for both drawing and clicks.
 pub(super) struct NavigationTabs {
     unread: bool,
 }
 
-/// One tab and the columns it covers, counted from the first tab.
 pub(super) struct NavigationTab {
     pub(super) mode: ReviewNavigation,
-    /// The name, whose first letter is the key that opens the tab.
     name: &'static str,
-    /// Whether the unread marker follows the name.
     pub(super) unread: bool,
     columns: Range<usize>,
 }
 
 impl NavigationTab {
-    /// The letter that opens the tab, and the rest of its name.
     pub(super) fn key_and_rest(&self) -> (&'static str, &'static str) {
         self.name.split_at(1)
     }
@@ -48,12 +40,10 @@ impl NavigationTabs {
         (ReviewNavigation::Threads, "Threads"),
         (ReviewNavigation::Explore, "Explore"),
     ];
-    /// On each side of a name, inside the tab.
     pub(super) const PADDING: &'static str = " ";
     pub(super) const GAP: &'static str = " ";
     pub(super) const UNREAD: &'static str = "● ";
 
-    /// The tabs, with the unread marker on Threads when `unread` is set.
     pub(super) fn new(unread: bool) -> Self {
         Self { unread }
     }
@@ -154,7 +144,6 @@ impl PaneLayout {
     }
 }
 
-/// The terminal size and the reviewer's preferred navigation pane width.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Viewport {
     pub(crate) width: u16,
@@ -162,10 +151,6 @@ pub(crate) struct Viewport {
     pub(crate) file_width: Option<u16>,
 }
 
-/// Where each part of the screen goes for one navigation state.
-///
-/// The application computes it once per state change; drawing and pointer
-/// hit-testing both read this value, so they cannot disagree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ScreenLayout {
     area: Rect,
@@ -177,18 +162,17 @@ pub(crate) struct ScreenLayout {
     body: Body,
 }
 
-/// How the area between the header and the footer is divided.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Body {
-    /// Explore fills the body, beside the location selector while it is open.
     Explore {
         locations: Option<SplitPane>,
         source: Rect,
     },
-    /// The navigation pane beside the diff on a wide terminal.
     Split(SplitPane),
-    /// One pane at a time on a narrow terminal.
-    Single { pane: ReviewPane, area: Rect },
+    Single {
+        pane: ReviewPane,
+        area: Rect,
+    },
 }
 
 impl ScreenLayout {
@@ -241,11 +225,6 @@ impl ScreenLayout {
         }
     }
 
-    /// This layout for another render area.
-    ///
-    /// The application renders into the viewport it laid out, so this is
-    /// the same value there; only a caller drawing into another area gets
-    /// the layout recomputed for that area.
     pub(crate) fn fitted_to(self, area: Rect) -> Self {
         if area == self.area {
             return self;
@@ -285,7 +264,6 @@ impl ScreenLayout {
         )
     }
 
-    /// The pane that shows Files, Threads or Explore, with its tabs on top.
     pub(crate) fn navigation_pane(self) -> Option<Rect> {
         match self.body {
             Body::Explore { source, .. } => Some(source),
@@ -298,10 +276,6 @@ impl ScreenLayout {
         }
     }
 
-    /// The area that receives pointer input for the navigation component.
-    ///
-    /// Explore handles its whole pane; Files and Threads handle the inside
-    /// of their border.
     pub(crate) fn navigation_input_area(self) -> Option<Rect> {
         let pane = self.navigation_pane()?;
         Some(match self.body {
@@ -315,9 +289,6 @@ impl ScreenLayout {
         })
     }
 
-    /// The diff pane, whether or not a narrow terminal currently shows it.
-    ///
-    /// Explore shows the diff as evidence inside its own pane instead.
     pub(crate) fn diff_pane(self) -> Option<Rect> {
         match self.body {
             Body::Explore { .. } => None,
@@ -326,7 +297,6 @@ impl ScreenLayout {
         }
     }
 
-    /// The diff pane when it is on screen.
     pub(crate) fn visible_diff_pane(self) -> Option<Rect> {
         match self.body {
             Body::Single {
@@ -337,7 +307,6 @@ impl ScreenLayout {
         }
     }
 
-    /// Where the location selector goes while it is open.
     pub(crate) fn locations_pane(self) -> Rect {
         match self.body {
             Body::Explore {
@@ -350,7 +319,6 @@ impl ScreenLayout {
         }
     }
 
-    /// The row of navigation tabs, inside the navigation pane's top border.
     pub(crate) fn tabs(self) -> Option<Rect> {
         self.navigation_pane()
             .map(|pane| Rect::new(pane.x + 1, pane.y, pane.width.saturating_sub(2), 1))

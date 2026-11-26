@@ -1,11 +1,6 @@
-//! `reviewer-control fork-guard`, a fork's `PreToolUse` hook, answers Claude Code as its hooks
-//! expect: exit code 2 with the reason on standard error blocks the tool call; exit code 0 lets
-//! it run. Any other code would let a refused call run.
-
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-/// The guard's exit code and standard error for the hook input `input`.
 fn guard(input: &str) -> (Option<i32>, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_reviewer-control"))
         .arg("fork-guard")

@@ -1,5 +1,3 @@
-//! Visible rows derived from a parsed unified diff.
-
 use std::cell::OnceCell;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -30,11 +28,9 @@ pub(super) enum PresentedRow {
         line: u32,
         tokens: Vec<Token>,
     },
-    /// A reviewed hunk folded into one row.
     ReviewedHunk {
         hunk: usize,
     },
-    /// One row of an expanded reviewed hunk, read-only.
     ReviewedLine {
         hunk: usize,
         row: usize,
@@ -79,7 +75,6 @@ struct PresentationRows<'a> {
 }
 
 impl DiffPresentation {
-    /// A historical source document has old-side coordinates and no live LSP target.
     pub(super) fn base_file(highlighted: HighlightedDiff) -> Self {
         let mut document = Self::new(highlighted);
         document.whole_file = Some(WholeFile::Deleted);
@@ -374,7 +369,6 @@ impl DiffPresentation {
         }
     }
 
-    /// One-based evidence coordinates for a visible row on the requested side.
     pub(super) fn evidence_line(&self, row: usize, side: SourceSide) -> Option<u32> {
         match (side, self.presentation_location(row)?) {
             (
@@ -402,7 +396,6 @@ impl DiffPresentation {
                 let new_display_line = new_line.saturating_add(1);
                 self.context_row(|row| row.0 == old_display_line)
                     .or_else(|| self.context_row(|row| row.1 == new_display_line))
-                    // A fold may hold the line instead of an open hunk's context.
                     .or_else(|| self.reveal_diff_line(new_line))
             }
             PresentationLocation::NewLine(line) => self.reveal_line(line),
@@ -543,7 +536,6 @@ impl DiffPresentation {
         }))
     }
 
-    /// Show the rows folded into one row: unchanged lines or a reviewed hunk.
     pub(super) fn expand(&mut self, index: usize) -> bool {
         self.expand_gap(index) || self.expand_reviewed(index)
     }

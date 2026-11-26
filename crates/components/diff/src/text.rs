@@ -1,10 +1,3 @@
-//! The text a diff viewer drew, for the reviewer to select and copy: the code of each line
-//! without its gutter, and the prose of the threads framed under it.
-//!
-//! A plain drag over the code comments on its lines, so the code's region needs Alt held.
-//! A drag means nothing over a thread, so each run of thread rows lies over it in a region
-//! of its own, where a plain drag selects the thread's text.
-
 use std::ops::Range;
 
 use diff_rendering::DiffFrame;
@@ -18,8 +11,6 @@ use super::{DiffPointerViewport, code_column, grapheme_display_width};
 use crate::DiffPresentation;
 
 impl DiffPointerViewport {
-    /// The text of the rows drawn in `area`, the whole viewer's first, then each run of
-    /// thread rows over it: a line of code keeps its tabs, and its rows join where it wrapped.
     pub(crate) fn text_regions(
         &self,
         area: Rect,
@@ -67,7 +58,6 @@ impl DiffPointerViewport {
     }
 }
 
-/// The region of the thread `rows`, whose prose is also added to the viewer's `region`.
 fn thread_text(
     region: &mut TextRegion,
     frame: DiffFrame,
@@ -82,7 +72,6 @@ fn thread_text(
     thread
 }
 
-/// The graphemes of the line `text` that start in the display `columns` a row shows.
 fn code_row(text: &str, columns: Range<usize>, position: Position) -> TextRow {
     let mut cells = Vec::new();
     let mut column = 0;
@@ -102,7 +91,6 @@ fn code_row(text: &str, columns: Range<usize>, position: Position) -> TextRow {
     TextRow::new(position, cells, RowEnd::Line)
 }
 
-/// Add the prose of `rows` of a pane's `area`, read inside the padding of `frame`.
 pub(crate) fn push_framed_prose(
     region: &mut TextRegion,
     frame: DiffFrame,
@@ -113,7 +101,6 @@ pub(crate) fn push_framed_prose(
     region.push_prose(framed_prose_area(frame, area, rows), buffer);
 }
 
-/// Where `rows` of a pane's `area` hold prose, inside the padding of `frame`.
 fn framed_prose_area(frame: DiffFrame, area: Rect, rows: Range<u16>) -> Rect {
     let column = u16::try_from(frame.content_column()).unwrap_or(u16::MAX);
     Rect::new(

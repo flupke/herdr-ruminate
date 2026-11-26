@@ -2,7 +2,6 @@ use super::*;
 use review_threads::AskedUnder;
 
 impl ThreadUi {
-    /// Add the conversation of an Explore round, with one message and the agent's reply.
     fn talk_in_round(&mut self) -> ThreadId {
         self.book
             .post(Post::to_round(

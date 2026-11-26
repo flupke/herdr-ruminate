@@ -295,12 +295,10 @@ fn accepted_mcp_questions_advance_after_input_and_preserve_history_drafts() {
         let (column, row) = fixture.point(" Send ");
         request = ExploreUi::request(fixture.app.update(UserInput::MouseClick { column, row }));
         fixture.app.update(UserInput::MouseRelease);
-        // Incidental activity used to suppress the next accepted question.
         fixture.app.update(UserInput::Key(Key::Escape));
         fixture.app.update(UserInput::Key(Key::PageUp));
     }
 
-    // A fresh draft stays attached to its question when the next turn arrives.
     fixture
         .app
         .update(UserInput::Paste("Keep my new thought".into()));
@@ -407,7 +405,6 @@ fn assert_evidence_restores_saved_drafts(side: review_explore::SourceSide) {
         if reference == 1 {
             assert!(fixture.text().contains("pub fn caller()"));
         }
-        // A saved draft stays collapsed until the reviewer opens it.
         fixture.click(&draft.text);
         let post = ExploreUi::posted_comment(fixture.app.update(UserInput::Key(Key::ControlEnter)));
         assert_eq!(
@@ -592,7 +589,6 @@ fn a_drag_on_either_half_of_the_evidence_bottom_row_resizes_it() {
     });
     fixture.respond(&request, 1);
     let (diff_title, title_row) = fixture.point("Diff ·");
-    // The list's bottom border, left of the divider, and the viewer's last row, right of it.
     for column in [diff_title - 10, diff_title + 10] {
         let height = fixture.inline_height(0);
         let buffer = fixture.buffer();
@@ -663,7 +659,6 @@ fn a_plain_drag_copies_the_conversation_but_comments_on_the_evidence_code() {
         drag(&mut fixture, "untouched middle", "other evidence"),
         Vec::<Action>::new()
     );
-    // The viewer took the drag as a comment on its lines, which wait for the threads.
     assert!(fixture.text().contains("Comments are still loading"));
 }
 
@@ -708,7 +703,6 @@ fn history_pages_retain_independent_evidence_and_drafts() {
     assert!(!text.contains("Human context for the first question."));
     assert_eq!(fixture.inline_sizes().len(), 1);
     assert_eq!(text.matches("Your answer").count(), 1);
-    // The frame pads the editor's title by one space.
     assert!(text.contains("╭ Your answer"), "{text}");
     fixture
         .app

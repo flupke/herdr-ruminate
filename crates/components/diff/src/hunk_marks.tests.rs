@@ -4,8 +4,6 @@ use review_repository::repository::ChangedFile;
 
 use super::*;
 
-/// Thirty lines; the change rewrites line 3, reviewed already, and line 20,
-/// still open.
 fn text(edits: &[(usize, &str)]) -> Vec<u8> {
     let mut lines = (1..=30)
         .map(|line| format!("line {line}"))
@@ -63,7 +61,6 @@ impl HunkFixture {
         self.load_reviewed(&[(3, "three")]);
     }
 
-    /// Load the diff with the given lines already reviewed.
     fn load_reviewed(&mut self, reviewed: &[(usize, &str)]) {
         let base = text(&[]);
         let reviewed = text(reviewed);
@@ -86,7 +83,6 @@ impl HunkFixture {
         rendered_diff_lines(&self.registry, self.target)
     }
 
-    /// Click the control drawn as `symbol`, after rendering the screen.
     fn click(&mut self, symbol: &str) -> Vec<Action> {
         let screen = self.screen();
         let (row, line) = screen
@@ -317,7 +313,6 @@ fn a_file_that_no_longer_needs_review_offers_no_hunk_control() {
 fn a_hunk_accepted_at_the_cursor_folds_after_the_reload() {
     let mut review = HunkFixture::new();
     review.load_reviewed(&[]);
-    // The cursor sits on the hunk's added line, "three".
     let row = review
         .screen()
         .iter()
@@ -402,8 +397,6 @@ fn a_folded_hunk_fills_its_row_up_to_the_control() {
         })
         .unwrap();
 
-    // Every cell between the text and the right border shares the fold's
-    // background, the control included.
     for column in 40..area.width - 1 {
         assert_eq!(
             buffer[(column, row)].bg,

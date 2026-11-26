@@ -1,5 +1,3 @@
-//! The shared shortcut table and its matcher over normalized keys.
-
 mod commands;
 mod matcher;
 mod table;
@@ -17,7 +15,6 @@ pub use matcher::ShortcutMatcher;
 use table::{SHORTCUTS, ShortcutDefinition, ShortcutSequence, bindings};
 pub use ui_keys::Key;
 
-/// Return the visible shortcut help lines.
 pub fn help_lines() -> impl Iterator<Item = (String, &'static str)> {
     SHORTCUTS.iter().filter_map(ShortcutDefinition::help_line)
 }

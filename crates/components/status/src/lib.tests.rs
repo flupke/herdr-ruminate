@@ -54,7 +54,6 @@ fn external_events_change_visible_header_output() {
     assert_eq!(buffer[(3, 0)].fg, ratatui::style::Color::DarkGray);
     assert_eq!(buffer[(11, 0)].fg, palette.text);
     assert!(buffer[(11, 0)].modifier.contains(Modifier::BOLD));
-    // One of three changed lines reviewed fills four of the bar's twelve cells.
     assert!(rendered.ends_with("+12 -3  ━━━━━━━━━━━━ 33% reviewed "));
     let bar = u16::try_from(rendered.chars().count() - 26).unwrap();
     assert_eq!(buffer[(bar + 3, 0)].fg, palette.insertion);
@@ -114,7 +113,6 @@ fn long_subject_leaves_revision_id_and_statistics_visible() {
         .map(ratatui::buffer::Cell::symbol)
         .collect::<String>();
     assert!(rendered.starts_with(" abcd1234  A long"));
-    // A narrow header keeps the title's room instead of drawing the bar.
     assert!(rendered.ends_with("+0 -0  0% reviewed "));
 }
 

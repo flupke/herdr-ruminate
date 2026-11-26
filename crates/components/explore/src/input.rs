@@ -54,8 +54,6 @@ impl ExploreComponent {
         );
     }
 
-    /// Runs a setting's control, of the next round or of the page. The answer being typed, if
-    /// any, keeps its text.
     pub(super) fn setting(&mut self, setting: ExploreSettingShortcut) -> Vec<Action> {
         self.editing = false;
         match setting {
@@ -75,8 +73,6 @@ impl ExploreComponent {
         if matches!(control, Control::Reset | Control::ConfirmReset) {
             return self.reset(std::time::Instant::now());
         }
-        // Any other control cancels a Reset waiting for its confirmation, and any control but a
-        // setting's or a copy leaves the setting being typed.
         self.reset.cancel();
         if !matches!(control, Control::Setting(_) | Control::CopyLink(_)) {
             self.leave_page_setting();
@@ -98,7 +94,6 @@ impl ExploreComponent {
         Vec::new()
     }
 
-    /// Stops waiting for the agent, sends the turn again, or cancels the latest answer.
     fn recovery_control(&mut self, control: Control) -> Vec<Action> {
         match control {
             Control::Cancel => self.cancel(),
@@ -177,7 +172,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Move focus on from `focus`, the pane that had it when Tab was pressed.
     fn cycle_focus(&mut self, focus: ReviewPane) {
         let from_evidence = focus == ReviewPane::Detail;
         if !self.can_compose() {
@@ -217,10 +211,7 @@ impl ExploreComponent {
         self.events.publish(ReviewPaneFocusRequested(pane));
     }
 
-    /// Run one key Explore owns. `focus` is the pane that had focus: the
-    /// conversation, or the evidence Explore shows inside itself.
     fn key(&mut self, input: ExploreKey, focus: ReviewPane) -> Vec<Action> {
-        // Reset has no key, so any key cancels a Reset waiting for its confirmation.
         self.reset.cancel();
         if let Some(actions) = self.page_setting_key(input) {
             return actions;
@@ -346,7 +337,6 @@ impl ExploreComponent {
         }
     }
 
-    /// The control of a shortcut of the start screen's buttons.
     fn start_screen_control(command: ExploreTurnShortcut) -> Control {
         match command {
             ExploreTurnShortcut::Start(shortcut) => {
@@ -561,9 +551,6 @@ impl ExploreComponent {
 }
 
 impl ExploreComponent {
-    /// Whether `key` runs an application command Explore leaves to the
-    /// application. Switching navigation always passes; opening Files,
-    /// Threads or help and quitting pass unless an answer is being composed.
     fn passes_through(&self, key: Key) -> bool {
         let typing = self.editing || self.page_settings.editing();
         match ApplicationShortcut::bound_to(key) {
@@ -579,19 +566,12 @@ impl ExploreComponent {
     }
 }
 
-/// One key Explore handles, with the Explore command it is bound to, if any.
-///
-/// The raw key stays available for the answer editor and the lists Explore
-/// embeds, which resolve keys through their own subscriptions.
 #[derive(Clone, Copy)]
 pub(super) struct ExploreKey {
     pub(super) key: Key,
     pub(super) command: Option<ExploreCommand>,
 }
 
-/// Keys for the focused Explore conversation. Explore keeps every key except
-/// the application's navigation, help and quit keys, so unbound keys never
-/// reach the diff behind it.
 #[derive(Default)]
 struct ExploreKeys {
     commands: ShortcutMatcher<ExploreCommand>,
@@ -612,7 +592,6 @@ impl InputMatcher<ExploreComponent, Key> for ExploreKeys {
     }
 }
 
-/// Keys Explore claims while its evidence, shown inside it, has focus.
 #[derive(Default)]
 struct EvidenceKeys {
     commands: ShortcutMatcher<ExploreGlobalShortcut>,

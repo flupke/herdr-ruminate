@@ -551,7 +551,6 @@ fn bookmarks_and_tags_follow_the_description_as_chips() {
 
 #[test]
 fn a_long_description_is_shortened_to_leave_room_for_its_names() {
-    // The row has 40 columns after the share: the chip of `main` takes 6, after a gap of 2.
     let description = "d".repeat(60);
     let (bus, target) = open_history(vec![
         current_history_line("beta"),
@@ -623,8 +622,6 @@ fn a_name_of_emoji_too_wide_to_shorten_is_counted() {
 
 #[test]
 fn names_leave_a_narrow_row_its_change_id() {
-    // 15 columns after the share: the change ID and a column of the description take 10, the
-    // gap 2, and `main` does not fit in the 3 left.
     let (bus, target) = open_history(vec![
         current_history_line("beta"),
         with_refs(
@@ -769,7 +766,6 @@ fn a_share_computed_for_an_earlier_history_is_ignored() {
     assert!(rendered_component(&bus, target).contains("   · alpha"));
 }
 
-/// Half of `change_id` reviewed, computed for the history of `load_id`.
 fn progress_loaded(load_id: u64, change_id: &str) -> RevisionProgressLoaded {
     let line = DiffStatistics {
         lines_added: 1,
@@ -840,8 +836,6 @@ fn no_candidates_leave_navigation_ready_for_another_request() {
     ));
 }
 
-/// The selector takes every key, so the keys the table binds to the
-/// application's quit and clear commands close it instead.
 fn selector_close_keys() -> impl Iterator<Item = Key> {
     [ApplicationShortcut::Quit, ApplicationShortcut::Clear]
         .into_iter()
@@ -1078,7 +1072,6 @@ fn rendered_buffer_of_width(
     terminal.backend().buffer().clone()
 }
 
-/// The row of `buffer` that shows `needle`, and its text, one character per cell.
 fn row_with(buffer: &Buffer, needle: &str) -> (u16, String) {
     (0..buffer.area.height)
         .map(|row| {
@@ -1092,8 +1085,6 @@ fn row_with(buffer: &Buffer, needle: &str) -> (u16, String) {
         .unwrap_or_else(|| panic!("no row shows {needle:?}"))
 }
 
-/// The cell of `row` where `needle` starts, in the row's `text`, which holds one character per
-/// cell.
 fn cell_at<'a>(buffer: &'a Buffer, row: u16, text: &str, needle: &str) -> &'a Cell {
     let start = text.find(needle).unwrap();
     let column = text[..start].chars().count();

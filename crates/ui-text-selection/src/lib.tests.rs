@@ -56,7 +56,6 @@ fn a_drag_copies_content_rows_joining_wrapped_ones_and_keeping_tabs() {
 
 #[test]
 fn a_drag_copies_from_the_anchor_cell_to_the_cursor_cell_in_reading_order() {
-    // Dragged upwards, from the `1` back to the `e` of `let`.
     assert_eq!(
         select(code_region(), (9, 1), (11, 0)).as_deref(),
         Some("et a = 1")
@@ -65,7 +64,6 @@ fn a_drag_copies_from_the_anchor_cell_to_the_cursor_cell_in_reading_order() {
 
 #[test]
 fn a_cell_wider_than_one_column_is_selected_from_any_of_its_columns() {
-    // Column 8 is inside the tab, which spans columns 6 to 9.
     assert_eq!(
         select(code_region(), (8, 0), (10, 0)).as_deref(),
         Some("\tl")
@@ -118,7 +116,6 @@ fn a_plain_press_starts_a_text_selection_only_where_no_region_on_top_needs_alt()
     let mut layer = TextLayer::default();
     let area = Rect::new(0, 0, 30, 6);
     layer.push(TextRegion::screen(area, &drawn(area, &["files"])));
-    // The code region covers the files from column 0 to 19 and row 0 to 3.
     layer.push(code_region().needing_alt());
     assert!(
         layer
@@ -242,7 +239,6 @@ fn prose_leaves_out_code_frame_borders_and_rules_and_never_joins_code() {
 
 #[test]
 fn prose_leaves_out_a_rule_that_runs_in_from_outside_the_area() {
-    // A reply editor framed over the padding of a thread whose prose starts at column 3.
     let mut buffer = Buffer::empty(Rect::new(0, 0, 30, 3));
     for (y, row) in ["│  Why the tab", "│╰─ Vim · INSERT ──── F2 ─╯", "│  Post"]
         .iter()

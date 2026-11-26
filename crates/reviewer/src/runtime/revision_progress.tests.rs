@@ -44,15 +44,12 @@ fn drain(progress: &mut HistoryProgress) -> Vec<String> {
         .collect()
 }
 
-/// A review store of its own, for histories whose revisions are never computed.
 fn store() -> (TempDir, ReviewStore) {
     let state = tempfile::tempdir().unwrap();
     let store = ReviewStore::open(state.path(), state.path()).unwrap();
     (state, store)
 }
 
-/// A jj repository whose change `review` holds two one-line files, `first.txt` reviewed, and
-/// whose working copy is a change above it.
 struct Reviewed {
     _files: Box<dyn review_test_support::ReviewRepositoryFixture>,
     _state: TempDir,
@@ -84,7 +81,6 @@ impl Reviewed {
         tracker
             .mark(&reviewed, first, &MarkAuthor::Reviewer)
             .unwrap();
-        // The working copy moves on: the revision reviewed is now one below it.
         files.new_change("next");
         files.write("third.txt", b"three\n");
         Self {
@@ -98,7 +94,6 @@ impl Reviewed {
         }
     }
 
-    /// The history row of the reviewed change, at `commit`.
     fn line(&self, commit: &str) -> RevisionHistoryLine {
         RevisionHistoryLine {
             commit_id: Some(SnapshotId::from(commit.to_owned())),
@@ -144,7 +139,6 @@ fn one_command_is_queued_at_a_time_until_none_is_left() {
             .start(RevisionHistoryLoadId::new(1), &lines, &store, &|_, _| false)
             .queue
     );
-    // A second history while the command is queued queues no other.
     let second = progress.start(RevisionHistoryLoadId::new(2), &lines, &store, &|_, _| false);
     assert!(!second.queue);
     let (load_id, first) = progress.next().unwrap();
@@ -256,7 +250,6 @@ fn a_share_is_computed_again_once_the_commit_or_the_marks_change() {
 
     progress.next();
     reviewed.compute(&mut progress);
-    // Any mark of the change, from any process, changes the stamp the share was kept with.
     reviewed
         .store
         .unreview(reviewed.review.review_unit(), b"first.txt")

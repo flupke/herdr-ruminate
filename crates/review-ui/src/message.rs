@@ -1,45 +1,16 @@
-//! Terminal input accepted by the review application.
-
 use ui_shortcuts::Key;
 
-/// One normalized terminal input.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UserInput {
     Paste(String),
-    Resize {
-        width: u16,
-        height: u16,
-    },
-    MouseScroll {
-        column: u16,
-        row: u16,
-        delta: isize,
-    },
-    MouseClick {
-        column: u16,
-        row: u16,
-    },
-    MouseControlClick {
-        column: u16,
-        row: u16,
-    },
-    /// A left press with Alt held, which starts a text selection in any pane, the diff included.
-    MouseAltClick {
-        column: u16,
-        row: u16,
-    },
-    MouseDoubleClick {
-        column: u16,
-        row: u16,
-    },
-    MouseRightClick {
-        column: u16,
-        row: u16,
-    },
-    MouseDrag {
-        column: u16,
-        row: u16,
-    },
+    Resize { width: u16, height: u16 },
+    MouseScroll { column: u16, row: u16, delta: isize },
+    MouseClick { column: u16, row: u16 },
+    MouseControlClick { column: u16, row: u16 },
+    MouseAltClick { column: u16, row: u16 },
+    MouseDoubleClick { column: u16, row: u16 },
+    MouseRightClick { column: u16, row: u16 },
+    MouseDrag { column: u16, row: u16 },
     MouseRelease,
     Key(Key),
 }

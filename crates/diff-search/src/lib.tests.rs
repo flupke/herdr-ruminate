@@ -15,7 +15,6 @@ impl TestDocument {
         }
     }
 
-    /// Big enough that searching it goes to the background worker.
     fn large(path: &'static str) -> Self {
         let filler = "x".repeat(70_000);
         Self::new(path, &["needle deleted", &format!("{filler} needle")])
@@ -32,7 +31,6 @@ impl SearchedDocument for TestDocument {
     }
 }
 
-/// The query or its matches changed.
 const STATUS: Intent = Intent::Status { files: true };
 
 fn location(document_index: usize, path: &str, row: usize, column: usize) -> Location {

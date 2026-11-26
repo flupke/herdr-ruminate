@@ -1,13 +1,9 @@
-//! The QR code and the address of the Explore page on the network, in the pane.
-
 use super::*;
 
 const URL: &str = "http://192.168.1.23:8790/?token=0123456789abcdef0123456789abcdef";
-/// The address the page gets once the round is reset, for the round that starts next.
 const NEXT_URL: &str = "http://192.168.1.23:8790/?token=fedcba9876543210fedcba9876543210";
 
 impl ExploreUi {
-    /// Scrolls the conversation to its end.
     fn scroll_to_end(&mut self) {
         self.app.update(UserInput::MouseScroll {
             column: 0,
@@ -16,7 +12,6 @@ impl ExploreUi {
         });
     }
 
-    /// Whether the screen shows a QR code: rows of cells that each draw two of its modules.
     fn shows_qr_code(&self) -> bool {
         self.text().contains(&"▀".repeat(30))
     }

@@ -1,4 +1,3 @@
-//! Transient yellow frames use native presentation coordinates and wrapping.
 use super::{Color, DiffFrame, DiffRenderer, LoadedDocument, Style, WrappedDiffRow};
 use crate::explore::ShownEvidence;
 use diff_rendering::FrameRule;
@@ -6,14 +5,11 @@ use review_explore::SourceSide;
 use review_source::SourceLineRange;
 use std::ops::{Range, RangeInclusive};
 
-/// Visual rows showing one evidence range, out of all the document's rows.
 pub(crate) struct EvidenceRows {
     pub(crate) range: Range<usize>,
     pub(crate) total: usize,
 }
 
-/// Project citations onto displayed rows before wrapping. Opposite-side changes
-/// between a citation's endpoints remain inside its outline.
 pub(super) struct EvidenceFrames {
     spans: Vec<EvidenceSpan>,
     frame: DiffFrame,

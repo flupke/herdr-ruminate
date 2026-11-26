@@ -1,5 +1,3 @@
-//! Literal smart-case search over the exact text presented by the reviewer.
-
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,21 +10,18 @@ mod worker;
 
 pub use worker::Worker;
 
-/// A position in a presented document, with a byte column.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Position {
     pub row: usize,
     pub column: usize,
 }
 
-/// One occurrence, in input document order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Match {
     pub document_index: usize,
     pub position: Position,
 }
 
-/// Searchable row text cached independently of syntax tokens.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Document {
     text: String,
@@ -58,7 +53,6 @@ impl Document {
     }
 }
 
-/// A compiled literal query, shared by matching and visible highlighting.
 pub struct Query {
     pattern: Option<RegexMatcher>,
 }
@@ -92,7 +86,6 @@ impl Query {
     }
 }
 
-/// Immutable inputs for one query; the ID distinguishes superseded results.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Request {
     id: u64,
@@ -101,8 +94,6 @@ pub struct Request {
 }
 
 impl Request {
-    /// A request whose ID no other request in this process shares, so results
-    /// from the one shared worker reach only the search that asked for them.
     pub fn new(query: String, documents: Vec<Arc<Document>>) -> Self {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         Self {
@@ -112,12 +103,10 @@ impl Request {
         }
     }
 
-    /// The identity that completed [`Results`] carry back.
     pub fn id(&self) -> u64 {
         self.id
     }
 
-    /// Whether the immutable document inputs still have the same identity and order.
     pub fn same_documents(&self, documents: &[Arc<Document>]) -> bool {
         self.documents.len() == documents.len()
             && self
@@ -135,8 +124,6 @@ impl Request {
             > 64 * 1024
     }
 
-    /// Search inline with ripgrep's literal and smart-case matcher.
-    ///
     /// # Panics
     /// Panics if an uncancellable search unexpectedly reports cancellation.
     pub fn search(&self) -> Results {
@@ -173,7 +160,6 @@ impl Request {
     }
 }
 
-/// Completed matches for one request.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Results {
     pub id: u64,

@@ -1,28 +1,17 @@
-//! The rounded frames around the reviewer's panes, popups, cards and notices.
-
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType};
 use ui_theme::Palette;
 
-/// What a frame surrounds, which decides how much it draws attention.
-///
-/// Only the frame that has the user's attention takes the accent color;
-/// the others recede, so focus reads from the borders alone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Frame {
-    /// A region that can hold focus, such as a pane or an input field.
     Pane { focused: bool },
-    /// A window over the layout, which always has the user's attention.
     Popup,
-    /// One card in a list.
     Card { selected: bool },
-    /// A notice framed and titled in its own color.
     Notice(Color),
 }
 
 impl Frame {
-    /// A bordered block with `title`, padded by a space, on its top border.
     pub fn block<'a>(self, palette: Palette, title: impl Into<Line<'a>>) -> Block<'a> {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
@@ -43,7 +32,6 @@ impl Frame {
         }
     }
 
-    /// The style of the border's lines, for frames drawn line by line.
     pub fn border_style(self, palette: Palette) -> Style {
         Style::default().fg(match self {
             Self::Notice(color) => color,
@@ -63,8 +51,6 @@ impl Frame {
     }
 }
 
-/// `block` with `footer`, padded by a space as a title is, on its bottom border, in the footer's
-/// own style.
 pub fn with_footer<'a>(block: Block<'a>, footer: impl Into<Line<'a>>) -> Block<'a> {
     let footer = footer.into();
     if footer.width() == 0 {
@@ -73,7 +59,6 @@ pub fn with_footer<'a>(block: Block<'a>, footer: impl Into<Line<'a>>) -> Block<'
     block.title_bottom(padded(footer))
 }
 
-/// `line` with a space on each side, keeping its style and alignment.
 fn padded(line: Line<'_>) -> Line<'_> {
     let mut spans = Vec::with_capacity(line.spans.len() + 2);
     spans.push(Span::raw(" "));

@@ -1,21 +1,14 @@
-//! `reviewer-control codex-plugin install`, as `make install` runs it, on a machine without
-//! Codex and on one whose `codex` fails. Each run uses a link to the test build's
-//! `reviewer-control` in a scratch directory, beside which the installation writes the plugin's
-//! marketplace, and a scratch Codex home.
-
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-/// A scratch directory with a link to `reviewer-control`, a Codex home, and a `PATH` directory.
 struct Machine {
     directory: tempfile::TempDir,
 }
 
 impl Machine {
     fn new() -> Self {
-        // Beside the build, where a hard link to the program can be made.
         let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
         fs::create_dir(directory.path().join("bin")).unwrap();
         fs::create_dir(directory.path().join("path")).unwrap();
@@ -31,7 +24,6 @@ impl Machine {
         self.directory.path().join(path)
     }
 
-    /// Puts a `codex` on the machine's `PATH` that fails on every command.
     fn with_failing_codex(self) -> Self {
         let codex = self.path("path/codex");
         fs::write(
@@ -76,7 +68,6 @@ fn without_codex_on_the_path_the_plugin_is_skipped_with_a_note() {
     assert!(!exists(&machine.path("bin/codex-plugin")));
     assert!(!exists(&machine.path("codex-home")));
 
-    // A marketplace that an earlier installation left goes with the uninstall.
     fs::create_dir_all(machine.path("bin/codex-plugin/plugin")).unwrap();
     let output = machine.plugin("uninstall");
 

@@ -1,5 +1,3 @@
-//! A private native source viewer preserves the Files document and reply draft.
-
 use diff_position::Position;
 use ratatui::{
     buffer::Buffer,
@@ -33,7 +31,6 @@ impl SourcePeek {
         &mut self.viewer
     }
 
-    /// The live source whose disk changes must refresh the peek.
     pub(crate) fn source_path(&self) -> &std::path::Path {
         self.viewer
             .selected_document()
@@ -41,7 +38,6 @@ impl SourcePeek {
             .unwrap_or(&self.location.path)
     }
 
-    /// Draw the peek, and return the text of the source it shows, later regions on top.
     pub(crate) fn render(
         &self,
         area: Rect,
@@ -126,7 +122,6 @@ impl DiffComponent {
         }
     }
 
-    /// Give the peek the checkpoint the Files viewer now shows.
     pub(crate) fn refresh_peek_checkpoint(&mut self) {
         if let Some(peek) = &mut self.conversation.peek {
             peek.viewer
@@ -231,8 +226,6 @@ impl DiffComponent {
 }
 
 impl SourcePeek {
-    /// Show the loaded current file, selecting the lines the thread's anchor
-    /// still maps to.
     fn show(
         &mut self,
         event: &SourceContentLoaded,
@@ -243,7 +236,6 @@ impl SourcePeek {
             self.position = Some(*file.document.position());
         }
         source.mode = SourceLoadMode::External;
-        // Only reveal a range when the saved anchor still maps to disk content.
         source.location.line = highlight.as_ref().map_or(0, |range| range.start);
         source.location.end_line = highlight
             .as_ref()

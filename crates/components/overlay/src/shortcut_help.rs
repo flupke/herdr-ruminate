@@ -86,12 +86,10 @@ impl ShortcutHelpOverlay {
         u16::try_from(rows.len().saturating_sub(visible)).unwrap_or(u16::MAX)
     }
 
-    /// Size the popup to its longest row, then wrap rows to the width it got.
     fn layout(viewport: Rect, table: &HelpTable) -> (Rect, Vec<HelpRow>) {
         let width = u16::try_from(table.natural_width())
             .unwrap_or(u16::MAX)
             .saturating_add(BORDER)
-            // Leave a margin so a click outside can still dismiss the popup.
             .min(viewport.width.saturating_sub(2));
         let rows = table.rows(width.saturating_sub(BORDER));
         let height = u16::try_from(rows.len())
@@ -102,7 +100,6 @@ impl ShortcutHelpOverlay {
     }
 }
 
-/// Shortcut keys and descriptions laid out as two columns.
 struct HelpTable {
     lines: Vec<(String, &'static str)>,
     key_width: usize,
@@ -129,10 +126,6 @@ impl HelpTable {
         self.key_width + COLUMN_GAP + description_width
     }
 
-    /// Wrap descriptions under their column so every word stays readable.
-    ///
-    /// When the description column would be too narrow, each key gets its own
-    /// row and its description wraps below it.
     fn rows(&self, width: u16) -> Vec<HelpRow> {
         let width = usize::from(width);
         let key_width = self.key_width;
@@ -166,8 +159,6 @@ impl HelpTable {
     }
 }
 
-/// One laid-out row: the keys that start it, if any, then the padded
-/// description.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct HelpRow {
     keys: String,
@@ -175,7 +166,6 @@ struct HelpRow {
 }
 
 impl HelpRow {
-    /// The row with its keys in the accent color.
     fn line(self, palette: Palette) -> Line<'static> {
         Line::from(vec![
             Span::styled(

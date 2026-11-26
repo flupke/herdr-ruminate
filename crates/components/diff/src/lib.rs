@@ -1,9 +1,3 @@
-//! Diff document state and its component event boundary.
-//!
-//! A [`SourceViewer`] shows documents for one view: the Files diff, one Explore
-//! evidence block, or a thread's source peek. The [`DiffComponent`] pane owns
-//! every viewer and decides which one receives each event.
-
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -88,36 +82,27 @@ enum ScrollPlacement {
     AlignTargetTop,
 }
 
-/// What a viewer shows, fixed when the pane creates it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Role {
-    /// The reviewed diff. It alone reports its location, viewports and file
-    /// decorations to the rest of the application.
     Files,
-    /// One Explore evidence block, showing a saved comparison.
     Evidence,
-    /// A read-only view of the current file behind a review thread.
     Peek,
 }
 
 impl Role {
-    /// Whether the viewer speaks for the reviewed diff in application events.
     fn publishes_review(self) -> bool {
         self == Self::Files
     }
 
-    /// Whether the viewer shows review threads and opens comment editors.
     fn shows_comments(self) -> bool {
         self != Self::Peek
     }
 
-    /// Whether the viewer shows Explore evidence and loads sources from it.
     fn explores(self) -> bool {
         self == Self::Evidence
     }
 }
 
-/// The application services every viewer of one pane shares.
 #[derive(Clone)]
 struct Services {
     events: EventPublisher,
@@ -129,17 +114,13 @@ struct Services {
     thread_projection: SharedThreadProjection,
 }
 
-/// Documents, position, selection, search, highlighting and comment layout
-/// for one view of source code.
 pub struct SourceViewer {
     role: Role,
     evidence: explore::ShownEvidence,
     events: EventPublisher,
     reply_visibility: RefCell<reply_visibility::ReplyVisibility>,
-    /// The snapshot this viewer's source loads use instead of the checkpoint.
     source_session: Option<String>,
     comments: comments::Comments,
-    /// Where the viewer reports thread placement.
     thread_projection: SharedThreadProjection,
     reviewable_files: ReviewableFiles,
     review_checkpoint: Option<ReviewCheckpoint>,
@@ -161,7 +142,6 @@ pub struct SourceViewer {
     location_history: LocationHistory,
     pending_history_navigation: Option<PendingHistoryNavigation>,
     rendered_pointer_viewport: RefCell<Option<DiffPointerViewport>>,
-    /// Paths whose hunk mark is being saved and reloaded.
     pending_hunk_marks: HashSet<String>,
 }
 
@@ -185,7 +165,6 @@ impl SelectionState {
 }
 
 impl SourceViewer {
-    /// Create an empty viewer with the pane's shared services.
     fn new(services: &Services, role: Role, reviewable_files: ReviewableFiles) -> Self {
         Self {
             role,
@@ -223,12 +202,10 @@ impl SourceViewer {
         }
     }
 
-    /// File selection defers loading to the next application tick.
     fn has_pending_load(&self) -> bool {
         self.pending_load_path.is_some()
     }
 
-    /// The snapshot this viewer loads sources from.
     fn source_snapshot(&self) -> Option<&str> {
         self.source_session.as_deref().or_else(|| {
             self.review_checkpoint
@@ -237,8 +214,6 @@ impl SourceViewer {
         })
     }
 
-    /// Draw the selected diff document with its frames, and return the text it drew, later
-    /// regions on top.
     fn render(
         &self,
         area: Rect,
@@ -263,7 +238,6 @@ impl SourceViewer {
         text
     }
 
-    /// Map one pointer position through the same visual layout as rendering.
     fn pointer_position(
         &self,
         width: u16,
@@ -302,7 +276,6 @@ impl SourceViewer {
         })
     }
 
-    /// Resolve one pane-title control at a pane-relative column.
     fn control_at(&self, width: u16, column: u16) -> Option<DiffControl> {
         TitleControls::shown(self.selected_document()?, width)?.at(width, column)
     }
@@ -331,7 +304,6 @@ impl SourceViewer {
         }
     }
 
-    /// Resize the viewer. Returns whether its size changed.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     fn viewport_changed(&mut self, event: &DiffViewportChanged) -> bool {
         let changed = self.viewport_width != event.width.max(1)
@@ -356,8 +328,6 @@ impl SourceViewer {
         self.apply_search(intents)
     }
 
-    /// Decide what `key` does in this viewer: edit its open comment, type
-    /// into its search prompt, or run a diff shortcut.
     fn resolve_key(
         &self,
         key: Key,
@@ -420,7 +390,6 @@ impl SourceViewer {
         Vec::new()
     }
 
-    /// A click on a pane-title control runs it; elsewhere it starts a selection.
     fn click(&mut self, input: &PointerInput, pointer_position: Option<DiffPointerPosition>) {
         if let Some(position) = input.position
             && position.component_row == 0
@@ -518,11 +487,6 @@ impl SourceViewer {
         self.move_screen(|position, rows, height| position.contain_cursor(rows, height));
     }
 
-    /// Apply one screen operation to the displayed document's position. When
-    /// it moves the cursor onto the screen, the selection follows, the new
-    /// location is published, and the cursor is contained once more in the
-    /// layout for its new place: moving an end-of-line cursor can remove a
-    /// wrapped row.
     fn move_screen(
         &mut self,
         operation: impl FnOnce(&mut Position, &render::DocumentRows<'_>, usize) -> bool,
@@ -534,9 +498,6 @@ impl SourceViewer {
         }
     }
 
-    /// Apply one screen operation to the displayed document's position.
-    /// Returns whether it moved the cursor, after following that move with
-    /// the selection and publishing the new location.
     fn apply_screen_operation(
         &mut self,
         operation: impl FnOnce(&mut Position, &render::DocumentRows<'_>, usize) -> bool,
@@ -597,8 +558,6 @@ impl SourceViewer {
         Vec::new()
     }
 
-    /// Whether a shortcut must not act on the shown document: comment
-    /// shortcuts do nothing in a read-only viewer.
     fn ignores_shortcut(&self, comment: bool) -> bool {
         comment && !self.role.shows_comments()
     }
@@ -821,7 +780,6 @@ impl SourceViewer {
         self.apply_search(intents)
     }
 
-    /// Carry out what the search asks for, in order.
     fn apply_search(&mut self, intents: Vec<SearchIntent>) -> Vec<Action> {
         let mut actions = Vec::new();
         for intent in intents {
@@ -848,7 +806,6 @@ impl SourceViewer {
         actions
     }
 
-    /// Type a new query, or find `word` when one is given.
     fn begin_search(&mut self, word: Option<String>) -> Vec<Action> {
         self.selection = None;
         let origin = self.search_cursor_location();
@@ -906,13 +863,11 @@ impl SourceViewer {
         self.apply_search(intents)
     }
 
-    /// Accept background search results while the reviewer looks at this viewer.
     fn complete_search(&mut self, results: &text_search::Results) -> Vec<Action> {
         let intents = self.search.complete(results, &self.documents);
         self.apply_search(intents)
     }
 
-    /// Keep background search results while this viewer is hidden.
     fn retain_search_results(&mut self, results: &text_search::Results) {
         self.search.retain(results, &self.documents);
     }
@@ -1047,7 +1002,6 @@ impl SourceViewer {
         })]
     }
 
-    /// The rows the reviewer selected in the shown document.
     fn selected_rows(&self) -> Option<RangeInclusive<usize>> {
         self.selection.map(SelectionState::range)
     }
@@ -1069,7 +1023,6 @@ impl SourceViewer {
         .with_evidence(&self.evidence)
     }
 
-    /// Whether `event` keeps the review this viewer shows.
     fn shows_review_of(&self, event: &RepositoryFilesChanged) -> bool {
         self.shows_review_unit(&event.review_checkpoint.review_unit)
     }
@@ -1689,8 +1642,6 @@ impl SourceViewer {
             .record(event.origin.clone(), &event.target);
     }
 
-    /// Restores the location history a refused jump back or forward changed, and says why
-    /// the jump failed: the revision selector only reports the edits it started.
     fn revision_edit_failed(&mut self, event: &RevisionEditFailed) {
         let Some(pending) = self.pending_history_navigation.take() else {
             return;
@@ -1803,7 +1754,6 @@ impl SourceViewer {
             .review_checkpoint
             .as_ref()
             .is_some_and(|checkpoint| checkpoint.review_unit == event.review_unit);
-        // Every state that still needs review shows a diff from a new version.
         let needs_review = event
             .result
             .as_ref()
@@ -1910,7 +1860,6 @@ impl SourceViewer {
     }
 }
 
-/// What one key does in a viewer.
 #[derive(Clone, Copy)]
 enum ViewerInput {
     CommentKey(Key),

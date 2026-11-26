@@ -1,5 +1,3 @@
-//! Route each UI action group to the executor that runs it.
-
 use std::ops::ControlFlow;
 
 use review_threads::ThreadCommand;
@@ -8,10 +6,6 @@ use review_ui::{
     TerminalAction,
 };
 
-/// The executors that run UI actions, one method per action group.
-///
-/// The router matches every [`Action`] variant, and each executor matches every
-/// variant of its own group, so an unhandled action is a compile error.
 pub(super) trait ActionExecutors {
     fn explore(&mut self, command: review_explore::Command) -> eyre::Result<()>;
     fn explore_page(&mut self, action: ExplorePageAction) -> eyre::Result<()>;
@@ -20,12 +14,9 @@ pub(super) trait ActionExecutors {
     fn lsp(&mut self, action: LspAction) -> eyre::Result<()>;
     fn settings(&mut self, action: SettingsAction) -> eyre::Result<()>;
     fn repository(&mut self, action: RepositoryAction) -> eyre::Result<()>;
-    /// Open `url` in the default browser.
     fn open_link(&mut self, url: String) -> eyre::Result<()>;
-    /// Run terminal work; `Break` stops the runtime.
     fn terminal(&mut self, action: TerminalAction) -> eyre::Result<ControlFlow<()>>;
 
-    /// Run actions in order until one stops the runtime.
     fn run_all(&mut self, actions: Vec<Action>) -> eyre::Result<ControlFlow<()>> {
         for action in actions {
             if self.run(action)?.is_break() {
@@ -35,7 +26,6 @@ pub(super) trait ActionExecutors {
         Ok(ControlFlow::Continue(()))
     }
 
-    /// Hand one action to its executor.
     fn run(&mut self, action: Action) -> eyre::Result<ControlFlow<()>> {
         match action {
             Action::Explore(command) => self.explore(command)?,

@@ -1,6 +1,3 @@
-//! The marks of [`markdown_marks`], shown readably in the terminal: a callout's marker becomes
-//! its title in bold, and a status marker its symbol.
-
 use markdown_marks::{Callout, Mark, StatusMark};
 use ratatui_markdown::markdown::MarkdownBlock;
 
@@ -35,7 +32,6 @@ impl ReadableMarks {
         }
     }
 
-    /// A quote's blocks, the callout marker of its first line replaced by the callout's title.
     fn quote(children: Vec<MarkdownBlock>) -> Vec<MarkdownBlock> {
         let mut children = Self::apply(children);
         if let Some(MarkdownBlock::Paragraph(lines)) = children.first_mut()
@@ -54,7 +50,6 @@ impl ReadableMarks {
         }
     }
 
-    /// `shown` in place of a marker, then the text that followed it.
     fn joined(shown: &str, rest: &str) -> String {
         if rest.is_empty() {
             shown.to_owned()

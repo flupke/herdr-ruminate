@@ -1,5 +1,3 @@
-//! Loaded diff documents.
-
 use std::path::PathBuf;
 
 use review_lsp::SourceLocation;
@@ -11,7 +9,6 @@ use diff_position::Position;
 use ui_actions::SourceLoadMode;
 use ui_events::PresentationLocation;
 
-/// Loaded diff content and its navigation state for one file.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct DiffDocument {
     pub(super) diff: DiffPresentation,
@@ -83,13 +80,10 @@ impl DiffLoadState {
 }
 
 impl DiffDocument {
-    /// Where the reader is in this document.
     pub(super) fn position(&self) -> &Position {
         &self.position
     }
 
-    /// The position with this document laid out on `viewport`, for the
-    /// position's screen operations.
     pub(super) fn on_screen<'a>(
         &'a mut self,
         viewport: &'a DiffViewport,
@@ -97,33 +91,27 @@ impl DiffDocument {
         (&mut self.position, DocumentRows::new(viewport, &self.diff))
     }
 
-    /// This document laid out on `viewport`.
     pub(super) fn laid_out<'a>(&'a self, viewport: &'a DiffViewport) -> DocumentRows<'a> {
         DocumentRows::new(viewport, &self.diff)
     }
 
-    /// Move the cursor to `row`, keeping it inside the document.
     pub(super) fn move_cursor(&mut self, row: usize) {
         self.position.move_to(row, self.diff.len());
     }
 
-    /// Move the cursor to a byte column of its line.
     pub(super) fn set_column(&mut self, column: usize) {
         self.position.set_column(column);
     }
 
-    /// Take a saved position, fitted to this document.
     pub(super) fn restore(&mut self, saved: Position) {
         self.position.restore(saved, self.diff.len());
     }
 
-    /// Take a saved position, keeping a full screen of `height` rows.
     pub(super) fn restore_filling_screen(&mut self, saved: Position, height: usize) {
         self.position
             .restore_filling_screen(saved, self.diff.len(), height);
     }
 
-    /// Reveal visual evidence `rows` out of `total` on a screen of `height`.
     pub(super) fn reveal_evidence(
         &mut self,
         rows: std::ops::Range<usize>,
@@ -178,7 +166,6 @@ impl DiffDocument {
         let source_location = self.source_location.clone();
         self.diff = diff;
         let reload_required = self.load_state.finish_load();
-        // A line the reload folded into a reviewed hunk stays folded.
         let mut restore = |location| {
             self.diff
                 .fold_at(location)
@@ -262,7 +249,6 @@ impl Default for DiffDocument {
     }
 }
 
-/// One loaded diff document and its stable path identity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct LoadedDocument {
     pub(super) path: String,
@@ -306,7 +292,6 @@ impl LoadedDocument {
         document
     }
 
-    /// Create an unloaded document for one repository path.
     pub(super) fn new(path: impl Into<String>) -> Self {
         let path = path.into();
         Self {
@@ -393,7 +378,6 @@ impl LoadedDocument {
         self.document.load_state.fail_load()
     }
 
-    /// Keep the displayed content while requiring the next load to replace it.
     pub(super) fn require_diff_reload(&mut self) {
         self.document.load_state.require_reload();
     }

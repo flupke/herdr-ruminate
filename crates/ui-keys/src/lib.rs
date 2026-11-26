@@ -1,11 +1,5 @@
-//! Normalized keyboard input and its one mapping to and from terminal key events.
-
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-/// One normalized keyboard input.
-///
-/// Every variant is produced by [`Key::from_terminal`], and
-/// [`Key::to_terminal`] gives back the terminal event it came from.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Key {
     Char(char),
@@ -33,8 +27,6 @@ pub enum Key {
 }
 
 impl Key {
-    /// Normalize a terminal key event, or return `None` for events the UI
-    /// does not handle, such as key releases.
     pub fn from_terminal(event: KeyEvent) -> Option<Self> {
         if event.kind == KeyEventKind::Release {
             return None;
@@ -56,7 +48,6 @@ impl Key {
         }
     }
 
-    /// The terminal key event that normalizes to this key.
     pub fn to_terminal(self) -> KeyEvent {
         let (code, modifiers) = match self {
             Self::Char(character) => (KeyCode::Char(character), KeyModifiers::NONE),
@@ -70,7 +61,6 @@ impl Key {
         KeyEvent::new(code, modifiers)
     }
 
-    /// How help text names this key.
     pub fn label(self) -> String {
         match self {
             Self::Char(' ') => "Space".to_owned(),
@@ -82,8 +72,6 @@ impl Key {
     }
 }
 
-/// A key that is not a plain, Control or Alt character: the terminal event
-/// that produces it and the label that shows it in help.
 struct NamedKey {
     key: Key,
     code: KeyCode,

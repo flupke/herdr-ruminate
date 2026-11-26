@@ -20,8 +20,6 @@ fn format_elapsed(milliseconds: u64) -> String {
     format!("{}.{:01}s", milliseconds / 1000, milliseconds % 1000 / 100)
 }
 
-/// Draws `text_editor` in a frame titled `title`, highlighted while `editing`, with its status
-/// on the bottom border.
 fn draw_editor(
     text_editor: &CommentEditor,
     title: &str,
@@ -48,14 +46,12 @@ fn draw_editor(
     viewport.draw(&editor, buffer);
 }
 
-/// The text the conversation drew, and the evidence lists and viewers that lie over it.
 struct DrawnText {
     conversation: TextRegion,
     evidence: Vec<TextRegion>,
 }
 
 impl ExploreComponent {
-    /// Report the evidence windows measured for this Explore pane.
     pub fn viewports(
         &self,
         area: Rect,
@@ -65,7 +61,6 @@ impl ExploreComponent {
         self.conversation_layout(area, diff, palette).viewports()
     }
 
-    /// Measure the same document used for painting and input, independently of Files' width.
     fn conversation_layout(
         &self,
         area: Rect,
@@ -106,8 +101,6 @@ impl ExploreComponent {
         layout
     }
 
-    /// Draw the pane, and return the text it drew: the conversation's prose first, then
-    /// each evidence list and viewer, which lie over it.
     pub fn render(
         &self,
         area: Rect,
@@ -157,7 +150,6 @@ impl ExploreComponent {
         regions
     }
 
-    /// Draw one item, and add its text to `text`.
     fn render_conversation_item(
         &self,
         visible: super::flow::VisibleContent<'_>,
@@ -286,7 +278,6 @@ impl ExploreComponent {
             self.answers(index, question, layout, palette);
             Self::question_sections(question, layout, palette);
             self.evidence_block(index, layout, diff, palette);
-            // Last on the page: expanded, the list can be long.
             self.question_marks(index, layout, palette);
         }
         if self.map {
@@ -310,7 +301,6 @@ impl ExploreComponent {
         let agent = position.and_then(|position| {
             exploration.conversation[..=position]
                 .iter()
-                // A revised question came from the round conversation, not from a prompt.
                 .filter(|turn| turn.revision.is_none())
                 .try_fold(0u64, |total, turn| {
                     exploration
@@ -370,9 +360,6 @@ impl ExploreComponent {
         }
     }
 
-    /// What the pane says, under the question or conclusion it posted, of the path the agent's
-    /// turn that `posted` picks out took after an answer run-ahead watched: prepared while the
-    /// reviewer was thinking, or why not.
     pub(super) fn run_ahead_line(
         &self,
         posted: impl Fn(&InterviewUpdate) -> bool,
@@ -405,7 +392,6 @@ impl ExploreComponent {
         palette: Palette,
     ) {
         let exploration = self.exploration.as_ref().expect("question exploration");
-        // The choice, or Back to the drawing board in its place.
         let kept = review_explore::KeptAnswer::of(answer);
         let selected = kept.choice.as_deref().unwrap_or_default();
         layout.gap();
@@ -443,8 +429,6 @@ impl ExploreComponent {
         self.agent_reply(answer, layout, palette);
     }
 
-    /// What `answer` applied: the marks of the question it answered, then
-    /// those of a conclusion after it. See [`Self::turn_marks`].
     fn answer_marks(
         &self,
         answer: &review_explore::ReviewerAnswer,
@@ -465,8 +449,6 @@ impl ExploreComponent {
         }
     }
 
-    /// What one conversation turn marked reviewed, found not relevant and
-    /// reopened: a line to expand into the lines themselves.
     pub(super) fn turn_marks(
         &self,
         index: usize,
@@ -509,8 +491,6 @@ impl ExploreComponent {
         }
     }
 
-    /// What the unanswered question of conversation turn `index` will mark
-    /// once the reviewer answers it: a line to expand into the lines.
     pub(super) fn pending_marks(
         &self,
         index: usize,
@@ -547,8 +527,6 @@ impl ExploreComponent {
         }
     }
 
-    /// The lines a turn's marks change, one per row, the lines found not
-    /// relevant with why.
     fn marked_lines<'a>(
         reviewed: &[review_explore::CodeLocation],
         not_relevant: &[review_explore::NotRelevantMark],
@@ -625,9 +603,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Whether the pane shows its start screen with the buttons that start a round. After a
-    /// failed start, it offers Retry instead, unless nothing is left to review: the inactive
-    /// buttons then say why.
     pub(super) fn offers_starts(&self) -> bool {
         self.exploration.is_none()
             && match self.progress {

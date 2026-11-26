@@ -1,5 +1,3 @@
-//! Changed-file list state, input handling, and rendering.
-
 use std::collections::HashSet;
 
 use component_core::{AnyInput, Component, ComponentSubscriptions, EventPublisher, InputScope};
@@ -29,7 +27,6 @@ pub use preview::{FilePreviewList, PreviewFile};
 mod badges;
 use badges::FileBadges;
 
-/// The complete changed-file pane component.
 pub struct FilesComponent {
     events: EventPublisher,
     review_checkpoint: ReviewCheckpoint,
@@ -54,7 +51,6 @@ struct PendingReview {
     optimistic_state: ReviewState,
 }
 
-/// Which way to look for the next unreviewed file, wrapping around the list.
 #[derive(Clone, Copy)]
 enum SearchDirection {
     Next,
@@ -71,7 +67,6 @@ impl FilesComponent {
         )
     }
 
-    /// Create an empty files component with its shared read models.
     pub fn with_read_models(
         events: EventPublisher,
         reviewable_files: ReviewableFiles,
@@ -96,7 +91,6 @@ impl FilesComponent {
         }
     }
 
-    /// Render the complete files pane from component-owned state.
     pub fn render(&self, area: Rect, buffer: &mut Buffer, palette: Palette, focused: bool) {
         self.file_list().render(
             area,
@@ -112,7 +106,6 @@ impl FilesComponent {
         self.selected_path().map(|path| FileSelected { path })
     }
 
-    /// Return aggregate values for the repository header.
     fn overview(&self) -> FilesOverviewChanged {
         FilesOverviewChanged {
             progress: self
@@ -218,7 +211,6 @@ impl FilesComponent {
         self.files[index].review_state = review_state;
         self.reviewed_notice(&event.path, review_state.status);
         self.refresh_reviewable_files();
-        // The diff's last open hunk was accepted: move on like marking the file.
         if pending.is_none() && previous.needs_review() && index == self.selected {
             self.move_on_when_reviewed(review_state.status, &event.path);
         }
@@ -369,7 +361,6 @@ impl FilesComponent {
         }
     }
 
-    /// Whether checkpoint-wide review commands apply to the listed files.
     fn reviews_whole_checkpoint(&self) -> bool {
         self.navigation == ui_events::ReviewNavigation::Files
             && !self.review_checkpoint.review_unit.is_empty()
@@ -504,7 +495,6 @@ impl FilesComponent {
         }))
     }
 
-    /// Select the next file to review once the selected file is reviewed.
     fn move_on_when_reviewed(&mut self, status: ReviewStatus, path: &str) {
         if status.needs_review() {
             return;
@@ -516,7 +506,6 @@ impl FilesComponent {
         }
     }
 
-    /// The next visible file after the selected one that still needs review.
     fn next_file_to_review(&self) -> Option<usize> {
         self.tree
             .visible_files()
@@ -673,8 +662,6 @@ impl Component<Action> for FilesComponent {
     }
 }
 
-/// The figures after a file name: the reviewed share of a partly reviewed
-/// file's changed lines, then the added and removed lines left to review.
 struct FileStatistics {
     reviewed: Option<String>,
     added: Option<String>,

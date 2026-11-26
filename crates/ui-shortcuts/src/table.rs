@@ -1,5 +1,3 @@
-//! The shortcut table: each command's bindings, help text and owning scope.
-
 use crate::Key;
 use crate::commands::{
     ApplicationShortcut, CommentShortcut, ConversationShortcut, DiffGlobalShortcut, DiffShortcut,
@@ -203,7 +201,6 @@ impl ShortcutDefinition {
     }
 }
 
-/// Every binding in table order.
 pub(crate) fn bindings() -> impl Iterator<Item = &'static ShortcutBinding> {
     SHORTCUTS.iter().flat_map(|definition| definition.bindings)
 }

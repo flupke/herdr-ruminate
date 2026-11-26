@@ -1,5 +1,3 @@
-//! Every citation of a question, its assessments and the agent's reply shares
-//! one evidence list and its native viewers.
 use super::{
     ExploreComponent,
     flow::{Content, ConversationLayout, VisibleContent, Window, evidence_panes},
@@ -28,7 +26,6 @@ struct EvidenceEntry {
     first_line: Option<u32>,
 }
 
-/// The question's sources remain selectable beside the current source window.
 #[derive(Clone)]
 pub(super) struct EvidenceList {
     pub(super) view: EvidenceView,
@@ -158,9 +155,6 @@ impl EvidenceList {
         viewport.draw(&pane, buffer);
     }
 
-    /// Draw the evidence list beside the shown viewer, and return the text of both, later
-    /// regions on top, over the split's own region, which needs Alt held to select: a plain
-    /// drag on its divider or its bottom row resizes it.
     pub(super) fn render_split(
         &self,
         visible: VisibleContent<'_>,

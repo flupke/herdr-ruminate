@@ -1,4 +1,3 @@
-//! Explore shares the repository watcher's lifecycle and event pipeline.
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::{path::Path, sync::Arc};
 
@@ -37,10 +36,6 @@ impl StateWatch {
     }
 }
 
-/// Whether `event` changes a round or what the page shows of it: a JSON record other than an
-/// editor view or run-ahead's forks, or a new directory. The record of a round's change
-/// references changes no round, but names it in the list of past rounds, which refreshes on
-/// these events.
 fn changes_a_round(event: &notify::Event) -> bool {
     !matches!(event.kind, notify::EventKind::Access(_))
         && event.paths.iter().any(|path| {
@@ -49,7 +44,6 @@ fn changes_a_round(event: &notify::Event) -> bool {
                     event.kind,
                     notify::EventKind::Create(notify::event::CreateKind::Folder)
                 ))
-                // Editor views and run-ahead's forks change no round.
                 && ![b".view.json".as_slice(), b".forks.json"]
                     .iter()
                     .any(|suffix| path.as_os_str().as_encoded_bytes().ends_with(suffix))
@@ -75,14 +69,12 @@ mod tests {
             root.path().join("round.json"),
         )
         .unwrap();
-        // A guard: the notification ends the wait.
         received
             .recv_timeout(review_test_support::GUARD)
             .unwrap()
             .unwrap();
     }
 
-    /// The events of renaming `from` to `to` in `root`, as inotify reports them.
     fn renamed(root: &Path, from: &str, to: &str) -> [notify::Event; 2] {
         use notify::event::{ModifyKind, RenameMode};
         let event = |mode, name: &str| {

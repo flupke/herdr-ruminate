@@ -1,14 +1,8 @@
-//! The prompts the reviewer types to an agent that runs the hooks of the reviewer's Claude Code
-//! plugin: the agent's hook confirms each one, and blocks text left in its input box that joined
-//! it.
-
 use review_explore::DispatchState;
 
 use super::super::run_ahead::FakeAgent;
 use super::*;
 
-/// A round whose agent is a fake agent playing Claude Code, which runs the plugin's hooks, and
-/// whose prompts Herdr gives up on at once, in place of its own wait: only the hook confirms them in time.
 fn hooked_flow() -> ExploreFlow {
     let repository_files = repository_fixture(RepoType::Git);
     repository_files.write("reviewed.rs", b"pub fn reviewed() {}\n");
@@ -75,7 +69,6 @@ fn text_left_in_the_input_box_that_joins_a_prompt_is_blocked_and_retry_sends_the
         || format!("the turn stayed {:?}", flow.saved().turns[&request.request]),
     );
     assert!(error.ends_with(": half a thought"), "{error}");
-    // The agent put the joined prompt back in its input box, which its user empties.
     let herdr = &flow.fixture.herdr;
     herdr.run_cli(&["pane", "send-keys", &herdr.pane_id.0, "ctrl+u"]);
     assert!(

@@ -17,7 +17,6 @@ struct FakeHerdr {
     focused: Mutex<Vec<PaneId>>,
     closed: Mutex<Vec<PaneId>>,
     race_on_open: Mutex<bool>,
-    /// The focused pane's size, or `None` when Herdr cannot measure it.
     focused_size: Mutex<Option<PaneSize>>,
 }
 
@@ -144,8 +143,6 @@ fn the_review_pane_splits_the_focused_pane_across_its_longer_side(
     assert_eq!(client.opened.lock().unwrap()[0].direction, direction);
 }
 
-// herdr-bowtie gives the lead and each task a tab of one workspace, each with its own
-// reviewer: an action acts on the review pane of its own tab only.
 #[test_case(PaneAction::Open, &PaneActionResult::Opened(PaneId("review-new".to_owned())); "open")]
 #[test_case(PaneAction::Toggle, &PaneActionResult::Opened(PaneId("review-new".to_owned())); "toggle")]
 #[test_case(PaneAction::Close, &PaneActionResult::AlreadyClosed; "close")]

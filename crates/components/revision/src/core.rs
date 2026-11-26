@@ -1,5 +1,3 @@
-//! Revision component state and event handling.
-
 use crate::ui::{
     RevisionHistoryInputResult, RevisionHistorySelection, RevisionShare, SelectableRevision,
 };
@@ -59,7 +57,6 @@ enum RevisionNavigationState {
     },
 }
 
-/// Revision navigation state, input, and repository event handling.
 pub struct RevisionComponent {
     events: EventPublisher,
     palette: Palette,
@@ -211,7 +208,6 @@ impl RevisionComponent {
         }
     }
 
-    /// Shows the reviewed share of one revision of the history the selector shows.
     fn progress_loaded(&mut self, event: &RevisionProgressLoaded) {
         if let Some(RevisionNavigationState::SelectingHistory {
             load_id, selection, ..
@@ -297,7 +293,6 @@ impl RevisionComponent {
         )]
     }
 
-    /// Opens the selector of the revision history, unless a selector is open or loading.
     fn open_selector(&mut self) -> Vec<Action> {
         if self.state.is_some() {
             return Vec::new();
@@ -313,14 +308,11 @@ impl RevisionComponent {
         })]
     }
 
-    /// Opens the selector on request, as its shortcut does.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     fn selector_requested(&mut self, _event: &RevisionSelectorRequested) -> Vec<Action> {
         self.open_selector()
     }
 
-    /// Whether `key` closes a candidate selector. The selector keeps every
-    /// key, so the application's quit and clear keys close it instead.
     fn closes_selector(key: Key) -> bool {
         matches!(
             ApplicationShortcut::bound_to(key),
@@ -399,7 +391,6 @@ impl RevisionComponent {
         }
     }
 
-    // Ownership ends the borrow of the active navigation state before this method mutates it.
     #[allow(clippy::needless_pass_by_value)]
     fn begin_edit(&mut self, candidate: RevisionCandidate, origin: ReviewLocation) -> Action {
         self.begin_edit_change_id(candidate.change_id, &origin)

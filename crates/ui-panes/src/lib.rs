@@ -1,5 +1,3 @@
-//! A reusable left selector and right content layout.
-
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -111,8 +109,6 @@ impl SplitPane {
     }
 }
 
-/// A selector in a caller-framed block, with shared row geometry and
-/// caller-defined row content.
 pub struct SelectionPane {
     area: Rect,
     first: usize,

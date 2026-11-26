@@ -20,8 +20,6 @@ fn rows(before: &[u8], after: &[u8]) -> Vec<DiffRow> {
     )
 }
 
-/// A presentation of `current` with every hunk of `base` to `current` that
-/// `reviewed` already contains folded.
 fn presentation(base: &[u8], reviewed: &[u8], current: &[u8]) -> DiffPresentation {
     let open = rows(reviewed, current);
     let hunks = review_hunks::HunkReview::new(base, reviewed, current)
@@ -55,8 +53,6 @@ const LINES: [&str; 20] = [
     "18", "19", "20",
 ];
 
-/// The base, the base with line 10 reviewed, and the current file that also
-/// rewrites line 19.
 fn versions() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let mut reviewed = LINES;
     reviewed[9] = "ten";
@@ -65,7 +61,6 @@ fn versions() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     (text(&LINES), text(&reviewed), text(&current))
 }
 
-/// The open hunk's rows, as the diff shows them.
 const OPEN_HUNK: [&str; 6] = [" 16", " 17", " 18", "-19", "+nineteen", " 20"];
 
 fn with_open_hunk(rows: &[&str]) -> Vec<String> {

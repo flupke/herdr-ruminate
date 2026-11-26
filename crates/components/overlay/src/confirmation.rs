@@ -1,5 +1,3 @@
-//! Confirmation input and rendering shared by application actions.
-
 use ratatui::{
     buffer::Buffer,
     layout::{Position, Rect},

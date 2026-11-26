@@ -1,5 +1,3 @@
-//! Word-wrapped display coordinates kept separate from Edtui's editable lines.
-
 use std::ops::Range;
 
 use edtui::{EditorMode, EditorState, Index2, actions::Execute};
@@ -80,7 +78,6 @@ impl EditorViewport {
                 .saturating_add_signed(delta)
                 .min(rows.len().saturating_sub(usize::from(self.height)));
         }
-        // Update native visual and linewise selections at the final source position.
         edtui::actions::MoveDown(0).execute(state);
     }
 
@@ -115,7 +112,6 @@ impl EditorViewport {
             .max(cursor_row.saturating_sub(usize::from(area.height.saturating_sub(1))));
         let visible = &rows[self.top..rows.len().min(self.top + usize::from(area.height))];
         if let (Some(first), Some(last)) = (visible.first(), visible.last()) {
-            // Keep native logical operations anchored while our viewport uses display rows.
             self.source_top = first.source_row;
             state.set_viewport_offset(0, first.source_row);
             state.set_viewport_height(last.source_row - first.source_row + 1);
@@ -310,8 +306,6 @@ impl EditorGlyph {
         if end < glyphs.len() && !glyphs[end].whitespace {
             end = boundary.unwrap_or(end);
         }
-        // Trim overflowing break spaces unless they contain the cursor: then keep
-        // those spaces on visible rows so the caret still identifies the edited character.
         let mut after_spaces = end;
         while glyphs
             .get(after_spaces)

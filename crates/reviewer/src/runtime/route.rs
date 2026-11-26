@@ -1,53 +1,29 @@
-//! Decide, once per event, which part of the runtime handles it.
-
 use std::time::Instant;
 
 use component_core::EventEnvelope;
 use herdr_client::protocol::{HerdrEvent, PaneId};
 use review_ui::UserInput;
 
-/// A background worker thread ended while the runtime still needed it.
 pub(super) struct WorkerStopped;
-/// A stop signal asked the runtime to quit.
 pub(super) struct StopRequested;
-/// The repository watcher saw changes worth a refresh.
 pub(super) struct RepositoryRefreshDue;
-/// The periodic timer fired.
 pub(super) struct ApplicationTick(pub(super) Instant);
-/// The terminal could no longer be read.
 pub(super) struct TerminalFailed(pub(super) String);
-/// The terminal regained focus.
 pub(super) struct TerminalFocused;
-/// The vision core asked for this acknowledgement after its input.
 pub(super) struct InputAcknowledged(pub(super) u64);
 
-/// Where one event goes.
-///
-/// This is the only place that inspects event types; the event loop acts on the
-/// route and never downcasts an event itself.
 #[derive(Debug)]
 pub(super) enum Route<'a> {
-    /// The runtime cannot continue.
     Fail(String),
-    /// The runtime stops cleanly.
     Stop,
-    /// The user focused another Herdr pane, which may be the agent to prompt.
     AgentFocused(&'a PaneId),
-    /// Other Herdr traffic belongs to agent delivery, not to the application.
     Herdr(&'a HerdrEvent),
-    /// The repository needs a refresh, which the application shows as started.
     RefreshDue,
-    /// The periodic timer, which drives animations and toast expiry.
     Tick(Instant),
-    /// Terminal input for the application.
     Input(&'a UserInput),
-    /// A language-server event for the application.
     Lsp(&'a review_lsp::Event),
-    /// The terminal regained focus; the application sees the event as-is.
     TerminalFocused,
-    /// The next frame marker names this acknowledgement, after the input that came before it.
     Acknowledged(u64),
-    /// Any other event, published to the application unchanged.
     Application,
 }
 
@@ -96,15 +72,10 @@ impl<'a> Route<'a> {
             .map(|_| Self::TerminalFocused)
     }
 
-    /// Whether handling the event can change what the screen shows.
-    ///
-    /// Agent detection and sessions belong to the delivery worker; the UI events they cause
-    /// redraw on their own.
     pub(super) fn needs_frame(&self) -> bool {
         !matches!(self, Self::Herdr(_))
     }
 
-    /// Whether the terminal may have shown or hidden the cursor behind our back.
     pub(super) fn resets_cursor(&self) -> bool {
         matches!(
             self,
@@ -112,10 +83,8 @@ impl<'a> Route<'a> {
         )
     }
 
-    /// Whether the terminal may have dropped what the last frame painted, so the next frame
-    /// paints every cell. herdr-core drops the rows above the cursor when a terminal shrinks, and
-    /// gives blank ones back when it grows: a pane that shrinks and grows back before the next
-    /// frame keeps its size, yet lost the top of the last frame.
+    // herdr-core drops the rows above the cursor when a terminal shrinks and gives blank ones back
+    // when it grows: a pane can keep its size yet lose the top of its last frame.
     pub(super) fn repaints(&self) -> bool {
         matches!(self, Self::Input(UserInput::Resize { .. }))
     }

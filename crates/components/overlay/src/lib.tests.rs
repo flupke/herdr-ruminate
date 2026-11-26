@@ -114,8 +114,6 @@ fn commit_message_renders_from_repository_event() {
     assert!(screen.contains("Explain the component migration"));
 }
 
-/// The commit message closes on every key the table binds to showing it or
-/// to the application's clear command.
 #[test]
 fn commit_message_closes_on_its_own_and_the_clear_keys() {
     let close_keys = OverlayShortcut::ShowCommitMessage
@@ -208,7 +206,6 @@ fn stale_lsp_failures_do_not_create_toasts() {
 fn server_startup_toasts_finish_independently() {
     let mut bus = ComponentEventBus::<Action>::new();
     let target = bus.mount(|_| OverlayComponent::new(ui_theme::Theme::default()));
-    // Long toasts show at once, as they would 250 ms after they start.
     bus.get_mut::<OverlayComponent>(target).unwrap().toasts =
         toasts::ToastState::with_long_toast_delay(std::time::Duration::ZERO);
     let expert = review_lsp::ServerStartup {

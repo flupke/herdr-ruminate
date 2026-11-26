@@ -391,8 +391,6 @@ fn clicking_the_change_id_opens_the_revision_selector_and_the_title_the_commit_m
         vec![FileSummary::new("src/lib.rs", ReviewStatus::Unreviewed)],
     );
 
-    // The header reads " abcd1234  Commit title": the change ID from column 1. A click falls
-    // on a drawn header.
     rendered_application(&application);
     let actions = application.update(UserInput::MouseClick { column: 1, row: 0 });
     assert!(actions.iter().any(|action| matches!(
@@ -418,7 +416,6 @@ fn clicking_the_change_id_opens_the_revision_selector_and_the_title_the_commit_m
     application.update(UserInput::Key(Key::Escape));
     assert!(!rendered_application(&application).contains("Select revision"));
 
-    // The gap between them opens neither; the title opens the commit message.
     application.update(UserInput::MouseClick { column: 10, row: 0 });
     assert!(!rendered_application(&application).contains("Commit message"));
     application.update(UserInput::MouseClick { column: 11, row: 0 });
@@ -460,7 +457,6 @@ fn clicking_a_linear_issue_in_the_header_opens_its_page() {
             "a click {offset} columns into the issue: {actions:?}"
         );
     }
-    // The title's own click keeps its columns.
     application.update(UserInput::MouseClick { column: 11, row: 0 });
     assert!(rendered_application(&application).contains("Commit message"));
 }
@@ -595,7 +591,6 @@ fn current_diff_row_stays_visible_across_the_pane_when_files_are_focused() {
 
     assert_eq!(buffer[(cursor_column, row)].bg, theme.palette.cursor);
     assert_eq!(buffer[(78, row)].bg, theme.palette.cursor);
-    // Diff metadata is not source text, so the `c` is source column zero.
     assert!(
         !buffer[(cursor_column, row)]
             .modifier

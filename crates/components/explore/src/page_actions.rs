@@ -1,11 +1,7 @@
-//! What the reviewer did on the Explore page to recover or close the round the pane shows: the
-//! pane follows Stop waiting, Retry, Cancel answer and Reset as if it had done them itself.
 use super::{ExploreComponent, Progress};
 use ui_events::{ExplorePageReset, ExplorePageStopped, ExplorePosted};
 
 impl ExploreComponent {
-    /// Stop waiting on the page: a round starting there, or one the pane started before its
-    /// kickoff was saved, leaves the start screen; a turn the pane waits for may be retried.
     pub(super) fn page_stopped(&mut self, event: &ExplorePageStopped) {
         if self.awaiting_page_start() {
             self.show_start_screen();
@@ -30,7 +26,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Reset on the page: the pane shows its start screen.
     pub(super) fn page_reset(&mut self, event: &ExplorePageReset) {
         if self
             .exploration
@@ -41,7 +36,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Whether `event` is the page's Retry of the turn that the pane offers to retry.
     pub(super) fn retried_elsewhere(&self, event: &ExplorePosted) -> bool {
         self.progress == Progress::Retryable
             && self.durable.posting.is_none()

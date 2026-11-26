@@ -261,7 +261,6 @@ fn metadata_changes_remain_unreviewed_even_when_all_text_is_insignificant() {
     assert_eq!(fixture.record(&review, "script.sh"), LoadResult::Unreviewed);
 }
 
-/// Twenty numbered lines with some of them rewritten.
 fn numbered(edits: &[(u32, &str)]) -> Vec<u8> {
     (1..=20)
         .map(|line| {
@@ -275,7 +274,6 @@ fn numbered(edits: &[(u32, &str)]) -> Vec<u8> {
 }
 
 impl AutoReview {
-    /// Classify one changed line on both sides as insignificant.
     fn classify_line(&mut self, path: &str, line: u32) {
         let file = self
             .comparison
@@ -341,7 +339,6 @@ fn insignificant_hunks_of_other_files_are_marked_reviewed(kind: RepoType) {
 }
 
 impl Fixture {
-    /// Accept the open hunk on one zero-based current line by hand.
     fn accept_hunk_at(&self, line: u32) {
         let snapshot = complete_repository_snapshot(&self.repository);
         let file = &snapshot.files[0];
@@ -479,7 +476,6 @@ fn a_hunk_that_rewrites_approved_lines_stays_open(kind: RepoType) {
         .files
         .write("mixed.rs", &numbered(&[(2, "two"), (15, "fifteen")]));
     fixture.accept_hunk_at(1);
-    // The approved "two" becomes a base-like line with a note.
     fixture
         .files
         .write("mixed.rs", &numbered(&[(2, "2 // note"), (15, "fifteen")]));

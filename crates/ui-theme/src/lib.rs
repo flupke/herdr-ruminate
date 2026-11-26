@@ -1,5 +1,3 @@
-//! UI palettes and their paired syntax themes.
-
 #![allow(clippy::unreadable_literal)]
 
 use ratatui::style::Color;
@@ -8,20 +6,17 @@ use two_face::theme::EmbeddedThemeName;
 
 const DEFAULT: &str = "catppuccin";
 
-/// One complete UI and syntax theme.
 #[derive(Clone, Copy, Debug)]
 pub struct Theme {
     pub palette: Palette,
     pub syntax: EmbeddedThemeName,
 }
 
-/// The colors that the review UI uses.
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
     pub background: Color,
     pub text: Color,
     pub dim: Color,
-    /// Borders that do not have the user's attention.
     pub border: Color,
     pub focus: Color,
     pub warning: Color,
@@ -58,10 +53,6 @@ struct ThemeDefinition {
 }
 
 impl Theme {
-    /// The theme the reviewer's `config` names, else the default.
-    ///
-    /// # Errors
-    /// Fails when `theme` is not the name of a theme.
     pub fn from_config(config: &ReviewerConfig) -> eyre::Result<Self> {
         let Some(name) = config.string("theme")? else {
             return Ok(Self::default());

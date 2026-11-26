@@ -13,7 +13,6 @@ use review_ui::{Action, RepositoryAction};
 use super::*;
 use crate::runtime::effects::fixture::EffectsFixture;
 
-/// Holds classification open until the test releases it.
 struct GatedClassifier(Mutex<Option<Receiver<()>>>);
 
 impl GatedClassifier {

@@ -17,7 +17,6 @@ fn missing_plugin_config_uses_the_default() {
     let directory = tempfile::tempdir().unwrap();
     let default = Theme::resolve("catppuccin").unwrap().palette.text;
 
-    // No config file, then a config file without a theme.
     for config in [None, Some("other = 1\n")] {
         if let Some(config) = config {
             std::fs::write(directory.path().join("config.toml"), config).unwrap();

@@ -8,26 +8,17 @@ pub struct ExploreCaptured {
     pub result: Result<Arc<Comparison>, String>,
 }
 
-/// Local restoration does not dispatch a prompt or replay agent output as new events.
 #[derive(Clone, Debug)]
 pub struct ExploreRestored {
     pub result: Result<Option<Arc<review_explore::ExploreRound>>, String>,
     pub view: Option<review_explore::ViewSave>,
     pub historical: bool,
-    /// Ancillary editor damage does not prevent reading intact accepted history.
     pub storage_error: Option<String>,
-    /// Where the restored interview stands; reopening never sends anything itself.
     pub progress: ExploreProgress,
-    /// The latest implementation request of each conclusion of the restored round.
     pub implementations: Vec<ImplementationProgress>,
-    /// The path each turn of the restored round took after an answer to a question run-ahead
-    /// watched, by request.
     pub turn_paths: BTreeMap<String, TurnPath>,
 }
 
-/// The turn `request` of the round `round` took the path `path` after the reviewer's answer to
-/// a question run-ahead watched: the agent in the pane continued as the fork that prepared it,
-/// or took it itself. The pane says which, with the turn, when the reviewer can use it.
 #[derive(Clone, Debug)]
 pub struct ExploreTurnPath {
     pub round: String,
@@ -35,10 +26,6 @@ pub struct ExploreTurnPath {
     pub path: TurnPath,
 }
 
-/// The turn `request` of the round `round`, the reviewer's bare answer, waits for the fork of
-/// its choice, which started that turn at `started_at_ms`, in milliseconds since the epoch, and
-/// has not submitted it yet: the pane says that the agent finishes a turn it started while the
-/// reviewer was thinking, until it shows the turn's path.
 #[derive(Clone, Debug)]
 pub struct ExploreTurnFinishing {
     pub round: String,
@@ -46,24 +33,17 @@ pub struct ExploreTurnFinishing {
     pub started_at_ms: u64,
 }
 
-/// Where a restored interview stands, decided by the Explore session.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ExploreProgress {
-    /// No turn is waiting; the reviewer can answer or start a new round.
     #[default]
     Ready,
-    /// A posted turn was not answered; Retry sends it again.
     Interrupted,
-    /// A posted turn's prompt may already have reached the agent.
     DeliveryUncertain,
-    /// The agent did not start on a posted turn's prompt; Retry sends it again.
     NotStarted,
 }
 
 #[derive(Clone, Debug)]
 pub struct ExplorePosted {
-    /// The turn as the front end posted it. A new answer that picks a choice run-ahead prepared
-    /// is saved under the identities reserved for that choice: `result` holds it so.
     pub request: review_explore::TurnRequest,
     pub result: Result<Arc<review_explore::ExploreRound>, String>,
 }
@@ -71,97 +51,63 @@ pub struct ExplorePosted {
 #[derive(Clone, Debug)]
 pub struct ExploreCommitted {
     pub round: Arc<review_explore::ExploreRound>,
-    /// The latest implementation request of each conclusion of `round`.
     pub implementations: Vec<ImplementationProgress>,
     pub applied: bool,
     pub response: std::sync::mpsc::Sender<Result<bool, String>>,
 }
 
-/// The reviewer's latest answer was cancelled, or why it could not be.
 #[derive(Clone, Debug)]
 pub struct ExploreAnswerCancelled {
     pub answer: String,
-    /// The round without the answer and the agent's turn after it.
     pub result: Result<Arc<review_explore::ExploreRound>, String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ExploreStorageFailed(pub String);
 
-/// The address of the Explore page on the network, with its token, for the pane's QR code: the
-/// running round's page, or while no round runs, the page that starts the next one. Never
-/// sent when the page is not on the network.
 #[derive(Clone, Debug)]
 pub struct ExplorePageShared(pub String);
 
-/// The Explore page could not be served on the network, for this reason: the pane says so where
-/// the address and QR code would be. Never sent when the settings keep the page on this machine.
 #[derive(Clone, Debug)]
 pub struct ExplorePageNotShared(pub String);
 
-/// The settings turned network access off: the Explore page is no longer served on the network,
-/// and the pane removes its address and QR code. No address of the page served before is sent
-/// after this.
 #[derive(Clone, Copy, Debug)]
 pub struct ExplorePageOffNetwork;
 
-/// Where the tunnel that shares the running round stands, each time it changes: opening, its
-/// public address with the round's token for the pane's link and QR code, why it failed, or off.
 #[derive(Clone, Debug)]
 pub struct ExplorePageTunnel(pub review_explore_page_tunnel::TunnelState);
 
-/// The settings of the Explore page as they are saved: read when the reviewer starts, and again
-/// after each change the pane saves, with the changes another reviewer saved in between.
 #[derive(Clone, Debug)]
 pub struct ExplorePageSettingsLoaded(pub review_explore_page_settings::ExplorePageSettings);
 
-/// The settings for the next Explore round as they are saved: read when the reviewer starts,
-/// and again after each change the pane saves, with the changes another reviewer saved in
-/// between.
 #[derive(Clone, Debug)]
 pub struct ExploreRoundSettingsLoaded(pub review_explore_round_settings::ExploreRoundSettings);
 
-/// Why run-ahead is not available for the agent of the reviewer's rounds, such as an agent it
-/// does not fork, or one that runs without the reviewer's hooks; `None` once it is again. The
-/// run-ahead setting of the pane says it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExploreRunAheadUnavailable(pub Option<String>);
 
-/// The browser could not open the Explore page the pane asked for: the pane says why and shows
-/// the page's address, when the page has one.
 #[derive(Clone, Debug)]
 pub struct ExplorePageNotOpened(pub review_explore_page_opening::PageNotOpened);
 
-/// A round the reviewer started on the Explore page: it is starting (`Ok`), or it could not
-/// start, for this reason. Once its kickoff is saved, `ExplorePosted` brings the round.
 #[derive(Clone, Debug)]
 pub struct ExplorePageStart(pub Result<(), String>);
 
-/// Whether the reviewer can start a round on the review: why not, when the review marks leave
-/// nothing to review, or `None` once a round can start again. Sent when it changes.
 #[derive(Clone, Debug)]
 pub struct ExploreStartBlock(pub Option<review_explore::StartBlock>);
 
-/// The reviewer stopped waiting on the Explore page: for the agent's turn of the round `round`,
-/// or for the start under way when `round` is `None`. The pane follows it as its own Stop
-/// waiting.
 #[derive(Clone, Debug)]
 pub struct ExplorePageStopped {
     pub round: Option<String>,
 }
 
-/// The reviewer reset the round `round` on the Explore page: the pane shows its start screen.
 #[derive(Clone, Debug)]
 pub struct ExplorePageReset {
     pub round: String,
 }
 
-/// The session saved an implementation request: authorized it, or recorded its delivery.
 #[derive(Clone, Debug)]
 pub struct ExploreImplementationSaved(pub ImplementationProgress);
 
-/// A conclusion's latest implementation request and what became of it, decided by the Explore
-/// session.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImplementationProgress {
     pub request: review_explore::ImplementationRequest,
@@ -169,7 +115,6 @@ pub struct ImplementationProgress {
     pub state: review_explore::ImplementationState,
 }
 
-/// The interview accepted this capture; cancelled completions never reach viewers.
 #[derive(Clone, Debug)]
 pub struct ExploreComparisonAccepted(pub Arc<Comparison>);
 
@@ -180,18 +125,15 @@ pub struct ExploreFinished {
     pub result: Result<InterviewUpdate, String>,
 }
 
-/// The UI's serial interview owner acknowledges only a validated, applied MCP result.
 #[derive(Clone, Debug)]
 pub struct ExploreSubmission {
     pub update: InterviewUpdate,
     pub response: std::sync::mpsc::Sender<Result<bool, String>>,
 }
 
-/// Delivery confirmation, not a claim that the requested work has been implemented.
 #[derive(Clone, Debug)]
 pub struct ExploreImplementationFinished {
     pub request: review_explore::ImplementationRequest,
-    /// Absent only when preparation failed before an attempt was authorized.
     pub attempt: Option<String>,
     pub state: review_explore::ImplementationState,
 }
@@ -204,7 +146,6 @@ pub struct ExploreEvidence {
     pub reveal: bool,
 }
 
-/// One evidence reference in an immutable displayed question version.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct EvidenceView {
     pub turn: usize,
@@ -223,8 +164,6 @@ pub struct ExploreEvidenceInput {
 #[derive(Clone, Debug)]
 pub struct ExplorePositionsRestored(pub Vec<review_explore::EvidencePosition>);
 
-/// Where each question's evidence viewer stands, published by the diff pane whenever a
-/// position changes, for Explore to save.
 #[derive(Clone, Debug)]
 pub struct ExplorePositionsChanged(pub Vec<review_explore::EvidencePosition>);
 

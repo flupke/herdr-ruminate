@@ -1,6 +1,3 @@
-//! A stand-in for Jev in vision sessions: a script names the hunks to call
-//! insignificant, so an exploration can drive `rf` without the paid service.
-
 use std::path::PathBuf;
 
 use review_explore::Comparison;
@@ -15,10 +12,6 @@ use super::{coordinate, optimized};
 
 const RUBRIC: &str = "vision script";
 
-/// Classifies as insignificant every diff hunk that changes a scripted line:
-/// a line it adds (current numbering) or a line it removes (base
-/// numbering). The script is JSON read when `rf` starts:
-/// `{"insignificant": [{"path": "src/lib.rs", "lines": [20]}]}`.
 pub(super) struct ScriptedJev {
     pub(super) script: PathBuf,
 }
@@ -71,7 +64,6 @@ impl ScriptedJev {
     }
 }
 
-/// The insignificant result for one diff hunk, when it changes a scripted line.
 fn scripted_hunk(
     file: usize,
     hunk: usize,

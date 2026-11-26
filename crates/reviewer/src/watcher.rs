@@ -1,5 +1,3 @@
-//! Filesystem-triggered repository refreshes.
-
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -42,7 +40,6 @@ struct IgnoreRules {
     root: PathBuf,
     directories: Vec<PathBuf>,
     gitignores: Vec<(PathBuf, Gitignore)>,
-    /// Git's global and repository exclude files, when the repository applies them.
     git_excludes: Option<Vec<PathBuf>>,
 }
 
@@ -171,13 +168,11 @@ struct WatchState {
     failed: AtomicBool,
     watching: AtomicBool,
     file_changes: FileChanges,
-    /// What notified, for the tests to wait on.
     #[cfg(test)]
     notifications: tests::Notifications,
 }
 
 impl WatchState {
-    /// A change of `paths` calls for a refresh; no paths when the watches start.
     fn notify(&self, paths: &[PathBuf]) {
         #[cfg(test)]
         self.notifications
@@ -255,12 +250,10 @@ impl RepositoryWatcher {
         }
     }
 
-    /// Sends the files that change to `sender` with each refresh, from then on.
     pub(super) fn send_file_changes_to(&mut self, sender: review_lsp::FileChangeSender) {
         self.lsp_file_changes = Some(sender);
     }
 
-    /// Sends the files changed since the last refresh, when a sender takes them.
     pub(super) fn send_file_changes(&self) {
         if let Some(sender) = &self.lsp_file_changes {
             self.state.file_changes.send(sender);
@@ -338,7 +331,6 @@ impl ActiveWatcher {
             });
         if let Ok(watcher) = watcher {
             state.watching.store(true, Ordering::Relaxed);
-            // Close the initial scan/watch setup gap with one event-driven refresh.
             state.notify(&[]);
             Some(Self {
                 watcher,
@@ -375,8 +367,6 @@ impl ActiveWatcher {
             self.refresh_changed_ignore_rules(event)?;
             self.refresh_changed_directories(event)?;
         }
-        // After the refreshes, so that a directory that appears is read with its own ignore
-        // rules, and before the notification, whose refresh sends the changes.
         state
             .file_changes
             .record(event, |path, is_dir| self.rules.includes(path, is_dir));
@@ -493,8 +483,6 @@ impl MetadataWatches {
     }
 }
 
-/// Watches `directory` unless it is gone already: the watch of the directory above it sees it
-/// go, and come back.
 fn watch_present(
     watcher: &mut RecommendedWatcher,
     directory: &Path,
@@ -506,7 +494,6 @@ fn watch_present(
     }
 }
 
-/// Whether `error` says that the path to watch does not exist.
 fn is_missing(error: &notify::Error) -> bool {
     match &error.kind {
         notify::ErrorKind::PathNotFound => true,

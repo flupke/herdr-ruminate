@@ -3,7 +3,6 @@ use component_core::InputResolution;
 use super::*;
 use crate::table::ShortcutBinding;
 
-/// How many owning scopes select `command`.
 fn owner_count(command: ShortcutCommand) -> usize {
     [
         ApplicationShortcut::select(command).is_some(),
@@ -55,9 +54,6 @@ fn conflicts(first: ShortcutSequence, second: ShortcutSequence) -> bool {
     }
 }
 
-/// Every binding a subscription sees resolves to its command, and no two of
-/// those bindings claim the same keys. A key listed under two help lines for
-/// the same command is one binding shown twice, not a conflict.
 fn assert_subscription_is_consistent<S>()
 where
     S: ShortcutSubscription + std::fmt::Debug + PartialEq,
@@ -112,8 +108,6 @@ fn combined_subscriptions_resolve_their_bindings_without_conflicts() {
     assert_subscription_is_consistent::<ExploreCommand>();
 }
 
-/// The diff, the Threads list and the conversation view resolve movement
-/// from the same table entries, so rebinding one moves all three.
 #[test]
 fn list_and_conversation_views_share_the_diff_movement_bindings() {
     for (binding, movement) in subscribed_bindings::<MovementShortcut>() {
@@ -187,8 +181,6 @@ fn explore_help_comes_from_the_table() {
     }
 }
 
-/// Explore's single-key commands win over longer sequences other scopes
-/// start with the same key, so `[` acts at once in Explore.
 #[test]
 fn explore_single_keys_do_not_wait_for_sequences() {
     let mut explore = ShortcutMatcher::<ExploreCommand>::new();
@@ -343,8 +335,6 @@ fn every_help_line_names_its_keys() {
     }
 }
 
-/// Every single-key binding a subscription resolves is found by a key
-/// lookup and listed among its command's keys.
 fn assert_single_keys_are_queryable<S>()
 where
     S: ShortcutSubscription + std::fmt::Debug,

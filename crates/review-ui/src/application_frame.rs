@@ -1,5 +1,3 @@
-//! Side-effect-free composition of mounted UI components.
-
 use component_modal::ModalComponent;
 use diff_component::DiffComponent;
 use files_component::FilesComponent;
@@ -23,7 +21,6 @@ use ui_theme::Palette;
 use crate::layout::{Body, NavigationTabs, ScreenLayout};
 use crate::text_selection::ScreenText;
 
-/// One renderable frame assembled from mounted components.
 pub struct ApplicationFrame<'a> {
     pub(super) layout: ScreenLayout,
     pub(super) mode: ReviewNavigation,
@@ -86,7 +83,6 @@ impl Widget for ApplicationFrame<'_> {
     }
 }
 
-/// The content of a bordered pane drawn in `area`.
 fn inside_borders(area: Rect) -> Rect {
     area.inner(Margin::new(1, 1))
 }
@@ -115,7 +111,6 @@ impl ApplicationFrame<'_> {
         }
     }
 
-    /// The navigation pane, which the location selector replaces while open.
     fn render_navigation_pane(&self, area: Rect, buffer: &mut Buffer, text: &mut TextLayer) {
         if self.locations.is_active() {
             self.render_locations(area, buffer, text);
@@ -145,7 +140,6 @@ impl ApplicationFrame<'_> {
                     .render(area, buffer, self.palette, focused, self.diff)
             }
         };
-        // Explore's own regions, pushed after, lie over the pane's.
         text.push(TextRegion::screen(inside_borders(area), buffer));
         for region in regions {
             text.push(region);
@@ -153,8 +147,6 @@ impl ApplicationFrame<'_> {
         self.render_tabs(area, buffer);
     }
 
-    /// The tabs over the navigation pane's top border: the open one is a
-    /// filled pill, and each underlines the letter that opens it.
     fn render_tabs(&self, area: Rect, buffer: &mut Buffer) {
         let palette = self.palette;
         let tabs = NavigationTabs::new(self.threads.has_unread_replies());

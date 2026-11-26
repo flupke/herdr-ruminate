@@ -1,17 +1,12 @@
 use super::*;
 
-/// Columns one visual row holds before a source line wraps.
 const WIDTH: usize = 10;
 
-/// A layout of document rows that wrap every [`WIDTH`] columns, with comment
-/// rows inserted after some of them.
 struct TestLayout {
     rows: Vec<Option<(usize, usize)>>,
 }
 
 impl TestLayout {
-    /// `segments[row]` visual rows for each document row, and `comments`
-    /// rows below the document rows listed there.
     fn new(segments: &[usize], comments: &[(usize, usize)]) -> Self {
         let mut rows = Vec::new();
         for (row, count) in segments.iter().enumerate() {
@@ -26,7 +21,6 @@ impl TestLayout {
         Self { rows }
     }
 
-    /// Every document row takes one visual row.
     fn lines(count: usize) -> Self {
         Self::new(&vec![1; count], &[])
     }
@@ -74,7 +68,6 @@ impl Layout for TestLayout {
     }
 }
 
-/// The cursor's visual row is on the screen of `height` rows.
 fn assert_cursor_on_screen(position: &Position, layout: &TestLayout, height: usize) {
     let cursor = layout.cursor_row(position);
     let top = position.top(layout.row_count());
@@ -216,7 +209,6 @@ fn folding_context_above_the_cursor_keeps_it_on_its_screen_row() {
     let screen_row = unfolded.cursor_row(&position) - position.scroll();
     let anchor = position.screen_anchor(&unfolded);
 
-    // Rows 10 to 19 fold into one gap row: the cursor's document row moves up.
     let folded = TestLayout::lines(31);
     position.move_to(21, folded.document_rows());
     position.return_to(anchor, &folded);

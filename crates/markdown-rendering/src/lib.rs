@@ -1,5 +1,3 @@
-//! Shared Markdown rendering for documentation and review conversations.
-
 use ratatui::text::Line;
 use ratatui_markdown::markdown::MarkdownRenderer as LegacyRenderer;
 use syntax_highlighting::SyntaxHighlighter;
@@ -15,14 +13,12 @@ use marks::ReadableMarks;
 #[cfg(test)]
 mod tests;
 
-/// Render Markdown into the application's Ratatui types.
 #[derive(Default)]
 pub struct MarkdownRenderer {
     highlighter: Option<SyntaxHighlighter>,
 }
 
 impl MarkdownRenderer {
-    /// Use the active syntax theme for fenced code blocks.
     pub fn new(highlighter: SyntaxHighlighter) -> Self {
         Self {
             highlighter: Some(highlighter),

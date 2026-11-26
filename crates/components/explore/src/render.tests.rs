@@ -30,8 +30,6 @@ fn at(side: SourceSide, first_line: u32, last_line: u32) -> CodeLocation {
     }
 }
 
-/// A not-relevant mark on new lines, for `reason`; tested mechanics name
-/// `tests/lib.rs 3-9`.
 fn not_relevant(
     first_line: u32,
     last_line: u32,
@@ -65,7 +63,6 @@ fn answer() -> ReviewerAnswer {
     }
 }
 
-/// An agent turn for `request`, following `answer` when it has one.
 fn turn(request: &str, answer: Option<&str>) -> review_explore::ConversationTurn {
     review_explore::ConversationTurn {
         answer: answer.map(str::to_owned),
@@ -80,7 +77,6 @@ fn turn(request: &str, answer: Option<&str>) -> review_explore::ConversationTurn
     }
 }
 
-/// A round over a change with no files.
 fn exploration() -> Exploration {
     Exploration::new(Arc::new(Comparison {
         checkpoint: ReviewCheckpoint::new("review", "checkpoint"),
@@ -94,7 +90,6 @@ fn exploration() -> Exploration {
     }))
 }
 
-/// The text of each laid-out row: control labels and text lines.
 fn rows(layout: &ConversationLayout) -> Vec<String> {
     layout
         .items
@@ -134,7 +129,6 @@ fn an_answers_marks_show_below_it_and_expand_to_their_lines() {
     unanswered.update.reopened = vec![at(SourceSide::New, 9, 9)];
     exploration.conversation.push(unanswered);
     component.exploration = Some(exploration);
-    // The answer applied the marks of the question it answered.
     component.marks.insert(
         "kickoff".into(),
         TurnMarks {
@@ -148,7 +142,6 @@ fn an_answers_marks_show_below_it_and_expand_to_their_lines() {
         TurnMarks {
             answer: Some("answer".into()),
             reviewed: vec![at(SourceSide::New, 3, 5), at(SourceSide::Old, 2, 2)],
-            // The second was saved before marks had reasons.
             not_relevant: vec![
                 not_relevant(40, 41, Some(NotRelevantReason::FollowsCode)),
                 not_relevant(44, 44, None),
@@ -190,7 +183,6 @@ fn an_answers_marks_show_below_it_and_expand_to_their_lines() {
         ]
     );
 
-    // A question nobody answered yet holds its marks, at the end of its page.
     let pending = |component: &ExploreComponent| {
         let mut layout = ConversationLayout::new(Rect::new(0, 0, 80, 40));
         component.question_marks(0, &mut layout, palette);
@@ -232,11 +224,9 @@ fn a_reply_keeps_its_label_on_the_first_paragraph_unless_a_block_opens_it() {
     ] {
         assert_eq!(labelled(block), format!("Agent:\n\n{block}"));
     }
-    // A sentence that merely starts with a number is a paragraph.
     assert_eq!(labelled("3 tabs start."), "Agent: 3 tabs start.");
 }
 
-/// The rows the pane shows before the first question, when the kickoff explained `design`.
 fn design_rows(design: serde_json::Value) -> Vec<String> {
     let mut bus = ComponentEventBus::<Action>::new();
     let target = bus.mount(|events| {
@@ -267,7 +257,6 @@ fn design_rows(design: serde_json::Value) -> Vec<String> {
     rows(&layout)
 }
 
-/// The row of each of `texts`, which the rows must show in this order.
 fn shown_in_order(rows: &[String], texts: &[&str]) {
     let order: Vec<_> = texts
         .iter()
@@ -322,8 +311,6 @@ fn a_design_saved_before_theses_shows_each_first_paragraph_once_as_a_thesis() {
     shown_in_order(
         &rows,
         &[
-            // The overview's first paragraph stands in for the change's thesis, its next one
-            // for its own.
             "The cache sits before the parser.",
             "What it adds and where",
             "It lives in cache.rs.",

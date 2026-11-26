@@ -1,4 +1,3 @@
-//! Production hunk windows and the frozen winning evaluation request.
 use std::ops::Range;
 
 use review_repository::diff::DiffRow;
@@ -140,7 +139,6 @@ impl Planner<'_> {
     }
 }
 
-/// Shared token-midpoint split and maximal overlap geometry for eval and production.
 pub(super) struct SplitPlan<'a> {
     rows: &'a [DiffRow],
     boundaries: Boundaries,
@@ -260,7 +258,6 @@ pub(super) fn request_for(state: &Value, format: Format) -> Value {
         }}}})
 }
 
-/// The eval used state + longest question + 32 tokens of JSON overhead.
 pub(super) fn estimated_tokens(body: &Value) -> usize {
     let tokenizer = tiktoken_rs::o200k_base_singleton();
     let question = body["questions"]

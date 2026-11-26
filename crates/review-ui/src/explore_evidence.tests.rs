@@ -289,7 +289,6 @@ fn evidence_list_uses_file_navigation_shortcuts_when_focused() {
     let response = fixture.response(&request, 1);
     publish(&mut fixture, response);
     fixture.click("policy.rs:1");
-    // A focused pane's title is bold.
     let (column, row) = fixture.point("Evidence 2");
     assert!(
         fixture.buffer()[(column, row)]

@@ -1,4 +1,3 @@
-//! One interview question at a time, with retained history and native evidence windows.
 use comment_editor::{CommentEditor, KeymapSetting};
 use component_core::{Component, ComponentSubscriptions, EventPublisher};
 use review_explore::{
@@ -44,15 +43,10 @@ use flow::ConversationLayout;
 
 #[derive(Clone, Copy, Debug)]
 enum Control {
-    /// Choose where the reviewer follows a round: on the Explore page or in the pane.
     Front(start::FrontControl),
-    /// Ask to close the round and return to the start screen.
     Reset,
-    /// Confirm a Reset asked for within the last five seconds.
     ConfirmReset,
-    /// Change a setting of the next round or of the Explore page.
     Setting(ui_shortcuts::ExploreSettingShortcut),
-    /// Open the Explore page on its list of past rounds, from the start screen.
     PastRounds,
     NewImplementation,
     Send,
@@ -60,9 +54,7 @@ enum Control {
     Map,
     Cancel,
     Retry,
-    /// Cancel this answer, the latest one.
     CancelAnswer(usize),
-    /// Show or hide the review marks this conversation turn changed.
     Marks(usize),
     Reply(usize),
     GeneralReply,
@@ -73,7 +65,6 @@ enum Control {
     EditImplementation,
     Implement,
     CancelImplementation,
-    /// Copy the address of the Explore page that `SharedLink` names to the clipboard.
     CopyLink(network_page::SharedLink),
 }
 
@@ -146,30 +137,18 @@ pub struct ExploreComponent {
     status_turn: Option<usize>,
     progress: Progress,
     reset: reset::ResetConfirmation,
-    /// The round being started has a challenger.
     challenger: bool,
-    /// Who wrote the change of the round started from the start screen.
     author: ChangeAuthor,
-    /// The round being started opens its Explore page once its change is captured.
     open_page: bool,
-    /// The settings of the Explore page, which the pane changes.
     page_settings: page_settings::PageSettings,
     round_settings: round_settings::RoundSettings,
-    /// Where the reviewer follows the round being started or shown.
     front: RoundFront,
     map: bool,
-    /// The review marks each agent turn changed, by Explore request.
     marks: BTreeMap<String, review_explore::TurnMarks>,
-    /// The path each agent turn took after an answer to a question run-ahead watched, by
-    /// Explore request.
     turn_paths: BTreeMap<String, review_turn_path::TurnPath>,
-    /// The turn a fork finishes for the reviewer's bare answer, while the session waits for it.
     finishing: Option<finishing::FinishingTurn>,
-    /// Requests whose marks are listed line by line.
     expanded_marks: BTreeSet<String>,
-    /// The answer whose cancellation the session is working on.
     cancelling: Option<String>,
-    /// Implementation was requested, so answers can no longer be cancelled.
     implementation_requested: bool,
     scroll: Cell<usize>,
     reveal: Cell<Option<Reveal>>,
@@ -179,16 +158,12 @@ pub struct ExploreComponent {
     drag: Option<input::ResizeDrag>,
     split_drag: bool,
     pointer_view: Option<flow::Window>,
-    /// The page on the network, once the page host announced it.
     network_page: Option<network_page::NetworkPage>,
-    /// Why the browser could not open the page of the round the pane started last.
     unopened_page: Option<review_explore_page_opening::PageNotOpened>,
-    /// Why no round can start, as the session last said: the start buttons are inactive.
     start_block: Option<review_explore::StartBlock>,
 }
 
 impl ExploreComponent {
-    /// Create the component with editors that share an application-wide keymap.
     pub fn with_keymap(events: EventPublisher, keymap: KeymapSetting) -> Self {
         Self {
             editor: CommentEditor::new("", &keymap),
@@ -304,7 +279,6 @@ impl ExploreComponent {
         match &event.result {
             Ok(comparison) => {
                 let mut exploration = Exploration::new(comparison.clone());
-                // The pane takes no name: the page alone asks for it.
                 exploration.choose(RoundChoices::new(self.challenger, self.author, ""));
                 exploration.writing = self.round_settings.writing();
                 self.open_round(exploration);
@@ -317,8 +291,6 @@ impl ExploreComponent {
                 actions
             }
             Err(error) => {
-                // With nothing left to review, the inactive starts show in place of Retry, and
-                // the line under them says why.
                 self.status = if self.start_block.is_some() {
                     self.failed_start("The round could not start", error)
                 } else {
@@ -330,7 +302,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Show the new round `exploration`, from its first page, before its kickoff.
     fn open_round(&mut self, exploration: Exploration) {
         self.durable.begin_round();
         self.implementation_requested = false;
@@ -403,8 +374,6 @@ impl ExploreComponent {
         {
             self.accept_conclusion();
         } else if count > previous_count && self.revised() {
-            // The agent revised the open question from the round conversation: the reviewer may
-            // be writing an answer, which follows the new version, with the focus where it is.
             if self.selected + 1 == previous_count {
                 self.selected = count - 1;
                 self.reveal.set(Some(Reveal::Start));
@@ -468,7 +437,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Whether the agent's latest turn revised the open question.
     fn revised(&self) -> bool {
         self.exploration
             .as_ref()
@@ -481,7 +449,6 @@ impl ExploreComponent {
         self.open_question(index);
     }
 
-    /// Show question `index` with its draft, leaving the current draft as is.
     fn open_question(&mut self, index: usize) {
         self.compose_scope = ComposeScope::Question;
         self.selected = index;
@@ -519,8 +486,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Start a round from the start screen as `start` asks: on the page, it opens once the
-    /// change is captured, unless the settings keep every start in the pane.
     fn start(&mut self, start: start::RoundStart) -> Vec<Action> {
         let front = match self.page_settings.pane_starts() {
             PaneStarts::OnPage => start.front,
@@ -529,8 +494,6 @@ impl ExploreComponent {
         self.capture(start.challenger, front, front == RoundFront::Page)
     }
 
-    /// Ask the session to capture the change for a new round followed at `front`, whose page
-    /// opens once the change is captured when `open_page` says so.
     fn capture(&mut self, challenger: bool, front: RoundFront, open_page: bool) -> Vec<Action> {
         if self.exploration.is_some()
             || self.progress.awaiting_capture()
@@ -570,7 +533,6 @@ impl ExploreComponent {
                 .general_reply()
                 .then(|| self.general_context.clone())
                 .flatten(),
-            // The pane shows the recommendation at once: no pick is blind.
             first_pick: None,
             drawing_board: false,
         }))
@@ -584,7 +546,6 @@ impl ExploreComponent {
             return Vec::new();
         }
         let Some(exploration) = &mut self.exploration else {
-            // Retry starts the same round again, without opening its page.
             return self.capture(self.challenger, self.front, false);
         };
         match exploration.retry() {
@@ -607,7 +568,6 @@ impl ExploreComponent {
         self.start_block = event.0;
     }
 
-    /// Show or hide the provisional map or one answer's marks.
     fn toggle(&mut self, control: Control) {
         match control {
             Control::Map => self.map = !self.map,
@@ -616,7 +576,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Show or hide the lines the marks of one conversation turn changed.
     fn toggle_marks(&mut self, turn: usize) {
         let Some(id) = self
             .exploration
@@ -669,7 +628,6 @@ impl Component<Action> for ExploreComponent {
     }
 }
 
-/// The status shown while a turn is requested: only an answer is saved, a round's kickoff has none.
 fn requested_status(durable: bool, contributed: bool) -> &'static str {
     match (durable, contributed) {
         (true, true) => "Saving answer and preparing the agent turn…",

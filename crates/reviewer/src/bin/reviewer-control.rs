@@ -1,5 +1,3 @@
-//! Progressive reviewer action process.
-
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::os::unix::fs::OpenOptionsExt;
@@ -67,7 +65,6 @@ impl Control {
     }
 }
 
-/// Installs or uninstalls the reviewer's Codex plugin, whose hook runs this program.
 fn codex_plugin() -> eyre::Result<()> {
     let control = env::current_exe()?;
     match env::args().nth(2).as_deref() {
@@ -87,16 +84,12 @@ fn main() -> eyre::Result<()> {
         Some(command @ ("explore-page-address" | "explore-page-wait" | "open-url")) => {
             explore_page::run_page_key_command(command, env::args().skip(2))
         }
-        // A run-ahead fork starts through this, which ties its life to the reviewer's.
         Some("fork-exec") => Err(agent_fork::run_wrapper(env::args_os().skip(2)).into()),
-        // The hook of every run-ahead fork, which keeps it read-only.
         Some("fork-guard") => std::process::exit(claude_fork::run_guard()),
-        // Each hook of the reviewer's Claude Code plugin, in every Claude Code session.
         Some(claude_hooks::SUBCOMMAND) => {
             claude_hooks::run_hook();
             Ok(())
         }
-        // The hook of the reviewer's Codex plugin, on every prompt of every Codex session.
         Some(codex_hooks::SUBCOMMAND) => {
             codex_hooks::run_hook();
             Ok(())

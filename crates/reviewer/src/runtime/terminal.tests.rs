@@ -182,7 +182,6 @@ fn a_pasted_acknowledgement_request_is_the_vision_cores_in_a_vision_session_only
             move |wait| {
                 let next = input.take();
                 if next.is_none() {
-                    // No more input: wait, as a terminal does.
                     std::thread::sleep(wait);
                 }
                 Ok(next)
@@ -233,7 +232,6 @@ fn repaint_hides_an_externally_exposed_cursor_before_writing_cells() {
     let mut fixture = Fixture::new();
     fixture.draw("Review this file", Style::default());
 
-    // A host cursor change does not pass through the backend's visibility cache.
     fixture.output.write_all(b"\x1b[?25h").unwrap();
     let before_repaint = fixture.bytes_written();
     fixture.draw("File reviewed", Style::default());
@@ -283,7 +281,6 @@ fn terminal_focus_reaches_the_event_loop() {
         move |wait| {
             let next = input.take();
             if next.is_none() {
-                // No more input: wait, as a terminal does.
                 std::thread::sleep(wait);
             }
             Ok(next)
@@ -333,7 +330,6 @@ fn resize_and_cursor_transitions_still_reach_the_terminal() {
     fixture.terminal.hide_cursor().unwrap();
     assert_eq!(fixture.bytes_written(), hidden_output);
 
-    // Commands written outside Backend invalidate the cached cursor state.
     fixture
         .terminal
         .backend_mut()
@@ -351,7 +347,6 @@ fn a_copy_writes_the_text_to_the_clipboard_selection_with_osc_52() {
 
     PaneBackend::copy_to_clipboard(&mut backend, "http://10.0.0.2:8790/").unwrap();
 
-    // Herdr takes OSC 52 writes to the `c` selection from a pane; the text is in base64.
     assert_eq!(
         String::from_utf8(output.0.borrow().clone()).unwrap(),
         "\u{1b}]52;c;aHR0cDovLzEwLjAuMC4yOjg3OTAv\u{1b}\\"

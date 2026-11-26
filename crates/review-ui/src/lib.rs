@@ -1,5 +1,3 @@
-//! Ratatui state, rendering, and input handling for progressive review.
-
 mod application;
 mod application_frame;
 mod layout;

@@ -4,7 +4,6 @@ use review_threads::ThreadCommand;
 use review_ui::DocumentLoad;
 use std::path::PathBuf;
 
-/// Records which executor received each action, rewrapped as the action it ran.
 #[derive(Default)]
 struct Recorder {
     runs: Vec<(&'static str, Action)>,

@@ -36,9 +36,7 @@ mod round_settings;
 #[path = "explore_tunnel.tests.rs"]
 mod tunnel;
 
-/// The base of a short change, for the tests that start rounds from the start screen.
 const BASE: &[u8] = b"pub fn policy() -> bool { false }\n";
-/// The change from [`BASE`], three lines: the agent's questions cite lines 1 and 3.
 const POLICY: &[u8] = b"pub fn policy() -> bool { true }\n// untouched middle\n// other evidence\n";
 
 struct ExploreUi {
@@ -61,13 +59,11 @@ impl ExploreUi {
         Self::started(base, policy, 'p')
     }
 
-    /// Click Reset and confirm it, returning the confirming click's actions.
     fn reset(&mut self) -> Vec<Action> {
         self.click(" Reset ");
         self.click_actions(" Confirm reset ")
     }
 
-    /// A round started from the start screen with the `start` key.
     fn started(base: &[u8], policy: &[u8], start: char) -> (Self, TurnRequest) {
         let mut fixture = Self::start_screen(base, policy);
         fixture.app.update(UserInput::Key(Key::Char(start)));
@@ -78,7 +74,6 @@ impl ExploreUi {
         (fixture, request)
     }
 
-    /// The Explore start screen of a change from `base` to `policy`, before any round.
     fn start_screen(base: &[u8], policy: &[u8]) -> Self {
         let files = repository_fixture(RepoType::Git);
         files.write("Cargo.toml", b"[package]\nname = \"explore_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"lib.rs\"\n");
@@ -101,7 +96,6 @@ impl ExploreUi {
         let comparison = Arc::new(Comparison::prepare(&repository, &snapshot).unwrap());
         let mut app = ReviewApplication::new(Theme::default(), None, files.root().into());
         app.set_editor_keymap(comment_editor::EditorKeymap::Regular);
-        // Tall enough to show the design, the question and its evidence together.
         app.update(UserInput::Resize {
             width: 140,
             height: 80,
@@ -260,7 +254,6 @@ impl ExploreUi {
         buffer
     }
 
-    /// The bottom line of the screen.
     pub(super) fn footer(&self) -> String {
         let buffer = self.buffer();
         let width = usize::from(buffer.area.width);
@@ -495,7 +488,6 @@ fn reset_needs_a_second_click_within_five_seconds() {
     });
     assert!(!fixture.text().contains(" Confirm reset "));
 
-    // Any other control or key cancels it.
     fixture.click(" Reset ");
     fixture.app.update(UserInput::Key(Key::Char('m')));
     fixture.app.update(UserInput::Key(Key::Char('m')));
@@ -516,7 +508,6 @@ fn reset_returns_to_the_start_screen_where_the_challenger_is_chosen_again() {
         );
         assert_eq!(request.challenger, first == 'P');
         fixture.respond(&request, 1);
-        // Start keys do nothing while a round is open.
         for key in ['s', 'S', 'p', 'P'] {
             assert!(
                 fixture
@@ -741,8 +732,6 @@ fn real_rust_lsp_navigates_working_copy_sources_and_rejects_other_view_results()
     let worker = review_lsp::Worker::start(fixture.files.root().into());
     let events = worker.event_receiver();
     worker.open_document(path).unwrap();
-    // rust-analyzer is ready once it reports itself quiescent: it indexed the crate. The guard
-    // fires only on a hang.
     let guard = Duration::from_secs(45);
     loop {
         let event = events.recv_timeout(guard).unwrap();
@@ -761,7 +750,6 @@ fn real_rust_lsp_navigates_working_copy_sources_and_rejects_other_view_results()
     );
     fixture.app.publish(event.clone());
     assert!(fixture.text().contains("resolved()"));
-    // Switching evidence windows invalidates responses for the earlier viewer.
     fixture.app.update(UserInput::Key(Key::Tab));
     fixture.app.update(UserInput::Key(Key::Tab));
     fixture.app.update(UserInput::Key(Key::Char('e')));
@@ -787,7 +775,6 @@ mod adaptive;
 #[path = "explore_evidence.tests.rs"]
 mod evidence;
 
-/// A conclusion with `summary` and an empty quiz.
 fn conclusion(summary: &str) -> review_explore::Conclusion {
     review_explore::Conclusion {
         summary: summary.into(),

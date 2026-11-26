@@ -1,5 +1,3 @@
-//! Resolved inline threads retain a compact summary.
-
 use ratatui::{style::Style, text::Line};
 use review_threads::{Resolution, ReviewThread};
 

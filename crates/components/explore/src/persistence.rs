@@ -17,7 +17,6 @@ pub(super) struct Durability {
     revision: u64,
     pub(super) persisted: bool,
     pub(super) focus: ui_events::ReviewPane,
-    /// Where the evidence viewers stand, as the diff pane last published.
     positions: Vec<review_explore::EvidencePosition>,
 }
 
@@ -124,8 +123,6 @@ impl ExploreComponent {
         self.durable.positions.clone_from(&event.0);
     }
 
-    /// Save the view once each event settles, never from rendering. Only small view state is
-    /// autosaved.
     pub(super) fn autosave(&mut self, event: EventSettled) -> Option<Action> {
         if event.mode == ui_events::ReviewNavigation::Explore {
             self.durable.focus = event.focus;
@@ -225,7 +222,6 @@ impl ExploreComponent {
         }
     }
 
-    /// What the reviewer can do with a restored round, and the status line saying so.
     fn recovered(&self, progress: ExploreProgress) -> (Progress, &'static str) {
         let (progress, status) = match progress {
             ExploreProgress::Ready => (Progress::Ready, ""),
@@ -391,8 +387,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Follow the saved turn of `event`: the pane's own post (`current`), the page's Retry of
-    /// the turn the pane offered to retry (`retried`), or another front end's post.
     fn follow_saved_post(&mut self, event: &ExplorePosted, current: bool, retried: bool) {
         if current && self.progress == Progress::Waiting {
             if let Some(answer) = &event.request.answer {
@@ -400,13 +394,9 @@ impl ExploreComponent {
             }
             self.status = "Waiting for the implementation agent…".into();
         } else if retried {
-            // The page sent the turn again that the pane offered to retry: the agent works on
-            // it, as after the pane's own Retry.
             self.progress = Progress::Waiting;
             self.status = "Waiting for the implementation agent…".into();
         } else {
-            // Retain the durable contribution without reviving a cancelled or replaced local
-            // post. The next matching acknowledgement owns progress.
             self.exploration.as_mut().expect("active").pause_delivery();
         }
     }
@@ -439,8 +429,6 @@ impl ExploreComponent {
         let _ = event.response.send(Ok(event.applied));
     }
 
-    /// The turn `event.request` of the round shown took the path `event.path`: the pane says
-    /// which with the turn.
     pub(super) fn turn_path(&mut self, event: &ExploreTurnPath) {
         self.turn_finished(&event.request);
         if self
@@ -453,8 +441,6 @@ impl ExploreComponent {
         }
     }
 
-    /// Show a newer saved revision of the displayed round, keeping the
-    /// comparison already loaded.
     pub(super) fn adopt(&mut self, round: &review_explore::ExploreRound) {
         let comparison = self
             .exploration

@@ -17,8 +17,8 @@ use super::{
     plan::{Chunk, Strategy},
 };
 
-// o200k_base undercounts Jev's reported tokens on this corpus; 14k leaves
-// headroom below Jev's 32k state-plus-longest-question limit.
+// o200k_base undercounts Jev's reported tokens; Jev's limit is 32k tokens of state plus the
+// longest question.
 const MAX_ESTIMATED_TOKENS: usize = 14_000;
 
 pub(super) struct Experiment {

@@ -1,12 +1,7 @@
-//! The settings for the Explore rounds in the Explore tab: shown with their values on every
-//! screen, changed in place, saved with the reviewer's other settings, and taken by the round
-//! started next (the writing style) or by the next question (run-ahead).
-
 use super::*;
 use review_explore_round_settings::{ExploreRoundSettings, RunAhead, WritingStyle};
 use ui_events::ExploreRoundSettingsLoaded;
 
-/// The writing style that `actions` save, if they save one.
 fn saved(actions: &[Action]) -> Option<WritingStyle> {
     actions.iter().find_map(|action| match action {
         Action::Settings(SettingsAction::SaveExploreWritingStyle(writing)) => Some(*writing),
@@ -14,7 +9,6 @@ fn saved(actions: &[Action]) -> Option<WritingStyle> {
     })
 }
 
-/// The kickoff of the round started in the pane from the start screen of `fixture`.
 fn start_in_pane(fixture: &mut ExploreUi) -> TurnRequest {
     fixture.app.update(UserInput::Key(Key::Char('p')));
     let captured = fixture.app.publish(ExploreCaptured {
@@ -71,7 +65,6 @@ fn the_pane_shows_the_writing_style_as_saved() {
     );
 }
 
-/// The run-ahead value that `actions` save, if they save one.
 fn saved_run_ahead(actions: &[Action]) -> Option<RunAhead> {
     actions.iter().find_map(|action| match action {
         Action::Settings(SettingsAction::SaveExploreRunAhead(run_ahead)) => Some(*run_ahead),

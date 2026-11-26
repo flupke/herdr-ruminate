@@ -1,10 +1,3 @@
-//! The diff pane: every source viewer, and the one policy that decides which
-//! of them receives an event.
-//!
-//! Input goes to the viewer the reviewer looks at. Document events go to the
-//! viewer the pane shows as its document. Asynchronous results go to every
-//! viewer, each of which ignores what is not its own.
-
 use std::path::{Path, PathBuf};
 
 use comment_editor::KeymapSetting;
@@ -34,21 +27,16 @@ use crate::conversation::{ConversationView, SourcePeek};
 use crate::embedded::ExploreViewers;
 use crate::{Role, Services, SourceViewer, SyntaxHighlighter, ViewerInput};
 
-/// The diff pane of the review: the Files viewer, the conversation shown in
-/// its place with an optional source peek, and Explore's evidence viewers.
 pub struct DiffComponent {
     pub(super) services: Services,
     pub(super) files: SourceViewer,
     pub(super) conversation: ConversationView,
     explore: ExploreViewers,
-    /// The live source the peek last asked the application to watch.
     watched_source: Option<PathBuf>,
-    /// The evidence positions last published for Explore to save.
     published_positions: Vec<review_explore::EvidencePosition>,
 }
 
 impl DiffComponent {
-    /// Create an empty diff pane.
     pub fn new(
         events: EventPublisher,
         reviewable_files: ReviewableFiles,
@@ -77,20 +65,16 @@ impl DiffComponent {
         }
     }
 
-    /// Share the application-wide editor keymap with every comment editor.
     #[must_use]
     pub fn with_editor_keymap(self, keymap: KeymapSetting) -> Self {
         self.services.drafts.borrow_mut().use_keymap(keymap);
         self
     }
 
-    /// File selection defers loading to the next application tick.
     pub fn has_pending_load(&self) -> bool {
         self.document_viewer().has_pending_load()
     }
 
-    /// Draw what the pane shows, note which reply rows it drew, and return its text, later
-    /// regions on top.
     pub fn render(
         &self,
         area: Rect,
@@ -105,7 +89,6 @@ impl DiffComponent {
         } else if self.conversation.active {
             (
                 &self.files,
-                // A drag means nothing in the thread conversation view.
                 vec![self.render_conversation(area, buffer, palette, focused)],
             )
         } else {
@@ -118,7 +101,6 @@ impl DiffComponent {
         text
     }
 
-    /// Borrow the viewer retained for an opened evidence block.
     pub fn evidence_view(&self, id: EvidenceView) -> Option<&SourceViewer> {
         self.explore
             .is_shown()
@@ -126,14 +108,12 @@ impl DiffComponent {
             .flatten()
     }
 
-    /// Start observations for a fresh frame, including frames with no detail pane.
     pub fn begin_reply_frame(&self) {
         for viewer in self.viewers() {
             viewer.begin_replies();
         }
     }
 
-    /// Exclude rows covered by a popup, menu, notification, or other overlay.
     pub fn finish_reply_frame(&self, buffer: &Buffer) {
         for viewer in self.viewers() {
             viewer.finish_replies(buffer);
@@ -141,7 +121,6 @@ impl DiffComponent {
     }
 }
 
-/// Routing: which viewer receives an event.
 impl DiffComponent {
     fn shown_explore_viewer(&self) -> Option<&SourceViewer> {
         self.explore
@@ -150,7 +129,6 @@ impl DiffComponent {
             .flatten()
     }
 
-    /// The peek, unless Explore hides the conversation it belongs to.
     fn visible_peek(&self) -> Option<&SourcePeek> {
         if self.explore.is_shown() {
             return None;
@@ -158,7 +136,6 @@ impl DiffComponent {
         self.conversation.peek.as_ref()
     }
 
-    /// The peek, unless Explore hides the conversation it belongs to.
     pub(super) fn visible_peek_mut(&mut self) -> Option<&mut SourcePeek> {
         if self.explore.is_shown() {
             return None;
@@ -166,8 +143,6 @@ impl DiffComponent {
         self.conversation.peek.as_mut()
     }
 
-    /// The viewer the pane shows as its document: the Explore viewer in
-    /// front while Explore is shown, the Files viewer otherwise.
     fn document_viewer(&self) -> &SourceViewer {
         self.shown_explore_viewer().unwrap_or(&self.files)
     }
@@ -181,8 +156,6 @@ impl DiffComponent {
         &mut self.files
     }
 
-    /// The viewer the reviewer looks at: the peek over the conversation, or
-    /// the document viewer.
     fn input_viewer(&self) -> &SourceViewer {
         self.visible_peek()
             .map_or_else(|| self.document_viewer(), SourcePeek::viewer)
@@ -201,7 +174,6 @@ impl DiffComponent {
         self.explore.is_shown()
     }
 
-    /// Whether the pane shows the conversation itself, not a viewer over it.
     fn conversation_shown(&self) -> bool {
         !self.explore.is_shown() && self.conversation.active && self.conversation.peek.is_none()
     }
@@ -212,8 +184,6 @@ impl DiffComponent {
             .chain(self.explore.viewers())
     }
 
-    /// Every viewer, each with whether the pane shows it: the document
-    /// viewer and the peek over it. Hidden viewers come first.
     fn viewers_mut(&mut self) -> Vec<(bool, &mut SourceViewer)> {
         let explore_shown = self.explore.is_shown();
         let mut viewers: Vec<(bool, &mut SourceViewer)> = self
@@ -229,13 +199,10 @@ impl DiffComponent {
         viewers
     }
 
-    /// Deliver the reviewer's input to the viewer they look at.
     fn route<R>(&mut self, deliver: impl FnOnce(&mut SourceViewer) -> R) -> R {
         deliver(self.input_viewer_mut())
     }
 
-    /// Deliver an event about the shown documents to the document viewer.
-    /// A peek keeps its own search on the status line meanwhile.
     fn for_document<R>(&mut self, deliver: impl FnOnce(&mut SourceViewer) -> R) -> R {
         let result = deliver(self.document_viewer_mut());
         if let Some(peek) = self.visible_peek_mut() {
@@ -244,7 +211,6 @@ impl DiffComponent {
         result
     }
 
-    /// Deliver an asynchronous result to every viewer.
     fn broadcast(
         &mut self,
         mut deliver: impl FnMut(&mut SourceViewer) -> Vec<Action>,
@@ -255,9 +221,6 @@ impl DiffComponent {
             .collect()
     }
 
-    /// Run one handler, then ask the application to watch the peek's live
-    /// source whenever it changed, and tell Explore where its evidence
-    /// viewers stand whenever one moved.
     fn handle<E, R: IntoDispatchResult<Action>>(
         &mut self,
         event: E,
@@ -279,13 +242,11 @@ impl DiffComponent {
         actions
     }
 
-    /// The live source whose disk changes must refresh the current peek.
     fn live_source_path(&self) -> Option<&Path> {
         self.visible_peek().map(SourcePeek::source_path)
     }
 }
 
-/// Handlers the pane runs itself, around its viewers.
 impl DiffComponent {
     #[allow(clippy::trivially_copy_pass_by_ref)]
     fn navigation_changed(&mut self, event: &ReviewNavigationChanged) -> Vec<Action> {
@@ -315,7 +276,6 @@ impl DiffComponent {
         actions
     }
 
-    /// Tell the application which snapshot the shown document's sources use.
     fn announce_document_session(&self) {
         self.services
             .events
@@ -381,8 +341,6 @@ impl DiffComponent {
         }
     }
 
-    /// Shown viewers move to the results of their search; hidden ones keep
-    /// theirs for later.
     fn search_completed(&mut self, results: &text_search::Results) -> Vec<Action> {
         let mut actions = Vec::new();
         for (shown, viewer) in self.viewers_mut() {
@@ -392,7 +350,6 @@ impl DiffComponent {
                 viewer.retain_search_results(results);
             }
         }
-        // The Files viewer completes last; the peek over it keeps the status line.
         if let Some(peek) = self.visible_peek() {
             peek.viewer().publish_search_status();
         }
@@ -497,7 +454,6 @@ impl DiffComponent {
     }
 }
 
-/// Input: keys, shortcuts, pointer and paste.
 impl DiffComponent {
     fn keyboard_input(&mut self, input: PaneInput) -> Vec<Action> {
         match input {
@@ -543,7 +499,6 @@ impl DiffComponent {
     }
 }
 
-/// Subscribe one viewer handler through a routing policy of the pane.
 macro_rules! subscribe_viewer {
     ($subscriptions:ident, $policy:ident, $handler:path) => {
         $subscriptions.subscribe(|pane: &mut DiffComponent, event| {
@@ -556,7 +511,6 @@ macro_rules! subscribe_viewer {
 
 impl Component<Action> for DiffComponent {
     fn register_subscriptions(subscriptions: &mut ComponentSubscriptions<'_, Self, Action>) {
-        // The pane's own handlers.
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::navigation_changed));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::conversation_selected));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::restore_explore_positions));
@@ -571,14 +525,12 @@ impl Component<Action> for DiffComponent {
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::source_content_loaded));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::source_content_failed));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::refresh_current_file));
-        // Asynchronous results reach every viewer.
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::replies_displayed));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::threads_loaded));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::post_finished));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::wakeup_reported));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::highlighting_finished));
         subscriptions.subscribe(|pane, event| pane.handle(event, Self::search_completed));
-        // Events about the shown documents reach the document viewer.
         subscribe_viewer!(subscriptions, for_document, SourceViewer::file_selected);
         subscribe_viewer!(subscriptions, for_document, SourceViewer::animation_tick);
         subscribe_viewer!(subscriptions, for_document, SourceViewer::content_loaded);
@@ -607,7 +559,6 @@ impl Component<Action> for DiffComponent {
             for_document,
             SourceViewer::revision_edit_failed
         );
-        // Requests from the reviewer reach the viewer they look at.
         subscribe_viewer!(subscriptions, route, SourceViewer::clear_input);
         subscribe_viewer!(subscriptions, route, SourceViewer::preview_source_location);
         subscribe_viewer!(
@@ -637,7 +588,6 @@ impl Component<Action> for DiffComponent {
     }
 }
 
-/// What one key does in the pane.
 #[derive(Clone, Copy)]
 enum PaneInput {
     Conversation(ConversationCommand),
@@ -669,8 +619,6 @@ impl InputMatcher<DiffComponent, Key> for PaneKeyMatcher {
                 ConversationCommand::Conversation(ConversationShortcut::Back),
             ));
         }
-        // Switching navigation reaches the application even while the comment
-        // editor or the search prompt takes every other key.
         if ApplicationShortcut::bound_to(key) == Some(ApplicationShortcut::ToggleNavigation) {
             return InputResolution::NoMatch;
         }

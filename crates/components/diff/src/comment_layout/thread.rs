@@ -45,7 +45,6 @@ impl Comments {
         rows
     }
 
-    /// The reply under a thread's messages: its editor, its draft, or the field that starts it.
     pub(super) fn reply_rows(
         &self,
         thread: &ReviewThread,
@@ -79,7 +78,6 @@ impl Comments {
         rows
     }
 
-    /// Only the focused editor takes keys; the others keep their text and reopen on click.
     pub(super) fn editor_rows(
         &self,
         rows: &mut Vec<CommentRow>,
@@ -204,7 +202,6 @@ impl ThreadLayout {
         self.blank(rows, id);
     }
 
-    /// Where in its Explore round the reviewer wrote a message of a round conversation.
     fn asked_under(asked_under: &AskedUnder) -> String {
         match asked_under {
             AskedUnder::Question {
@@ -320,7 +317,6 @@ impl ThreadLayout {
         self.framed_border(rows, top, rule, border, id);
     }
 
-    /// Close an active editor field with its mode and keymap hint in the border.
     fn editor_border(
         self,
         rows: &mut Vec<CommentRow>,
@@ -381,7 +377,6 @@ impl ThreadLayout {
         .line(rows, Line::from(spans), id);
     }
 
-    /// The reviewer writes in a round conversation from the Explore page, beside the question.
     fn round_hint(self, rows: &mut Vec<CommentRow>, id: &MessageId) {
         self.blank(rows, Some(id));
         self.plain(
@@ -393,8 +388,6 @@ impl ThreadLayout {
         self.blank(rows, Some(id));
     }
 
-    /// Why the thread's comment waits to reach the agent, or did not reach it, if either, above
-    /// the Retry agent that sends it again, or above the reply being written.
     fn wakeup_notice(
         self,
         rows: &mut Vec<CommentRow>,

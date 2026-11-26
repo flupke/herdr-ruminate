@@ -1,5 +1,3 @@
-//! Right-aligned thread controls share rendering and pointer geometry.
-
 use ratatui::text::{Line, Span};
 use review_drafts::DraftId;
 use review_threads::{Resolution, ReviewThread};
@@ -11,7 +9,6 @@ use crate::{
 };
 use ui_controls::{ActionButton, ButtonTone};
 
-/// The draft whose Cancel and Post buttons a control row carries.
 #[derive(Clone, Copy)]
 pub(super) struct DraftControls {
     pub(super) draft: DraftId,

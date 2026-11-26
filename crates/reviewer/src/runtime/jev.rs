@@ -1,4 +1,3 @@
-//! Optional bounded significance prefilter. Its output can only mark changes reviewed.
 use review_explore::{Comparison, SourceSide};
 use review_repository::diff::{DiffRow, parse_file_diff};
 use review_significance::{
@@ -44,15 +43,8 @@ fn coordinate(row: &DiffRow) -> Option<(SourceSide, u32)> {
 #[cfg(all(test, feature = "jev-evals"))]
 const INSTRUCTIONS: &str = "Decide whether THIS exact changed block needs its own explanation in a code review, not whether the surrounding file deserves review. Old changed lines were removed; new changed lines were added. Adjacent context lines are unchanged and only help interpret this block. A change can be insignificant when its local effect is clear but adds no independent review decision: explanatory comments, formatting, routine annotations, or allowing an existing nonessential explanation field to be absent with a default. Significant changes include behavior, policy, state, contracts, dependencies, operations, operational defaults, removed assertions, permissions, and imports with meaningful targets or side effects. A default affecting functional data or compatibility with consequential consumers may still need an explanation. If an unseen consumer, helper, side effect or other context is needed to decide, choose uncertain. Do not infer correctness from a missing source. Answer for this block only.";
 
-/// The setting of the reviewer's `config.toml` that holds the `TypeSafe` API key.
 const KEY_SETTING: &str = "typesafe_api_key";
 
-/// Jev runs only with a `TypeSafe` API key: the process's `TYPESAFE_API_KEY`, else the
-/// `typesafe_api_key` of the reviewer's `config`. A missing or blank key disables it.
-/// A vision session can name a script that stands in for Jev instead.
-///
-/// # Errors
-/// Fails when the process has no key and the `config`'s is not a string.
 pub(super) fn classifier(config: &ReviewerConfig) -> eyre::Result<JevClassifier> {
     if std::env::var_os("HERDR_REVIEWER_VISION").is_some()
         && let Some(script) = std::env::var_os("HERDR_REVIEWER_JEV_SCRIPT")
@@ -69,8 +61,6 @@ pub(super) fn classifier(config: &ReviewerConfig) -> eyre::Result<JevClassifier>
     }))
 }
 
-/// The key Jev runs with: the `environment`'s, else the `configured` one, which it reads only
-/// then, unless blank.
 fn key<'a>(
     environment: Option<String>,
     configured: impl FnOnce() -> eyre::Result<Option<&'a str>>,
@@ -82,7 +72,6 @@ fn key<'a>(
     Ok(configured()?.filter(|key| set(key)).map(str::to_owned))
 }
 
-/// The `TypeSafe` Jev significance classifier.
 struct Jev {
     key: String,
 }
@@ -311,9 +300,6 @@ fn classify(
     })
 }
 
-/// Workers wait for the recorder's decision before taking another window. This
-/// bounds both provider calls and completed results while preserving per-window
-/// progress and stopping dispatch when the attempt becomes obsolete.
 fn classify_with(
     candidates: Vec<optimized::Prepared>,
     mut record: impl FnMut(SignificanceResult) -> bool,
@@ -406,8 +392,6 @@ impl Candidate {
     }
 }
 
-// The opt-in evaluator uses this same transport and response parser, retaining
-// the raw response for token accounting without changing production decisions.
 fn request_json(
     client: &reqwest::blocking::Client,
     key: &str,

@@ -29,7 +29,6 @@ use diff_position::{Layout, Position};
 
 pub(super) const TAB_DISPLAY_WIDTH: usize = 4;
 
-/// The pane column where code starts, after the line numbers, the change marker and a space.
 pub(crate) fn code_column(number_width: usize) -> usize {
     number_width + 3
 }
@@ -123,7 +122,6 @@ impl<'a> DiffRenderer<'a> {
     }
 }
 
-/// How the code of one row is laid out.
 struct RowCode {
     number_width: usize,
     cursor: Option<usize>,
@@ -141,7 +139,6 @@ struct CodeRenderContext<'a> {
     source_location: Option<&'a SourceLocation>,
 }
 
-/// Visual row mapping for one rendered diff viewport.
 pub(super) struct DiffViewport {
     rows: Vec<WrappedDiffRow>,
 }
@@ -159,7 +156,6 @@ enum VisibleRowIdentity {
 pub(super) struct DiffRenderResult {
     pub(super) frame_overlay: FrameOverlay,
     pub(super) pointer_viewport: Option<DiffPointerViewport>,
-    /// The pane's area inside its borders.
     pub(super) area: Rect,
 }
 
@@ -179,7 +175,6 @@ struct PointerRow {
 }
 
 struct WrappedDiffRow {
-    /// The pane columns of this visual row's hunk review control.
     badge_columns: Option<Range<usize>>,
     reply: Option<review_threads::MessageId>,
     comment: Option<crate::comments::CommentTarget>,
@@ -193,7 +188,6 @@ struct WrappedDiffRow {
 }
 
 impl VisibleRowAnchor {
-    /// Screen row the anchored row was on.
     pub(super) fn screen_row(&self) -> usize {
         self.screen_row
     }
@@ -257,7 +251,6 @@ impl DiffViewport {
         })
     }
 
-    /// Visual row that `anchor` identifies in this layout.
     pub(super) fn anchor_row(&self, anchor: &VisibleRowAnchor) -> Option<usize> {
         match &anchor.identity {
             VisibleRowIdentity::Source {
@@ -319,7 +312,6 @@ impl DiffViewport {
         Some((row.source_row, row.source_display_offset))
     }
 
-    /// First visual row on screen for `position`.
     pub(super) fn top(&self, position: &Position) -> usize {
         position.top(self.rows.len())
     }
@@ -379,7 +371,6 @@ impl DiffViewport {
     }
 }
 
-/// One document laid out on screen, as its position sees it.
 pub(super) struct DocumentRows<'a> {
     viewport: &'a DiffViewport,
     diff: &'a DiffPresentation,
@@ -436,7 +427,6 @@ impl DiffPointerViewport {
             .is_some_and(|row| row.editor || row.comment.is_some())
     }
 
-    /// The document row whose hunk review control is at this screen cell.
     pub(super) fn badge_at(&self, screen_row: usize, pane_column: usize) -> Option<usize> {
         let row = self.rows.get(screen_row)?;
         row.badge_columns
@@ -561,10 +551,8 @@ impl DiffRenderer<'_> {
             },
         );
         let controls = file.and_then(|file| TitleControls::shown(file, area.width));
-        // Two corners, the title's padding and a gap before the controls.
         let title_width =
             usize::from(area.width).saturating_sub(controls.map_or(0, TitleControls::width) + 5);
-        // The line count yields to the path when the title runs short.
         let title = match file.and_then(|file| self.line_progress(file)) {
             Some(progress) if title.width() + progress.width() <= title_width => title + &progress,
             _ if controls.is_some() => shorten(&title, title_width),
@@ -582,7 +570,6 @@ impl DiffRenderer<'_> {
         inner
     }
 
-    /// The reviewed line count of a file that still needs review.
     fn line_progress(&self, file: &LoadedDocument) -> Option<String> {
         let count = file
             .document
@@ -700,7 +687,6 @@ impl DiffRenderer<'_> {
                     width,
                     code_column(line_number_width),
                     enclosing_frame,
-                    // Added, removed and selected rows are tinted to the edge.
                     style.bg,
                     badge.as_ref(),
                 ));
@@ -713,7 +699,6 @@ impl DiffRenderer<'_> {
         }
     }
 
-    /// One document row as a styled line, before selection and wrapping.
     fn presented_line(
         &self,
         file: &LoadedDocument,
@@ -921,7 +906,6 @@ impl DiffRenderer<'_> {
         ))
     }
 
-    /// The review control in a hunk's top-right corner.
     fn badge_line(&self, badge: HunkBadge) -> Line<'static> {
         match badge {
             HunkBadge::Open {
@@ -988,7 +972,6 @@ fn fill_line_background(line: &mut Line<'static>, width: u16, background: Color)
     }
 }
 
-/// The cells `grapheme` takes in a line of code, where a tab takes `TAB_DISPLAY_WIDTH`.
 pub(super) fn grapheme_display_width(grapheme: &str) -> usize {
     if grapheme == "\t" {
         TAB_DISPLAY_WIDTH
@@ -1229,7 +1212,6 @@ impl WrappedDiffRow {
             .map(|(visual_row, (mut line, source_display_offset))| {
                 let badge = badge.filter(|_| visual_row == 0);
                 if let Some(badge) = badge {
-                    // The control continues the row's background to the edge.
                     let background = Style {
                         bg: line.spans.last().and_then(|span| span.style.bg),
                         ..Style::default()

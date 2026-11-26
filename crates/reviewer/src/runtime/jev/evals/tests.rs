@@ -395,8 +395,6 @@ fn overlap_is_locally_maximal_and_cannot_cross_hunks() {
         };
         let start = locate(visible.first().unwrap());
         let end = locate(visible.last().unwrap()) + 1;
-        // Target context need not be reconstructed: target=true appears only on
-        // changed lines; its first/last changed rows reproduce exactly that set.
         let targets: Vec<_> = visible
             .iter()
             .filter(|row| row["target"] == true)

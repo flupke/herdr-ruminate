@@ -1,5 +1,3 @@
-//! Application coordination for mounted review UI components.
-
 use std::path::PathBuf;
 
 use comment_editor::{EditorKeymap, KeymapSetting};
@@ -29,7 +27,6 @@ use crate::text_selection::{ScreenText, TextInput};
 use crate::{Action, ApplicationFrame, SettingsAction, TerminalAction, Theme, UserInput};
 use ui_theme::Palette;
 
-/// The root coordinator for the review UI.
 pub struct ReviewApplication {
     event_bus: ComponentEventBus<Action>,
     hovered_component: Option<ComponentTarget>,
@@ -74,8 +71,6 @@ impl Default for ReviewApplication {
 }
 
 impl ReviewApplication {
-    /// Run ticks for deferred file loads, animation, toast and Reset deadlines, and the time the
-    /// Explore pane counts.
     pub fn needs_tick(&self, previous: std::time::Instant, now: std::time::Instant) -> bool {
         self.event_bus
             .get::<OverlayComponent>(self.overlay_component)
@@ -92,13 +87,11 @@ impl ReviewApplication {
                 })
     }
 
-    /// Create the application and mount its components.
     pub fn new(theme: Theme, file_width: Option<u16>, repository_root: PathBuf) -> Self {
         let palette = theme.palette;
         let mut event_bus = ComponentEventBus::new();
         let reviewable_files = ReviewableFiles::default();
         let threads = SharedThreadProjection::default();
-        // Mounted first, so every reader sees each update while handling the same event.
         event_bus.mount(|_| ThreadProjector::new(threads.clone()));
         let files = event_bus.mount(|events| {
             FilesComponent::with_read_models(events, reviewable_files.clone(), threads.clone())
@@ -156,13 +149,11 @@ impl ReviewApplication {
         }
     }
 
-    /// Apply the saved keymap shared by every text editor.
     pub fn set_editor_keymap(&mut self, keymap: EditorKeymap) {
         self.editor_keymap.set(keymap);
         self.saved_editor_keymap = keymap;
     }
 
-    /// Deliver one terminal input through the component registry.
     #[allow(clippy::needless_pass_by_value)]
     pub fn update(&mut self, message: UserInput) -> Vec<Action> {
         let mut actions = match self.screen_text.input(&message) {
@@ -180,7 +171,6 @@ impl ReviewApplication {
         actions
     }
 
-    /// Publish one typed application event to its subscribed components.
     pub fn publish<Event>(&mut self, event: Event) -> Vec<Action>
     where
         Event: ApplicationEvent,
@@ -193,7 +183,6 @@ impl ReviewApplication {
         self.collect_actions(results)
     }
 
-    /// Publish one erased application event to its subscribed components.
     pub fn publish_envelope(&mut self, event: &EventEnvelope) -> Vec<Action> {
         let Ok(results) = self.event_bus.publish_envelope(event.clone()) else {
             debug_assert!(false, "the mounted component must match its subscription");
@@ -351,8 +340,6 @@ impl ReviewApplication {
         actions
     }
 
-    /// Return a side-effect-free view of all mounted components.
-    ///
     /// # Panics
     ///
     /// Panics if the files component was removed from the application registry.
@@ -431,8 +418,6 @@ impl ReviewApplication {
         }
     }
 
-    /// Bring navigation up to date with what components requested, which
-    /// modals are open and the viewport, then lay the screen out once.
     fn synchronize(&mut self) {
         let requests = self
             .event_bus
@@ -458,7 +443,6 @@ impl ReviewApplication {
         self.synchronize_component_areas();
     }
 
-    /// Route pointer input and announce pane sizes from the shared layout.
     fn synchronize_component_areas(&mut self) {
         let layout = self.navigation.layout();
         let application_area = Rect::new(0, 0, self.viewport.width, self.viewport.height);
@@ -628,8 +612,6 @@ impl ReviewApplication {
             .unwrap_or_default()
     }
 
-    /// The component that receives keyboard input: the open modal, otherwise
-    /// the focused pane.
     fn input_target(&self) -> ComponentTarget {
         self.navigation
             .modal()

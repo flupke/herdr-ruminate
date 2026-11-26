@@ -1,5 +1,3 @@
-//! Opt-in: real Claude Code on the owner's login, and herdr-core, which the dev shell does not pin.
-
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
@@ -12,14 +10,10 @@ use hc_test_support::PrivateCore;
 use herdr_client::client::EventCanceller;
 use herdr_client::protocol::{AgentHost, AgentPort, AgentStatus, PaneId, PromptWait};
 
-/// The reviewer's plugin, as `make install` installs it in the owner's Claude Code.
 const PLUGIN: &str = "progressive-reviewer@herdr-progressive-reviewer";
 const MODEL: &str = "claude-sonnet-5-5";
-/// How long the reviewer waits for its hook to report a prompt once herdr-core typed it: the
-/// `HOOK_LIMIT` of `review-thread-service`'s delivery.
 const HOOK_LIMIT: Duration = Duration::from_secs(5);
 const BLOCKED: &str = "The progressive reviewer's contract check stopped this prompt.";
-/// How fast the person types.
 const PACE: Duration = Duration::from_millis(150);
 
 #[test]
@@ -31,14 +25,12 @@ fn claude_code_takes_the_reviewer_s_prompts_through_herdr_core() {
     a_prompt_starts_the_agent(&agent);
     a_long_prompt_is_heard_as_typed(&agent, &hooked);
     nothing_is_typed_while_a_question_waits(&agent);
-    // herdr-core refuses to type in a terminal younger than its startup age limit until its
-    // output settles, which the person's keys keep from happening: the turns before outlast it.
+    // herdr-core refuses to type in a terminal younger than its startup age limit until its output
+    // settles, which the person's keys keep from happening.
     the_user_s_prompt_goes_on_while_the_reviewer_s_waits(&agent, &hooked);
     text_left_in_the_box_holds_the_prompt(&agent, &hooked);
 }
 
-/// The user types a prompt of their own while the reviewer's waits for them to stop, and the
-/// reviewer's comes while Claude Code works on the user's, which it queues.
 fn the_user_s_prompt_goes_on_while_the_reviewer_s_waits(agent: &RealAgent, hooked: &HookedAgent) {
     let cherry = "Reply with only the word cherry, in capitals";
     let expectation = agent
@@ -99,8 +91,6 @@ fn the_user_s_prompt_goes_on_while_the_reviewer_s_waits(agent: &RealAgent, hooke
     agent.wait_for_prompt();
 }
 
-/// A long prompt of several lines, as an Explore dispatch is, which Claude Code reports as a
-/// paste, with the line break the wakeups end with.
 fn a_long_prompt_is_heard_as_typed(agent: &RealAgent, hooked: &HookedAgent) {
     let plum = format!(
         "Reply with only the word plum, in capitals.\n{}\n",
@@ -126,7 +116,6 @@ fn a_long_prompt_is_heard_as_typed(agent: &RealAgent, hooked: &HookedAgent) {
     agent.wait_for_prompt();
 }
 
-/// An agent without the reviewer's hooks counts as started on a prompt by its status.
 fn a_prompt_starts_the_agent(agent: &RealAgent) {
     let replies = agent.output("FIG");
     let started = agent
@@ -142,8 +131,6 @@ fn a_prompt_starts_the_agent(agent: &RealAgent) {
     agent.wait_for_prompt();
 }
 
-/// A question that waits on the user shows no input line: the prompt waits until it is answered,
-/// and goes then.
 fn nothing_is_typed_while_a_question_waits(agent: &RealAgent) {
     agent
         .client
@@ -175,8 +162,6 @@ fn nothing_is_typed_while_a_question_waits(agent: &RealAgent) {
     agent.wait_for_prompt();
 }
 
-/// Text left in the input box holds the reviewer's prompt, however long, and it goes alone once
-/// the box is cleared.
 fn text_left_in_the_box_holds_the_prompt(agent: &RealAgent, hooked: &HookedAgent) {
     let kiwi = "Reply with only the word kiwi, in capitals";
     let expectation = agent
@@ -192,7 +177,7 @@ fn text_left_in_the_box_holds_the_prompt(agent: &RealAgent, hooked: &HookedAgent
          terminal shows:\n{}",
         agent.screen()
     );
-    // Past herdr-core's quiet pause after the person's last key, which alone holds a send.
+    // herdr-core holds a send only for its quiet pause after the person's last key.
     thread::sleep(Duration::from_secs(6));
     assert!(
         agent.screen().contains("half"),
@@ -209,8 +194,6 @@ fn text_left_in_the_box_holds_the_prompt(agent: &RealAgent, hooked: &HookedAgent
     );
 }
 
-/// The owner's Claude Code in a terminal of a private herdr-core, with the reviewer's plugin
-/// running this build's `reviewer-control`, and the reviewer's end of its hooks.
 struct RealAgent {
     hooks: AgentHooks,
     client: HcClient,
@@ -219,8 +202,6 @@ struct RealAgent {
 }
 
 impl RealAgent {
-    /// Sends `text` to the agent on a thread of its own: the waits it tells as they come, and
-    /// its outcome.
     fn send_telling_waits(
         &self,
         text: &'static str,
@@ -243,13 +224,10 @@ impl RealAgent {
         (waits, sender)
     }
 
-    /// Starts the owner's Claude Code, on their own login and configuration, in [`folder`].
     fn start() -> Self {
         let core = PrivateCore::start();
         let hooks =
             AgentHooks::listen(&HookDirectory::for_server(core.runtime(), &core.socket())).unwrap();
-        // The terminal waits for a line before it starts Claude Code, so that the wait for its
-        // question about the folder begins well before Claude Code draws it.
         let mut argv = vec![
             "bash".to_owned(),
             "-c".to_owned(),
@@ -280,8 +258,6 @@ impl RealAgent {
         agent
     }
 
-    /// Answers yes when Claude Code asks whether to trust the folder, which it asks until the
-    /// owner's configuration records it, once: `question` waits for it.
     fn trust_the_folder(&self, question: Child) {
         let (outcome, heard) = std::sync::mpsc::channel();
         let asked = outcome.clone();
@@ -311,9 +287,7 @@ impl RealAgent {
         canceller.cancel();
     }
 
-    /// Moves the dialog's choice to yes, and takes it. Claude Code drops the keys pressed
-    /// before it takes input, which nothing tells: each Down goes again, once the dialog drew
-    /// again, until it shows the choice on yes.
+    // Claude Code drops the keys pressed before it takes input, and nothing tells when it does.
     fn choose_yes(&self) {
         for _ in 0..20 {
             self.core.hc(&["keys", &self.terminal.0, "down"]);
@@ -337,14 +311,12 @@ impl RealAgent {
         );
     }
 
-    /// What delivery does with the other prompts while it types one through herdr-core.
     fn others(&self) -> OtherPrompts {
         OtherPrompts::for_host(&self.client)
     }
 
-    /// The agent as its hooks name it, once its hook named its session. The hook runs as
-    /// Claude Code starts, and may end after it took its first prompt; the session it records
-    /// for the reviewer, nothing announces: this asks again until it is there.
+    // Claude Code's session hook may end after it took its first prompt, and nothing announces the
+    // session it records.
     fn hooked(&self) -> HookedAgent {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
@@ -363,7 +335,6 @@ impl RealAgent {
         }
     }
 
-    /// Waits for what the agent prints next that holds `text`: start it before what prints.
     fn output(&self, text: &str) -> Child {
         self.core
             .command(&["wait", &self.terminal.0, "--output", text, "--json"])
@@ -372,7 +343,6 @@ impl RealAgent {
             .unwrap()
     }
 
-    /// Waits until the agent printed what `output` waits for.
     fn printed(&self, output: Child, assumption: &str) {
         let ended = output.wait_with_output().unwrap();
         assert!(
@@ -382,7 +352,6 @@ impl RealAgent {
         );
     }
 
-    /// Waits until the agent waits for a prompt.
     fn wait_for_prompt(&self) {
         self.wait_for(
             "Claude Code ended its turn, or started",
@@ -390,8 +359,6 @@ impl RealAgent {
         );
     }
 
-    /// Waits until the agent reports a status `reached` accepts; fails with `assumption` if its
-    /// program ends first.
     fn wait_for(&self, assumption: &str, reached: impl Fn(AgentStatus) -> bool) {
         let mut last = None;
         let _ = self.client.forward_agent_status(
@@ -414,16 +381,9 @@ impl RealAgent {
     }
 }
 
-/// An `env` command line that gives the program after it the owner's data, state and
-/// configuration folders in place of the core's scratch ones, and none of the Claude Code
-/// variables of the test's environment, which the core passes on to its terminals. Claude Code
-/// 2.1.318 copies itself into `$XDG_DATA_HOME/claude/versions` and points the owner's
-/// `~/.local/bin/claude` there, even with its updater off: in the core's scratch folder, it
-/// would leave the owner a `claude` that is gone with the test; its state and configuration are
-/// the owner's too. Those of a Claude Code session the check runs under would reach that
-/// session.
+// Claude Code 2.1.318 copies itself into `$XDG_DATA_HOME/claude/versions` and points
+// `~/.local/bin/claude` there, even with its updater off.
 fn claude_environment() -> Vec<String> {
-    // `env` takes its options before the variables it sets.
     let mut unset = Vec::new();
     let mut set = vec!["DISABLE_AUTOUPDATER=1".to_owned()];
     for (name, _) in std::env::vars_os() {
@@ -442,8 +402,7 @@ fn claude_environment() -> Vec<String> {
     [vec!["env".to_owned()], unset, set].concat()
 }
 
-/// The folder the agent works in, emptied: always the same one, under the owner's cache, so that
-/// their Claude Code records its trust once.
+// Claude Code asks whether to trust a folder until the owner's configuration records it.
 fn folder() -> PathBuf {
     let cache = std::env::var_os("XDG_CACHE_HOME").map_or_else(
         || PathBuf::from(std::env::var_os("HOME").unwrap()).join(".cache"),

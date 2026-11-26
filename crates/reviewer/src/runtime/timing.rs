@@ -65,7 +65,6 @@ impl Recorder {
 
     fn record(&self, sample: Sample) {
         if let Some(samples) = &self.samples {
-            // Diagnostics must never wait for the filesystem or a full queue.
             let _ = samples.try_send(sample);
         }
     }

@@ -19,7 +19,6 @@ fn resolved_summary_has_its_own_box_without_enclosing_the_file_diff() {
         let (code_row, _) = CommentFixture::text_position(&buffer, "changed");
         let (summary_row, _) =
             CommentFixture::text_position(&buffer, "Resolved · Resolve this question");
-        // The first box corner below the pane's own top border.
         let border_column = (1..area.height)
             .flat_map(|row| (0..area.width).map(move |column| (column, row)))
             .find(|&cell| buffer[cell].symbol() == "╭")

@@ -30,12 +30,9 @@ mod delivery;
 #[path = "mcp/prompts.tests.rs"]
 mod prompts;
 
-/// Where [`ConversationFixture::start_second_agent`] starts the second agent.
 #[derive(Clone, Copy, Debug)]
 enum SecondAgentPlace {
-    /// In a pane split from the first agent's.
     BesideFirst,
-    /// In the root pane of a new tab of the workspace.
     AnotherTab,
 }
 
@@ -58,7 +55,6 @@ impl ConversationFixture {
     fn start_with_session(agent: &str, session: Option<&str>) -> Self {
         let repository = tempfile::tempdir().unwrap();
         let server = IsolatedHerdrServer::start_with_session(repository.path(), agent, session);
-        // Native status detection must own the pane after session registration.
         server.release_agent();
         server.run_cli(&[
             "pane",
@@ -102,8 +98,6 @@ impl ConversationFixture {
             repository,
             _port: port,
         };
-        // Session registration can precede native status detection. Publish the
-        // fixture's idle title and wait for it before measuring notification delivery.
         fixture.status(AgentStatus::Idle);
         fixture
     }
@@ -136,7 +130,6 @@ impl ConversationFixture {
             .send(Command::ActiveAgentChanged);
     }
 
-    /// The drafts restored with the review.
     fn reload(&self, unit: &str) -> review_threads::SavedDrafts {
         self.worker
             .as_ref()
@@ -165,24 +158,18 @@ impl ConversationFixture {
             .to_owned()
     }
 
-    /// A second agent, on the session `session`, in a pane of its own beside the first,
-    /// whose state Herdr reads from its title.
     fn second_agent(&self) -> herdr_client::protocol::Agent {
         self.start_second_agent(SecondAgentPlace::BesideFirst)
     }
 
-    /// A second agent as [`Self::second_agent`], in another tab of the workspace, as the lead
-    /// of a herdr-bowtie session is.
     fn second_agent_in_another_tab(&self) -> herdr_client::protocol::Agent {
         self.start_second_agent(SecondAgentPlace::AnotherTab)
     }
 
     fn start_second_agent(&self, place: SecondAgentPlace) -> herdr_client::protocol::Agent {
         let from = self.server.received().len();
-        // Its name overrides the workspace's, which names the first agent.
         let name = format!("{}={SECOND_AGENT_NAME}", fake_agent::variables::NAME);
         let session = format!("{}=session", fake_agent::variables::SESSION);
-        // It reports its state to Herdr until the test releases it.
         let reports_state = format!("{}=1", fake_agent::variables::REPORT_STATE);
         let (mut arguments, pane_key) = match place {
             SecondAgentPlace::BesideFirst => (
@@ -226,7 +213,7 @@ impl ConversationFixture {
                         && matches!(reported.event, fake_agent::Event::SessionReported { .. })
                 })
             });
-        // Herdr's own detection shows the turns the agent starts once it saw the agent idle.
+        // Herdr's own detection shows an agent's turns only once it saw the agent idle.
         let pane = herdr_client::protocol::PaneId(pane.to_owned());
         self.server.run_cli(&[
             "pane",
@@ -241,8 +228,7 @@ impl ConversationFixture {
         self.server
             .events()
             .obey(&second_agent_role(), &fake_agent::Command::Release);
-        // A released agent that Herdr did not detect by name yet is gone until it detects it:
-        // its first status says that it is back.
+        // Herdr counts a released agent it did not detect by name yet as gone until it detects it.
         let statuses = self.server.server.agent_statuses(&pane);
         self.server.events().send(
             &second_agent_role(),
@@ -258,8 +244,6 @@ impl ConversationFixture {
             .expect("the second agent")
     }
 
-    /// The prompts the second agent read once the reviewer sent every prompt it was to send by
-    /// now.
     fn settled_second_prompts(&self, second: &herdr_client::protocol::Agent) -> Vec<String> {
         self.flush_prompts();
         self.server.events().mark(|marker| {
@@ -271,7 +255,6 @@ impl ConversationFixture {
         prompts_of(&second_agent_role(), &self.server.received())
     }
 
-    /// Returns once every prompt the worker got by now is sent, withdrawn or failed.
     fn flush_prompts(&self) {
         if let Some(worker) = &self.worker {
             worker.prompt_sender().flush();
@@ -322,7 +305,6 @@ impl ConversationFixture {
         )
     }
 
-    /// Shows the agent `status`, and waits until Herdr sees it.
     fn status(&self, status: AgentStatus) {
         if status == AgentStatus::Working {
             self.server.show_working();
@@ -331,27 +313,20 @@ impl ConversationFixture {
         }
     }
 
-    /// The prompts the agent read, as far as the test received its reports, each on its lines.
     fn prompts(&self) -> String {
         super::prompts_text(&self.server.prompts())
     }
 
-    /// The prompts the agent read once the reviewer sent every prompt it was to send by now,
-    /// each on its lines.
     fn settled_prompts(&self) -> String {
         self.flush_prompts();
         self.server.mark();
         self.prompts()
     }
 
-    /// How many comment notifications the agent read once the reviewer sent every prompt it was
-    /// to send by now.
     fn settled_wakeups(&self) -> usize {
         self.settled_prompts().matches("get_new_messages").count()
     }
 
-    /// The prompts the agent read, once `count` of them were comment notifications, each on
-    /// its lines.
     fn wait_for_wakeups(&self, count: usize) -> String {
         super::prompts_text(&self.server.wait_for_prompts(
             &format!("{count} comment notifications"),
@@ -423,7 +398,6 @@ fn mcp_posts_notify_a_working_focused_agent_without_recognizing_its_composer(age
             text: "An unfamiliar agent input layout".into(),
         },
     );
-    // The agent draws its screen before the working title Herdr then reads.
     fixture.status(AgentStatus::Working);
     let screen = client.read_agent_screen(&fixture.server.pane_id).unwrap();
     assert!(
@@ -535,7 +509,6 @@ fn mcp_threads_exchange_through_an_isolated_herdr_agent(agent: &str) {
             pane_id: fixture.server.pane_id.clone(), workspace_id: fixture.server.workspace_id.clone(),
             agent: Some(agent.into()), released: true, final_status: None,
         }));
-        // A release event can arrive after the same native session has resumed.
         value(&client, "list_threads", json!({"review": access})).await;
         client.cancel().await.unwrap();
     });
@@ -659,7 +632,6 @@ fn mcp_agent_detection_does_not_reassign_retrieved_comments() {
             released: false,
             final_status: None,
         }));
-        // Round-trip through the worker, then let any wakeup it sent arrive.
         value(&client, "list_threads", json!({"review": access})).await;
         let prompts = fixture.settled_second_prompts(&second);
         assert!(

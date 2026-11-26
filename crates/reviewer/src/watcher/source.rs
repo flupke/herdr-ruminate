@@ -1,5 +1,3 @@
-//! Watch the displayed source even when ignore rules exclude its directory.
-
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
@@ -35,7 +33,6 @@ impl SourceWatch {
         }
         self.path = Some(path);
         self.install()?;
-        // Close the gap between the first read and installing these watches.
         state.notify(&[]);
         Ok(())
     }
@@ -56,11 +53,8 @@ impl SourceWatch {
             .iter()
             .any(|changed| changed != path && path.starts_with(changed))
         {
-            // An ancestor disappeared or was recreated; follow the new directory
-            // identities without watching unrelated ignored subtrees.
             let path = path.clone();
             self.install()?;
-            // What changed between this event and the new watches, they did not see.
             state.notify(&[path]);
         }
         Ok(())
@@ -87,9 +81,6 @@ impl SourceWatch {
             };
             let _ = commands.send(command);
         })?;
-        // Parent watches survive atomic replacement. Ancestor watches discover
-        // recreated parents, including when the source is initially absent. They start from
-        // the root down: a parent that goes and comes back meanwhile, its parent's watch sees.
         let mut parents = Vec::new();
         for parent in path.ancestors().skip(1) {
             parents.push(parent);

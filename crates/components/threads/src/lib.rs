@@ -1,5 +1,3 @@
-//! Review-wide conversation navigation, independent of the file tree.
-
 use component_core::{
     AnyInput, Component, ComponentSubscriptions, EventPublisher, InputMatcher, InputResolution,
     InputScope,
@@ -40,14 +38,11 @@ impl Filter {
     }
 }
 
-/// A stable list of conversations for the whole review.
 pub struct ThreadsComponent {
     events: EventPublisher,
-    /// The navigation mode as last announced; the application owns it.
     mode: ReviewNavigation,
     review_unit: Option<ReviewUnit>,
     projection: SharedThreadProjection,
-    /// The review state of each reviewed file.
     files: Vec<ui_events::FileSummary>,
     selected: Option<ThreadId>,
     filter: Filter,
@@ -84,7 +79,6 @@ impl ThreadsComponent {
             .is_some_and(|book| book.counts().unread > 0)
     }
 
-    /// The threads the filter and search show, in list order.
     fn visible<'a>(&self, book: Option<&'a ReviewThreads>) -> Vec<&'a ReviewThread> {
         let query = self.query.to_lowercase();
         book.into_iter()
@@ -105,7 +99,6 @@ impl ThreadsComponent {
             .collect()
     }
 
-    /// What a thread is about, as its card names it: its file, or its Explore round.
     fn location(thread: &ReviewThread) -> &str {
         thread.path().unwrap_or("Round conversation")
     }
@@ -129,7 +122,6 @@ impl ThreadsComponent {
         }
     }
 
-    /// The position of `id` among the visible threads.
     fn visible_position(&self, id: Option<&ThreadId>) -> Option<usize> {
         let projection = self.projection.read();
         self.visible(projection.threads())
@@ -137,7 +129,6 @@ impl ThreadsComponent {
             .position(|thread| Some(&thread.id) == id)
     }
 
-    /// The visible thread at `index`.
     fn visible_id(&self, index: usize) -> Option<ThreadId> {
         let projection = self.projection.read();
         self.visible(projection.threads())
@@ -241,8 +232,6 @@ impl ThreadsComponent {
         self.files.iter().find(|file| file.path() == path)
     }
 
-    /// Keep a selection the load left visible; otherwise move to the next
-    /// open thread when the selected one was just resolved, or to the first.
     fn loaded(&mut self, event: &ReviewThreadsLoaded) {
         if self.review_unit.as_ref() != Some(&event.review_unit) || event.result.is_err() {
             return;
@@ -399,8 +388,6 @@ impl ThreadsComponent {
     }
 }
 
-/// A focused key: search text while the query is being edited, otherwise a
-/// command from the shortcut table.
 #[derive(Clone, Copy)]
 enum ThreadsInput {
     SearchText(Key),

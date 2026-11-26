@@ -1,5 +1,3 @@
-//! Confirmed bulk review-mark changes and their UI updates.
-
 use super::worker::Worker;
 use component_core::ApplicationEventSender;
 use review_repository::repository::ChangedFile;
@@ -13,7 +11,6 @@ impl Worker {
         messages: &ApplicationEventSender,
     ) {
         let result = self.clear_review_marks(checkpoint);
-        // Even a partial storage failure must be reflected in Files and loaded diffs.
         self.poll(messages);
         self.announce_review_states(messages, |_| true);
         let toast = match result {
@@ -29,8 +26,6 @@ impl Worker {
         let _ = messages.send(toast);
     }
 
-    /// Tell Files and loaded diffs the current review state of the chosen
-    /// files: marks changed without a new comparison reload nothing else.
     pub(super) fn announce_review_states(
         &self,
         messages: &ApplicationEventSender,

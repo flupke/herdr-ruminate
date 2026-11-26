@@ -1,5 +1,3 @@
-//! Typed events shared by review UI components.
-
 mod explore;
 mod threads;
 pub use explore::{
@@ -32,18 +30,14 @@ use review_state::{ReviewProgress, ReviewState, ReviewStatus};
 use review_types::ReviewUnit;
 use toasts::ToastKind;
 
-/// Repository text shown outside the file and diff panes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositoryMetadataChanged {
     pub review_checkpoint: ReviewCheckpoint,
     pub description: String,
-    /// Abbreviated revision identifier, optionally containing ANSI colour escapes.
     pub display_id: String,
-    /// The Linear issues the change names, which the header links to.
     pub issues: Vec<linear_issues::LinearIssue>,
 }
 
-/// Aggregate values shown in the repository header.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FilesOverviewChanged {
     pub progress: ReviewProgress,
@@ -51,7 +45,6 @@ pub struct FilesOverviewChanged {
     pub lines_removed: u64,
 }
 
-/// Search text shown in the status line.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SearchStatusChanged {
     pub query: Option<String>,
@@ -59,18 +52,15 @@ pub struct SearchStatusChanged {
     pub total_matches: usize,
 }
 
-/// Selection and viewport state for one language-server result list.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocationSelection {
     pub operation: Operation,
     pub locations: Vec<SourceLocation>,
-    /// Files the language server has not indexed since they changed on disk.
     pub unindexed_files: usize,
     pub selected: usize,
     pub scroll: usize,
 }
 
-/// One pointer position in terminal and component coordinates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PointerPosition {
     pub terminal_column: u16,
@@ -79,7 +69,6 @@ pub struct PointerPosition {
     pub component_row: u16,
 }
 
-/// One normalized pointer operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PointerInputKind {
     Scroll(isize),
@@ -91,40 +80,33 @@ pub enum PointerInputKind {
     Release,
 }
 
-/// Pointer input routed to the component under the pointer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PointerInput {
     pub kind: PointerInputKind,
     pub position: Option<PointerPosition>,
 }
 
-/// Ask the overlay host to toggle the commit message.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CommitMessageToggleRequested;
 
-/// Ask the revision component to open its selector, as its shortcut does.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RevisionSelectorRequested;
 
-/// The current terminal dimensions used to place modal overlays.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ViewportChanged {
     pub width: u16,
     pub height: u16,
 }
 
-/// The drawable diff-pane dimensions used for cursor visibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DiffViewportChanged {
     pub width: u16,
     pub height: u16,
 }
 
-/// Remove transient diff input state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DiffInputClearRequested;
 
-/// Complete source content loaded for one LSP location.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceContentLoaded {
     pub snapshot_id: String,
@@ -133,14 +115,12 @@ pub struct SourceContentLoaded {
     pub mode: SourceLoadMode,
 }
 
-/// A source-content load failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceContentLoadFailed {
     pub snapshot_id: String,
     pub message: String,
 }
 
-/// How loaded source is presented and whether it becomes the current file.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceLoadMode {
     Preview,
@@ -154,13 +134,11 @@ impl SourceLoadMode {
     }
 }
 
-/// Restrict LSP responses to a temporary source viewer until it closes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceSessionChanged {
     pub snapshot_id: Option<String>,
 }
 
-/// One source position without its operation-specific toast identifier.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LspQueryContext {
     pub path: PathBuf,
@@ -170,14 +148,12 @@ pub struct LspQueryContext {
     pub snapshot_id: String,
 }
 
-/// Ask the overlay host to start one LSP operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LspQueryRequested {
     pub operation: review_lsp::Operation,
     pub query: LspQueryContext,
 }
 
-/// Ask the overlay host to open the source context menu.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContextMenuRequested {
     pub column: u16,
@@ -185,38 +161,32 @@ pub struct ContextMenuRequested {
     pub query: Option<LspQueryContext>,
 }
 
-/// Ask the diff component to preview one LSP result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceLocationPreviewRequested {
     pub location: SourceLocation,
 }
 
-/// Ask the diff component to accept one LSP result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceLocationAccepted {
     pub location: SourceLocation,
 }
 
-/// The LSP location-list overlay became active or inactive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocationListVisibilityChanged {
     pub visible: bool,
 }
 
-/// Add one short application notification.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToastRequested {
     pub text: String,
     pub kind: ToastKind,
 }
 
-/// Expire timed application notifications at this instant.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ToastExpirationTick {
     pub now: Instant,
 }
 
-/// One stable row identity inside a diff presentation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PresentationLocation {
     Context { old_line: u32, new_line: u32 },
@@ -226,7 +196,6 @@ pub enum PresentationLocation {
     GapStart(u32),
 }
 
-/// One restorable location in a review revision or source file.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewLocation {
     LoadedDocument {
@@ -357,60 +326,49 @@ fn same_presentation_line(
     }
 }
 
-/// The current location used as a revision-navigation destination shape.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CurrentReviewLocationChanged {
     pub location: Option<ReviewLocation>,
 }
 
-/// One semantic navigation jump that can be restored through location history.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewLocationJumped {
     pub origin: ReviewLocation,
     pub target: ReviewLocation,
 }
 
-/// Ask the diff component to restore one location after a revision edit.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewLocationRestoreRequested {
     pub location: ReviewLocation,
 }
 
-/// A repository refresh started.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RepositoryRefreshStarted;
 
-/// A repository refresh finished without a new snapshot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RepositoryRefreshFinished;
 
-/// Revision candidates returned from repository work.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RevisionCandidatesLoaded {
     pub direction: review_repository::repository::RevisionDirection,
     pub result: Result<Vec<review_repository::repository::RevisionCandidate>, String>,
 }
 
-/// Identity of one revision-history load requested by the UI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RevisionHistoryLoadId(u64);
 
 impl RevisionHistoryLoadId {
-    /// Create an identity from the component-local sequence number.
     pub const fn new(value: u64) -> Self {
         Self(value)
     }
 }
 
-/// Terminal-rendered revision history returned from repository work.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RevisionHistoryLoaded {
     pub load_id: RevisionHistoryLoadId,
     pub result: Result<Vec<review_repository::repository::RevisionHistoryLine>, String>,
 }
 
-/// How much of one revision of a loaded history is reviewed, computed after the history, one
-/// revision at a time; the reason when it could not be computed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RevisionProgressLoaded {
     pub load_id: RevisionHistoryLoadId,
@@ -418,13 +376,11 @@ pub struct RevisionProgressLoaded {
     pub progress: Result<ReviewProgress, String>,
 }
 
-/// A requested revision edit did not produce a new repository snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RevisionEditFailed {
     pub message: Option<String>,
 }
 
-/// Repository metadata shown in the files pane.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileSummary {
     pub file: ChangedFile,
@@ -434,12 +390,10 @@ pub struct FileSummary {
 }
 
 impl FileSummary {
-    /// Create one file summary before its repository metadata arrives.
     pub fn new(path: impl Into<String>, status: ReviewStatus) -> Self {
         Self::from_changed(&ChangedFile::modified(path.into()), status)
     }
 
-    /// Create a file summary from repository metadata.
     pub fn from_changed(file: &ChangedFile, status: ReviewStatus) -> Self {
         let state = match status {
             ReviewStatus::Unreviewed => ReviewState::unreviewed(file.statistics, None),
@@ -452,7 +406,6 @@ impl FileSummary {
         Self::from_review_state(file, state)
     }
 
-    /// Create a file summary with derived checkpoint-relative state.
     pub fn from_review_state(file: &ChangedFile, state: ReviewState) -> Self {
         Self {
             file: file.clone(),
@@ -462,7 +415,6 @@ impl FileSummary {
         }
     }
 
-    /// Create one temporary source entry for navigation outside the review diff.
     pub fn temporary(
         path: impl Into<String>,
         display_path: impl Into<String>,
@@ -479,23 +431,15 @@ impl FileSummary {
         }
     }
 
-    /// Return the repository path used for review state.
     pub fn path(&self) -> String {
         self.file.review_path().display()
     }
 
-    /// Return the escaped path shown in the files pane.
     pub fn display_path(&self) -> &str {
         &self.file.display_path
     }
 }
 
-/// The current set of files that still need review.
-///
-/// The files component is the only production writer. Other components use
-/// clones of this handle for read-only review and navigation decisions. Before
-/// the first file list arrives, the handle permits paths so mounted consumers
-/// can initialize in any order.
 #[derive(Debug, Default)]
 struct ReviewableFilePaths {
     initialized: bool,
@@ -506,7 +450,6 @@ struct ReviewableFilePaths {
 pub struct ReviewableFiles(Arc<RwLock<ReviewableFilePaths>>);
 
 impl ReviewableFiles {
-    /// Replace the current reviewable paths.
     pub fn replace(&self, paths: HashSet<String>) -> bool {
         let mut current = self
             .0
@@ -520,7 +463,6 @@ impl ReviewableFiles {
         true
     }
 
-    /// Test if one path still needs review.
     pub fn contains(&self, path: &str) -> bool {
         let current = self
             .0
@@ -530,24 +472,20 @@ impl ReviewableFiles {
     }
 }
 
-/// The files that need review changed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReviewableFilesChanged;
 
-/// A complete repository snapshot for the files component.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositoryFilesChanged {
     pub review_checkpoint: ReviewCheckpoint,
     pub files: Vec<FileSummary>,
 }
 
-/// Temporary source files that the diff component currently displays.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TemporaryFilesChanged {
     pub files: Vec<FileSummary>,
 }
 
-/// A completed review-state write for one path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewStateSaved {
     pub review_unit: ReviewUnit,
@@ -555,18 +493,15 @@ pub struct ReviewStateSaved {
     pub result: Result<ReviewState, ()>,
 }
 
-/// Ask for confirmation before clearing this comparison's file review marks.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnreviewAllRequested(pub ReviewCheckpoint);
 
-/// One presented diff row that can anchor a source target.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DisplayedDiffRow {
     pub old_line: Option<u32>,
     pub new_line: Option<u32>,
 }
 
-/// The source-target shape of one displayed diff document.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DisplayedDiffViewport {
     pub path: String,
@@ -575,7 +510,6 @@ pub struct DisplayedDiffViewport {
     pub can_show_file: bool,
 }
 
-/// Displayed diff viewports and the current navigation position.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DisplayedDiffViewportsChanged {
     pub viewports: Vec<DisplayedDiffViewport>,
@@ -583,7 +517,6 @@ pub struct DisplayedDiffViewportsChanged {
     pub current_row: usize,
 }
 
-/// A request to show one source target at its current diff position.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiffTargetJumpRequested {
     pub file_index: usize,
@@ -591,36 +524,30 @@ pub struct DiffTargetJumpRequested {
     pub target: DiffTarget,
 }
 
-/// One animation tick for visible components.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AnimationTick;
 
-/// Diff-owned decorations that affect file-list rendering.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileDecorationsChanged {
     pub notice_paths: Vec<String>,
     pub search_match_paths: Vec<String>,
 }
 
-/// The number of rows available inside the files pane.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FilesViewportChanged {
     pub rows: usize,
 }
 
-/// A request from another component to display one repository path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileSelectionRequested {
     pub path: String,
 }
 
-/// The file that the files component selected.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileSelected {
     pub path: String,
 }
 
-/// Loaded diff content for one repository checkpoint and path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiffContentLoaded {
     pub review_checkpoint: ReviewCheckpoint,
@@ -628,12 +555,9 @@ pub struct DiffContentLoaded {
     pub rows: Vec<DiffRow>,
     pub old_content: Option<Vec<u8>>,
     pub new_content: Option<Vec<u8>>,
-    /// Which hunks are open and which are reviewed; empty for content that
-    /// cannot be reviewed hunk by hunk.
     pub hunks: review_hunks::FileHunks,
 }
 
-/// Immutable input for syntax coloring after text is available to the UI.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HighlightRequest {
     Diff(Arc<DiffContentLoaded>),
@@ -650,20 +574,17 @@ impl HighlightRequest {
     }
 }
 
-/// Syntax colors for one exact loaded document.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HighlightingFinished {
     pub request: HighlightRequest,
     pub highlighted: syntax_highlighting::HighlightedDiff,
 }
 
-/// A failed diff load for one repository checkpoint and path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiffContentLoadFailed {
     pub review_checkpoint: ReviewCheckpoint,
     pub path: String,
 }
 
-/// A terminal draw completed successfully; visible reply observations may be acknowledged.
 #[derive(Clone, Copy, Debug)]
 pub struct FrameRendered;

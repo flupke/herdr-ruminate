@@ -1,6 +1,3 @@
-//! How the reviewer starts a round: whose change it is, then where to follow the round, with the
-//! four buttons of the start screen; and the two buttons of a round on the page, with their keys.
-
 use review_explore::{ChangeAuthor, RoundFront, StartBlock};
 use ui_controls::KeyHint;
 use ui_shortcuts::{
@@ -12,22 +9,17 @@ use ui_theme::Palette;
 use super::flow::ConversationLayout;
 use super::{Control, ExploreComponent};
 
-/// How the reviewer starts a round from the start screen.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct RoundStart {
-    /// A challenger reviews beside the agent.
     pub(super) challenger: bool,
-    /// Where the reviewer follows the round; on the page, it opens once the change is captured.
     pub(super) front: RoundFront,
 }
 
-/// One button of the start screen.
 #[derive(Clone, Copy)]
 pub(super) struct StartButton {
     pub(super) start: RoundStart,
     pub(super) shortcut: ExploreStartShortcut,
     pub(super) label: &'static str,
-    /// What its key does, as the footer says it after the key.
     pub(super) hint: &'static str,
 }
 
@@ -61,7 +53,6 @@ impl StartButton {
         "in the pane with Challenger",
     );
 
-    /// The buttons in the order the start screen shows them.
     pub(super) const ALL: [Self; 4] = [
         Self::START,
         Self::START_WITH_CHALLENGER,
@@ -84,7 +75,6 @@ impl StartButton {
         }
     }
 
-    /// The button that `shortcut` presses.
     pub(super) fn of(shortcut: ExploreStartShortcut) -> Self {
         match shortcut {
             ExploreStartShortcut::Start => Self::START,
@@ -96,24 +86,20 @@ impl StartButton {
 }
 
 impl RoundStart {
-    /// Whether this is the main start, the one button the start screen highlights.
     pub(super) fn is_main(self) -> bool {
         self == StartButton::START.start
     }
 }
 
-/// One button of a round on the page.
 #[derive(Clone, Copy)]
 pub(super) struct PageRoundButton {
     pub(super) label: &'static str,
     pub(super) control: FrontControl,
     pub(super) shortcut: ExploreTurnShortcut,
-    /// What its key does, as the footer says it after the key.
     pub(super) hint: &'static str,
 }
 
 impl PageRoundButton {
-    /// The buttons in the order the pane shows them.
     pub(super) const ALL: [Self; 2] = [
         Self {
             label: "Open the Explore page",
@@ -129,14 +115,12 @@ impl PageRoundButton {
         },
     ];
 
-    /// The button that `shortcut` presses, if it is one of them.
     pub(super) fn of(shortcut: ExploreTurnShortcut) -> Option<Self> {
         Self::ALL
             .into_iter()
             .find(|button| button.shortcut == shortcut)
     }
 
-    /// The footer's hints for the buttons.
     pub(super) fn hints() -> Vec<KeyHint> {
         Self::ALL
             .into_iter()
@@ -146,8 +130,6 @@ impl PageRoundButton {
 }
 
 impl StartButton {
-    /// The footer's hints for the buttons and for whose change it is: none while `block` says
-    /// why no round can start, as their keys then do nothing.
     pub(super) fn hints(block: Option<StartBlock>) -> Vec<KeyHint> {
         if block.is_some() {
             return Vec::new();
@@ -163,9 +145,6 @@ impl StartButton {
         .collect()
     }
 
-    /// The start screen's buttons, after the one that says whose change `author` is; then,
-    /// while `block` says why no round can start, the same buttons inactive and a line that
-    /// says why.
     pub(super) fn lay_out(
         block: Option<StartBlock>,
         author: ChangeAuthor,
@@ -197,7 +176,6 @@ impl StartButton {
 }
 
 impl ExploreComponent {
-    /// Turn over whose change the next round reviews, while the start screen can start one.
     pub(super) fn turn_over_whose(&mut self) {
         if !self.offers_starts() || self.start_block.is_some() {
             return;
@@ -206,19 +184,14 @@ impl ExploreComponent {
     }
 }
 
-/// The key that runs `shortcut`, as the footer shows it with `hint`.
 pub(super) fn key_hint(shortcut: ExploreTurnShortcut, hint: &str) -> Option<KeyHint> {
     let key = ExploreShortcut::Turn(shortcut).keys().next()?;
     Some(KeyHint::new(key.label(), hint))
 }
 
-/// A control that chooses where the reviewer follows a round.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum FrontControl {
-    /// Start a round from the start screen.
     Start(RoundStart),
-    /// Open the Explore page of a round on the page again.
     OpenPage,
-    /// Show the interview of a round on the page in the pane.
     ContinueInPane,
 }

@@ -50,7 +50,6 @@ impl OriginalCode {
             .collect()
     }
 
-    /// The saved code of thread `thread`, a selection of `path`.
     pub(super) fn new(
         thread: ThreadId,
         path: &str,
@@ -65,7 +64,6 @@ impl OriginalCode {
                 code.anchor.new_content.as_deref(),
             )
             .rows;
-        // Preserve the saved excerpt even when an old history lacks full source content.
         let text = rows
             .iter()
             .map(|row| Self::text(&row.diff))

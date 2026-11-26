@@ -1,5 +1,3 @@
-//! Syntax colors for source code and unified diffs.
-
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -10,12 +8,8 @@ use syntect::highlighting::Theme;
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
-/// Extensions the bundled syntaxes leave out, each with the extension of a syntax that reads
-/// it: JavaScript's lists only `js`, and no syntax lists `jsx`. The syntax that lists them,
-/// JavaScript (Babel), needs Oniguruma, which the pure-Rust regex build leaves out.
 const READ_AS: &[(&str, &str)] = &[("mjs", "js"), ("cjs", "js"), ("jsx", "tsx")];
 
-/// One syntax-colored part of a source line.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Token {
     pub text: String,
@@ -31,7 +25,6 @@ impl Token {
     }
 }
 
-/// One diff row and its syntax-colored code.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HighlightedRow {
     pub diff: DiffRow,
@@ -65,7 +58,6 @@ pub struct HighlightedDiff {
     pub file: Option<HighlightedFile>,
 }
 
-/// Applies the configured syntax colors to source code and diff rows.
 #[derive(Clone)]
 pub struct SyntaxHighlighter {
     theme: Theme,
@@ -187,7 +179,6 @@ impl SyntaxHighlighter {
         let set = Self::syntaxes();
         set.find_syntax_by_extension(file_name)
             .or_else(|| {
-                // A code block's language, such as `jsx`, is a name with no extension.
                 let extension = path
                     .extension()
                     .and_then(|extension| extension.to_str())

@@ -1,7 +1,3 @@
-//! The pane while another front end, such as the Explore page, answers the
-//! round it shows. The session sends the pane the same events as for its own
-//! answers; these tests replay them.
-
 use std::sync::Arc;
 
 use component_core::ComponentEventBus;
@@ -37,7 +33,6 @@ fn question(id: &str) -> Question {
     .unwrap()
 }
 
-/// The agent's turn for `request`, after `answer`, asking `next`.
 fn agent_turn(
     exploration: &Exploration,
     request: &str,
@@ -58,7 +53,6 @@ fn agent_turn(
     }
 }
 
-/// A saved round whose first question waits for the reviewer.
 fn asked_round() -> ExploreRound {
     let mut exploration = Exploration::new(Arc::new(Comparison {
         checkpoint: ReviewCheckpoint::new("review", "checkpoint"),
@@ -85,8 +79,6 @@ fn asked_round() -> ExploreRound {
     round
 }
 
-/// What the session saves and announces when another front end answers the
-/// first question with its first choice.
 fn answered_elsewhere(round: &ExploreRound) -> (TurnRequest, ExploreRound) {
     let mut copy = round.exploration.clone();
     let request = copy
@@ -111,7 +103,6 @@ struct Pane {
 }
 
 impl Pane {
-    /// The pane, reopened on `round`.
     fn showing(round: &ExploreRound) -> Self {
         let mut bus = ComponentEventBus::<Action>::new();
         let target = bus.mount(|events| {
@@ -134,7 +125,6 @@ impl Pane {
         self.bus.get_mut::<ExploreComponent>(self.target).unwrap()
     }
 
-    /// The rows of the selected question's answers and status.
     fn answers(&mut self) -> Vec<String> {
         let component = self.component();
         let question = component.question().unwrap().clone();
@@ -183,7 +173,6 @@ fn the_pane_can_still_send_an_answer_that_the_saved_round_refuses() {
     let component = pane.component();
     component.editor = comment_editor::CommentEditor::new("And add a test.", &component.keymap);
 
-    // The question is answered, so no choice is selected: the pane sends free text.
     let actions = component.answer(Control::Send);
 
     let [Action::Explore(review_explore::Command::Turn(second))] = actions.as_slice() else {
@@ -270,8 +259,6 @@ fn a_failed_delivery_of_an_answer_from_elsewhere_leaves_the_pane_unchanged() {
     assert!(component.status.is_empty(), "{}", component.status);
 }
 
-/// What the session saves and announces when the Explore page starts a round: the kickoff,
-/// and the round it opens.
 fn started_elsewhere(challenger: bool) -> (TurnRequest, ExploreRound) {
     let mut exploration = Exploration::new(asked_round().exploration.comparison);
     exploration.challenger = challenger;
@@ -284,7 +271,6 @@ fn started_elsewhere(challenger: bool) -> (TurnRequest, ExploreRound) {
 }
 
 impl Pane {
-    /// The pane on its start screen.
     fn starting() -> Self {
         let mut bus = ComponentEventBus::<Action>::new();
         let target = bus.mount(|events| {
@@ -495,8 +481,6 @@ fn a_round_that_could_not_start_on_the_page_leaves_the_pane_on_its_start_screen(
 }
 
 impl Pane {
-    /// The pane answers the first question itself, and the session saves the answer: the agent
-    /// works on its turn. Returns the turn and the saved round.
     fn answer_first_question(&mut self, round: &ExploreRound) -> (TurnRequest, ExploreRound) {
         let component = self.component();
         component.turns[0].choice = 0;
@@ -779,7 +763,6 @@ fn the_pane_follows_an_earlier_answer_cancelled_on_the_page_while_it_cancels_the
     assert!(saved.post(&later).unwrap());
     saved.revision += 1;
     let mut pane = Pane::showing(&saved);
-    // The reviewer's Cancel answer in the pane is on its way.
     pane.component().cancelling = Some(later.answer.as_ref().unwrap().id.clone());
     let mut cancelled = saved;
     cancelled.cancel_answers_from(&first_id).unwrap();

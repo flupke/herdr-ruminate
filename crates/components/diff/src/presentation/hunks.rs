@@ -1,5 +1,3 @@
-//! Reviewed hunks folded into the open diff, and the marks each hunk offers.
-
 use std::ops::Range;
 
 use ratatui::style::Color;
@@ -10,17 +8,13 @@ use ui_events::PresentationLocation;
 
 use super::{DiffPresentation, PresentedRow};
 
-/// The review control a hunk shows in its top-right corner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HunkBadge {
-    /// An open hunk; `since_review` when it rewrites reviewed lines.
     Open { since_review: bool },
-    /// A reviewed hunk.
     Reviewed,
 }
 
 impl DiffPresentation {
-    /// Fold each reviewed hunk into one row at its place in the current file.
     pub(crate) fn with_hunks(mut self, hunks: FileHunks) -> Self {
         let lines = hunks
             .reviewed
@@ -34,10 +28,7 @@ impl DiffPresentation {
         self
     }
 
-    /// Replace the hunk's current lines, in unchanged sections or in an open
-    /// hunk's context, with one folded row.
     fn fold_reviewed(&mut self, hunk: usize, lines: &Range<u32>) {
-        // Rows number lines from one.
         let (first, end) = (lines.start + 1, lines.end + 1);
         let source = &self.source;
         let mut rows = Vec::with_capacity(self.rows.len() + 2);
@@ -63,7 +54,6 @@ impl DiffPresentation {
         self.rows.insert(index, PresentedRow::ReviewedHunk { hunk });
     }
 
-    /// The folded reviewed hunk that holds a location's current line.
     pub(crate) fn fold_at(&self, location: PresentationLocation) -> Option<usize> {
         match location {
             PresentationLocation::NewLine(line)
@@ -72,7 +62,6 @@ impl DiffPresentation {
         }
     }
 
-    /// The folded reviewed hunk that holds the zero-based current line.
     pub(crate) fn folded_row_holding(&self, line: u32) -> Option<usize> {
         self.rows.iter().position(|row| match row {
             PresentedRow::ReviewedHunk { hunk } => {
@@ -99,7 +88,6 @@ impl DiffPresentation {
         }
     }
 
-    /// Show the rows of a folded reviewed hunk.
     pub(crate) fn expand_reviewed(&mut self, index: usize) -> bool {
         let Some(PresentedRow::ReviewedHunk { hunk }) = self.rows.get(index) else {
             return false;
@@ -141,12 +129,10 @@ impl DiffPresentation {
         })
     }
 
-    /// The full-diff row behind an expanded reviewed row.
     pub(crate) fn reviewed_row(&self, hunk: usize, row: usize) -> &DiffRow {
         &self.hunks.reviewed[hunk].rows[row]
     }
 
-    /// The number of changed lines a folded reviewed hunk stands for.
     pub(crate) fn reviewed_changes(&self, hunk: usize) -> (usize, usize) {
         let rows = &self.hunks.reviewed[hunk].rows;
         let count = |added: bool| {
@@ -161,12 +147,10 @@ impl DiffPresentation {
         (count(true), count(false))
     }
 
-    /// The control shown in the top-right corner of the hunk that starts at `index`.
     pub(crate) fn hunk_badge(&self, index: usize) -> Option<HunkBadge> {
         match self.rows.get(index)? {
             PresentedRow::Diff { source, .. } => {
                 let (hunk, open) = self.open_hunk(*source)?;
-                // Only folded rows and unchanged lines separate hunks.
                 let previous_hunk = self.rows[..index].iter().rev().find_map(|row| match row {
                     PresentedRow::Diff { source, .. } => Some(self.source_hunks[*source]),
                     _ => None,
@@ -182,7 +166,6 @@ impl DiffPresentation {
         }
     }
 
-    /// The mark that toggles the review of the hunk containing `index`.
     pub(crate) fn hunk_mark(&self, index: usize) -> Option<HunkMark> {
         match self.rows.get(index)? {
             PresentedRow::Diff { source, .. } => {
@@ -196,19 +179,16 @@ impl DiffPresentation {
         }
     }
 
-    /// The open hunk a diff row belongs to, with its one-based number.
     fn open_hunk(&self, source: usize) -> Option<(usize, &OpenHunk)> {
         let hunk = self.source_hunks[source]?;
         Some((hunk, self.hunks.open.get(hunk.checked_sub(1)?)?))
     }
 
-    /// How many changed lines are reviewed, once some are.
     pub(crate) fn line_count(&self) -> Option<LineCount> {
         self.hunks.count()
     }
 }
 
-/// The parts of an unchanged section outside one-based `folded` lines.
 fn split_gap(
     start: u32,
     mut lines: Vec<Vec<Token>>,

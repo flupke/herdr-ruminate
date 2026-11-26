@@ -1,5 +1,3 @@
-//! Inline multiline editor for review comments.
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -23,21 +21,15 @@ mod wrapping_tests;
 
 pub use review_types::EditorKeymap;
 
-/// An editor with its own undo history, Vim state, and scroll position.
 pub struct CommentEditor {
     state: RefCell<EditorState>,
     handler: EditorEventHandler,
-    /// The keymap `handler` implements; it follows `setting` before each key.
     keymap: EditorKeymap,
     setting: KeymapSetting,
     viewport: RefCell<EditorViewport>,
-    /// The text stays on one line: Enter is left to the view, and no key or paste breaks a line.
     single_line: bool,
 }
 
-/// The keymap chosen for every editor that shares this setting.
-///
-/// Clones share one value, so switching the keymap in one editor switches all of them.
 #[derive(Clone, Debug, Default)]
 pub struct KeymapSetting(Rc<Cell<EditorKeymap>>);
 
@@ -78,8 +70,6 @@ impl CommentEditor {
         }
     }
 
-    /// An editor for a one-line value, such as a setting, with the cursor after `text`. Enter
-    /// is left to the view that saves the value, and no key or paste breaks the line.
     pub fn single_line(text: &str, setting: &KeymapSetting) -> Self {
         let mut editor = Self::new(&text.replace(['\r', '\n'], " "), setting);
         editor.single_line = true;
@@ -160,7 +150,6 @@ impl CommentEditor {
         self.setting.set(keymap);
     }
 
-    /// Adopt a keymap another editor switched to, keeping this editor inserting.
     fn follow_setting(&mut self) {
         let keymap = self.setting.get();
         if keymap != self.keymap {
@@ -168,11 +157,9 @@ impl CommentEditor {
         }
     }
 
-    /// Change keymaps, entering Vim Normal mode only when `vim_normal` asks for it.
     fn switch_keymap(&mut self, keymap: EditorKeymap, vim_normal: bool) {
         let state = self.state.get_mut();
         let cursor = state.cursor;
-        // Finish the current insert/search/selection and discard pending Vim keys.
         self.handler = EditorEventHandler::vim_mode();
         self.handler.on_key_event(Key::Escape.to_terminal(), state);
         if keymap == EditorKeymap::Regular || !vim_normal {
@@ -194,8 +181,7 @@ impl CommentEditor {
             self.handler.on_paste_event(text, state);
             return;
         }
-        // Edtui pastes after the cursor (Vim p), including in Insert mode.
-        // Its public insertion actions preserve the actual insert position.
+        // Edtui pastes after the cursor (Vim `p`), in Insert mode too.
         let cursor = state.cursor;
         SwitchMode(EditorMode::Normal).execute(state);
         SwitchMode(EditorMode::Insert).execute(state);
@@ -209,8 +195,6 @@ impl CommentEditor {
         }
     }
 
-    /// Render an independent editor viewport suitable for insertion into a diff. An unfocused
-    /// editor keeps its text and scroll position but draws no cursor.
     pub fn render(&self, area: Rect, buffer: &mut Buffer, palette: Palette, focused: bool) {
         if area.is_empty() {
             return;
@@ -224,15 +208,10 @@ impl CommentEditor {
         );
     }
 
-    /// A bottom border carrying the editing mode on the left and the keymap hint on the right.
-    ///
-    /// `width` counts the border cells between the caller's corners. Labels that do not fit
-    /// are dropped, hint first.
     pub fn status_border(&self, width: u16, border: Style, palette: Palette) -> Line<'static> {
         let mode = if self.keymap == self.setting.get() {
             self.mode()
         } else {
-            // follow_setting switches to Insert before the next key.
             "Insert"
         };
         let (mode, hint) = match self.setting.get() {
@@ -255,7 +234,6 @@ impl CommentEditor {
         if labels.is_empty() {
             return Line::from(rule(width));
         }
-        // The first gap after the mode takes the spare width, pushing the hint right.
         let spare = width - labels_width(&labels) - labels.len() - 1;
         let mut spans = vec![rule(1)];
         for (index, label) in labels.into_iter().enumerate() {

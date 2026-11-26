@@ -1,5 +1,3 @@
-//! The files that changed on disk, for the language servers.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
@@ -8,17 +6,12 @@ use notify::event::ModifyKind;
 use notify::{Event, EventKind};
 use review_lsp::{FileChange, FileChangeKind, FileChangeSender};
 
-/// The files that changed since the language servers last heard, sent with each refresh.
 #[derive(Default)]
 pub(super) struct FileChanges {
-    /// Each changed path, and whether it appeared since.
     paths: Mutex<BTreeMap<PathBuf, bool>>,
 }
 
 impl FileChanges {
-    /// Records the paths of `event` that `includes` keeps, given a path and whether it is a
-    /// directory: the files of the working tree. A directory that appears, moved in or
-    /// created, stands for the files it holds.
     pub(super) fn record(&self, event: &Event, includes: impl Fn(&Path, bool) -> bool) {
         let appeared = matches!(
             event.kind,
@@ -42,7 +35,6 @@ impl FileChanges {
         }
     }
 
-    /// Sends the changes recorded so far, each as the disk holds it now.
     pub(super) fn send(&self, sender: &FileChangeSender) {
         let changes = self.take();
         if !changes.is_empty() {
@@ -69,14 +61,11 @@ impl FileChanges {
     }
 }
 
-/// Whether `path` is a directory itself, not a link to one.
 fn is_directory(path: &Path) -> bool {
     path.symlink_metadata()
         .is_ok_and(|metadata| metadata.is_dir())
 }
 
-/// The files under `directory` that `includes` keeps, in the directories it keeps. Links are
-/// not followed: a link to a directory counts as a file, as the watcher sees it.
 fn files_under(directory: &Path, includes: &impl Fn(&Path, bool) -> bool) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let mut directories = vec![directory.to_owned()];

@@ -98,7 +98,6 @@ fn a_refresh_publishes_files_the_documents_can_load_then_restores_explore(kind: 
         .iter()
         .find_map(|event| event.downcast_ref::<RepositoryFilesChanged>())
         .unwrap();
-    // The files event can only be acted on once the documents hold its snapshot.
     fixture.perform([load_diff(&files.review_checkpoint, "src/lib.rs")]);
     let loaded = fixture.wait_for::<DiffContentLoaded>();
     assert_eq!(loaded.review_checkpoint, files.review_checkpoint);
@@ -109,7 +108,6 @@ fn a_refresh_publishes_files_the_documents_can_load_then_restores_explore(kind: 
 
     fixture.files.write("src/lib.rs", b"pub fn changed() {}\n");
     let events = fixture.refresh();
-    // The same review keeps its restored Explore round.
     assert_eq!(
         event_names(&events),
         ["metadata", "files", "refresh finished"]
@@ -348,7 +346,6 @@ mod explore_page {
 
     use super::*;
 
-    /// The place of the tests' review pane.
     fn place() -> PanePlace {
         PanePlace {
             workspace: WorkspaceId("w1".into()),
@@ -356,7 +353,6 @@ mod explore_page {
         }
     }
 
-    /// A reviewer's page, served for the review pane at [`place`] under `state`.
     fn host(state: &Path) -> PageHost {
         let round = RoundPublisher::default();
         let commands = CommandSender::new(|_, reply| {
@@ -373,8 +369,6 @@ mod explore_page {
         .unwrap()
     }
 
-    /// A named pipe at `path`, and what its writers write until the last one closes it, read
-    /// on another thread.
     fn read_pipe(path: &Path) -> mpsc::Receiver<String> {
         let made = std::process::Command::new("mkfifo")
             .arg(path)
@@ -384,7 +378,6 @@ mod explore_page {
         let (sender, received) = mpsc::channel();
         let path = path.to_owned();
         std::thread::spawn(move || {
-            // Opening a pipe for reading waits for its first writer.
             let mut text = String::new();
             std::fs::File::open(path)
                 .unwrap()
@@ -395,8 +388,6 @@ mod explore_page {
         received
     }
 
-    /// Opens the page of `host` with a browser, written under `state`, that writes the address
-    /// it opens to `address_file`, then exits with `status`.
     fn opener(host: &PageHost, state: &Path, address_file: &Path, status: u8) -> PageOpener {
         let script = state.join("browser");
         std::fs::write(
@@ -437,7 +428,6 @@ mod explore_page {
     fn the_pane_opens_its_own_page_when_a_later_reviewer_of_its_tab_holds_the_record() {
         let pages = tempfile::tempdir().unwrap();
         let own = host(pages.path());
-        // Another reviewer started in the same tab, by hand or from a pane moved there.
         let later = host(pages.path());
         let address_file = pages.path().join("address_file");
         let addresses = read_pipe(&address_file);
@@ -481,7 +471,6 @@ mod explore_page {
         assert!(failure.reason.contains("not served"), "{}", failure.reason);
     }
 
-    /// Network access on the loopback interface, which stands in for a network interface.
     fn loopback() -> NetworkAccess {
         let mut access = NetworkAccess::default();
         access.set_interface(if cfg!(target_os = "linux") {
@@ -493,14 +482,11 @@ mod explore_page {
         access
     }
 
-    /// The address of `url`, an address of the page on the network.
     fn socket(url: &str) -> std::net::SocketAddr {
         let rest = url.strip_prefix("http://").unwrap();
         rest[..rest.find('/').unwrap()].parse().unwrap()
     }
 
-    /// Effects that apply the network settings to the page of `host`, with the loopback
-    /// interface and any free port saved, and the address the page got there.
     fn sharing(host: &PageHost) -> (EffectsFixture, String) {
         let mut fixture = EffectsFixture::new(RepoType::Git);
         let access = loopback();
@@ -602,7 +588,6 @@ mod explore_page {
         assert!(std::net::TcpStream::connect(socket(&url)).is_ok());
     }
 
-    /// A tunnel whose `cloudflared` is not installed, for tests that open none.
     fn missing_tunnel(state: &Path) -> TunnelProgram {
         let mut tunnel = TunnelProgram::cloudflared(test_fork_tools().wrapper());
         tunnel.program = state.join("no-cloudflared").into_os_string();
@@ -611,10 +596,6 @@ mod explore_page {
 
     const TUNNEL_HOST: &str = "quiet-river-stone-lamp.trycloudflare.com";
 
-    /// A stand-in for `cloudflared` under `state`, started through the reviewer's own
-    /// `fork-exec`: it holds the named pipe `cloudflared.alive` open for writing, writes its
-    /// process ID, prints the tunnel's address as `cloudflared` does, and runs until it is
-    /// stopped, when the pipe's reader sees its end.
     fn stand_in_tunnel(state: &Path) -> TunnelProgram {
         let program = state.join("cloudflared");
         std::fs::write(
@@ -632,7 +613,6 @@ mod explore_page {
         tunnel
     }
 
-    /// The tunnel state the pane hears next.
     fn tunnel_state(fixture: &mut EffectsFixture) -> TunnelState {
         let ExplorePageTunnel(state) = fixture.wait_for::<ExplorePageTunnel>();
         state

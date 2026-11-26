@@ -1,4 +1,3 @@
-//! Read-only changed-file tree for a checkpoint-bound Explore preview.
 use std::{cell::Cell, collections::HashSet};
 
 use component_core::InputResolution;
@@ -15,7 +14,6 @@ pub struct PreviewFile {
     pub required: u64,
 }
 
-/// File selection, scrolling, and drawing shared with the Files tree's model.
 pub struct FilePreviewList {
     files: Vec<PreviewFile>,
     tree: FileTree,

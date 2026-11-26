@@ -1,27 +1,20 @@
-//! Starting a round from the pane: Start and Start with Challenger also open the round's
-//! Explore page in the browser, Start in the pane and Start in the pane with Challenger do not.
-
 use super::*;
 use crate::ExplorePageAction;
 use review_explore_page_opening::PageNotOpened;
 
 const PAGE: &str = "http://127.0.0.1:41234/?token=0123456789abcdef0123456789abcdef";
 
-/// One way to start a round from the start screen.
 #[derive(Clone, Copy, Debug)]
 enum Trigger {
     Key(char),
     Button(&'static str),
 }
 
-/// The four starts: how to trigger each, whether it has a Challenger, and whether it opens
-/// the page.
 const STARTS: [(Trigger, bool, bool); 8] = [
     (Trigger::Key('s'), false, true),
     (Trigger::Key('S'), true, true),
     (Trigger::Key('p'), false, false),
     (Trigger::Key('P'), true, false),
-    // Two spaces: the status line above it reads " Start a question-first review".
     (Trigger::Button(" Start  "), false, true),
     (Trigger::Button(" Start with Challenger "), true, true),
     (Trigger::Button(" Start in the pane "), false, false),
@@ -39,7 +32,6 @@ fn opens_page(actions: &[Action]) -> bool {
 }
 
 impl ExploreUi {
-    /// Start a round with `trigger`; returns the actions of the start and of the capture.
     fn start_with(&mut self, trigger: Trigger) -> (Vec<Action>, Vec<Action>) {
         let started = match trigger {
             Trigger::Key(key) => self.app.update(UserInput::Key(Key::Char(key))),

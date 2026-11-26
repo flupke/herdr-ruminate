@@ -1,5 +1,3 @@
-//! Complete code frames sized before the containing conversation wraps its rows.
-
 use ratatui_legacy::style::{Modifier, Style};
 use ratatui_legacy::text::{Line, Span};
 use ratatui_markdown::markdown::{MarkdownBlock, MarkdownRenderer, RenderHooks};
@@ -127,7 +125,6 @@ impl CodeBlocks {
 
 impl RenderHooks for CodeBlocks {
     fn render_code_block(&self, language: &str, content: &str) -> Option<Vec<Line<'static>>> {
-        // Leave room for at least one double-width glyph inside a padded frame.
         let framed = self.width >= 6;
         let inner = usize::from(self.width) - if framed { 4 } else { 0 };
         let mut lines = Vec::new();

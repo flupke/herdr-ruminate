@@ -1,16 +1,8 @@
-//! The diff viewer's search: the query, its matches across every loaded
-//! document, and the background request that computes them.
-//!
-//! The viewer passes in its documents and the reviewer's input, and applies the
-//! returned [`Intent`]s in order: it moves the cursor, starts or cancels
-//! background work, and republishes the search status.
-
 use std::sync::Arc;
 
 use text_search::{Position, Request, Results};
 use ui_events::SearchStatusChanged;
 
-/// A place in the searched documents, ordered by document, then position.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Location {
     pub document_index: usize,
@@ -18,49 +10,35 @@ pub struct Location {
     pub position: Position,
 }
 
-/// One document the viewer shows, as search sees it.
 pub trait SearchedDocument {
     fn path(&self) -> &str;
 
-    /// The presented text; search asks for it only when a query needs it.
     fn text(&self) -> Arc<text_search::Document>;
 }
 
-/// Which way to move from the cursor to the next match.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Direction {
     Forward,
     Backward,
 }
 
-/// One change the reviewer makes while typing the query.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Edit<'a> {
     Type(char),
     Backspace,
-    /// Pasted text joins the query on one line.
     Paste(&'a str),
-    /// Keep the query and its matches, and stop editing.
     Accept,
-    /// Drop the search and go back to where it started.
     Cancel,
 }
 
-/// What the viewer must do after a search input, in order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Intent {
-    /// Move the cursor; `remember` records the move in location history.
     Jump { to: Location, remember: bool },
-    /// Hand this request to the background worker.
     Request(Request),
-    /// Stop the background request this search was waiting for.
     CancelRequest,
-    /// Republish the search status line, and with `files` the list of files
-    /// that contain matches.
     Status { files: bool },
 }
 
-/// The diff viewer's search, inactive until the reviewer begins one.
 #[derive(Debug, Default)]
 pub struct Search {
     active: Option<ActiveSearch>,
@@ -79,7 +57,6 @@ struct ActiveSearch {
 }
 
 impl Search {
-    /// Start typing a new query from `origin`, replacing any previous search.
     pub fn begin_typing<D: SearchedDocument>(
         &mut self,
         origin: Location,
@@ -88,8 +65,6 @@ impl Search {
         self.begin(String::new(), true, origin, documents)
     }
 
-    /// Search for `word` (the word under the cursor at `origin`) and move
-    /// straight to its next occurrence, replacing any previous search.
     pub fn find_word<D: SearchedDocument>(
         &mut self,
         word: String,
@@ -128,7 +103,6 @@ impl Search {
         intents
     }
 
-    /// Apply one edit to the query being typed; ignored once editing ends.
     pub fn edit<D: SearchedDocument>(&mut self, edit: Edit<'_>, documents: &[D]) -> Vec<Intent> {
         let Some(search) = self.active.as_mut().filter(|search| search.editing) else {
             return Vec::new();
@@ -161,7 +135,6 @@ impl Search {
         intents
     }
 
-    /// Move from `current` to the next or previous match, wrapping around.
     pub fn step(&self, direction: Direction, current: Option<&Location>) -> Vec<Intent> {
         let jump = self
             .active
@@ -174,7 +147,6 @@ impl Search {
             .collect()
     }
 
-    /// Drop the search without moving the cursor.
     pub fn clear(&mut self) -> Vec<Intent> {
         let mut intents = self.cancel_pending();
         self.active = None;
@@ -182,7 +154,6 @@ impl Search {
         intents
     }
 
-    /// Recompute matches after the documents changed.
     pub fn refresh<D: SearchedDocument>(&mut self, documents: &[D]) -> Vec<Intent> {
         self.active
             .as_mut()
@@ -191,9 +162,6 @@ impl Search {
             .collect()
     }
 
-    /// Recompute matches after one more document finished loading, and keep
-    /// following the first match while the query or the repository is still
-    /// changing.
     pub fn documents_loaded<D: SearchedDocument>(&mut self, documents: &[D]) -> Vec<Intent> {
         let Some(search) = &mut self.active else {
             return Vec::new();
@@ -205,22 +173,18 @@ impl Search {
         intents
     }
 
-    /// The viewer started loading every document so the search covers them.
     pub fn wait_for_repository(&mut self) {
         if let Some(search) = &mut self.active {
             search.waiting_for_repository = true;
         }
     }
 
-    /// No document is loading any more.
     pub fn repository_loaded(&mut self) {
         if let Some(search) = &mut self.active {
             search.waiting_for_repository = false;
         }
     }
 
-    /// Continue after the viewer was hidden: the shared worker may have
-    /// replaced this search's request with another viewer's.
     pub fn resume<D: SearchedDocument>(&mut self, documents: &[D]) -> Vec<Intent> {
         match self
             .active
@@ -232,10 +196,6 @@ impl Search {
         }
     }
 
-    /// Accept background results in the viewer the reviewer is looking at.
-    ///
-    /// Results for another request are ignored. Results computed from
-    /// documents that changed since are replaced by a fresh request.
     pub fn complete<D: SearchedDocument>(
         &mut self,
         results: &Results,
@@ -259,8 +219,6 @@ impl Search {
         intents
     }
 
-    /// Keep background results in a viewer the reviewer is not looking at,
-    /// without moving it.
     pub fn retain<D: SearchedDocument>(&mut self, results: &Results, documents: &[D]) {
         let Some((search, freshness)) = self.awaited(results, documents) else {
             return;
@@ -286,7 +244,6 @@ impl Search {
         self.active.as_ref().map(|search| search.query.as_str())
     }
 
-    /// The status line for a cursor at `current`.
     pub fn status(&self, current: Option<&Location>) -> SearchStatusChanged {
         let Some(search) = &self.active else {
             return SearchStatusChanged::default();
@@ -301,7 +258,6 @@ impl Search {
         }
     }
 
-    /// Paths with at least one match, in document order.
     pub fn match_paths(&self) -> Vec<String> {
         let Some(search) = &self.active else {
             return Vec::new();
@@ -324,8 +280,6 @@ impl Search {
             .collect()
     }
 
-    /// Whether the search is waiting for these results, and whether they
-    /// still describe its documents.
     fn awaited<D: SearchedDocument>(
         &mut self,
         results: &Results,
@@ -345,7 +299,6 @@ impl Search {
     }
 }
 
-/// Whether awaited results were computed from the current documents.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Freshness {
     Current,
@@ -408,7 +361,6 @@ impl ActiveSearch {
             .collect();
     }
 
-    /// Follow the query from where the search started.
     fn jump_from_origin(&self) -> Option<Intent> {
         let to = if self.query.is_empty() {
             Some(self.origin.clone())

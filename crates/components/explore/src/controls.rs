@@ -25,7 +25,6 @@ impl ControlVisual {
     }
 }
 
-/// Control labels share row measurement in pinned and scrolling layouts.
 #[derive(Clone)]
 pub(super) struct Button {
     pub(super) text: String,

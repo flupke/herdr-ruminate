@@ -1,5 +1,3 @@
-//! Shared changed-file list layout and tree interaction for Files and Explore.
-
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

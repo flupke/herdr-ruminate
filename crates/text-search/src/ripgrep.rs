@@ -14,7 +14,6 @@ impl Default for Engine {
             searcher: SearcherBuilder::new()
                 .line_number(false)
                 .binary_detection(BinaryDetection::none())
-                // The input is already UTF-8; preserve BOM bytes in columns.
                 .bom_sniffing(false)
                 .build(),
         }
@@ -30,7 +29,6 @@ impl Engine {
         if cancelled() {
             return None;
         }
-        // A presented row can contain newlines, but queries must not cross rows.
         if request.query.contains('\n') {
             return request.search_unless(cancelled);
         }

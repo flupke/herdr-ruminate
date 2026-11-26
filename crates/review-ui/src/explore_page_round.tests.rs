@@ -1,7 +1,3 @@
-//! A round on the Explore page: started with Start or Start with Challenger, or on the page,
-//! the pane shows no interview, only that the round runs on the page, its state, a button that
-//! opens the page again, and the page's address. "Continue in the pane" shows the interview.
-
 use super::recovery::{restore, round, saved};
 use super::*;
 use crate::ExplorePageAction;
@@ -10,7 +6,6 @@ use review_explore::{ExploreViewState, RoundFront, ViewSave};
 const RUNS_ON_PAGE: &str = "runs on the Explore page";
 
 impl ExploreUi {
-    /// Whether the pane shows the round as a round on the page.
     fn shows_page_round(&self) -> bool {
         let text = self.text();
         text.contains(RUNS_ON_PAGE)

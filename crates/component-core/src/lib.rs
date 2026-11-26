@@ -1,5 +1,3 @@
-//! Typed component mounting, event publication, and event delivery.
-
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -9,12 +7,10 @@ use std::sync::Arc;
 
 const MAX_EVENTS_PER_PUBLICATION: usize = 1_024;
 
-/// An event that the application can deliver to components.
 pub trait ApplicationEvent: Any + Send + Sync + 'static {}
 
 impl<T> ApplicationEvent for T where T: Any + Send + Sync + 'static {}
 
-/// One type-erased event value for transport and event-bus delivery.
 #[derive(Clone)]
 pub struct EventEnvelope {
     value: Arc<dyn Any + Send + Sync>,
@@ -23,7 +19,6 @@ pub struct EventEnvelope {
 }
 
 impl EventEnvelope {
-    /// Erase an event value for transport.
     pub fn new<E>(event: E) -> Self
     where
         E: ApplicationEvent,
@@ -43,7 +38,6 @@ impl EventEnvelope {
         self.type_name
     }
 
-    /// Borrow the concrete event value when its type matches.
     pub fn downcast_ref<E>(&self) -> Option<&E>
     where
         E: ApplicationEvent,
@@ -61,14 +55,12 @@ impl std::fmt::Debug for EventEnvelope {
     }
 }
 
-/// A handle that publishes component events through the owning event bus.
 #[derive(Clone)]
 pub struct EventPublisher {
     pending_events: Weak<RefCell<VecDeque<EventEnvelope>>>,
 }
 
 impl EventPublisher {
-    /// Publish an event after the current component handler returns.
     pub fn publish<E>(&self, event: E)
     where
         E: ApplicationEvent,
@@ -89,7 +81,6 @@ impl std::fmt::Debug for EventPublisher {
     }
 }
 
-/// A thread-safe handle that sends events from background work to the application loop.
 #[derive(Clone)]
 pub struct ApplicationEventSender(crossbeam_channel::Sender<EventEnvelope>);
 
@@ -98,7 +89,6 @@ impl ApplicationEventSender {
         Self(sender)
     }
 
-    /// Fails only after the application loop stopped receiving events.
     pub fn send<E>(&self, event: E) -> Result<(), crossbeam_channel::SendError<EventEnvelope>>
     where
         E: ApplicationEvent,
@@ -122,22 +112,18 @@ impl std::fmt::Debug for ApplicationEventSender {
     }
 }
 
-/// The type-erased result of one component handler.
 #[derive(Debug, Eq, PartialEq)]
 pub struct DispatchResult<A> {
     actions: Vec<A>,
 }
 
 impl<A> DispatchResult<A> {
-    /// Return the actions requested by the handler.
     pub fn into_actions(self) -> Vec<A> {
         self.actions
     }
 }
 
-/// Convert a typed handler result into an event-bus result.
 pub trait IntoDispatchResult<A> {
-    /// Convert this value.
     fn into_dispatch_result(self) -> DispatchResult<A>;
 }
 
@@ -155,19 +141,14 @@ impl<Action> IntoDispatchResult<Action> for Vec<Action> {
     }
 }
 
-/// The result of testing one input subscription.
 #[derive(Debug, Eq, PartialEq)]
 pub enum InputResolution<T> {
-    /// This subscription does not match the input.
     NoMatch,
-    /// This subscription needs more input before it can decide.
     AwaitingMoreInput,
-    /// This subscription matched and produced the handler input.
     Matched(T),
 }
 
 impl<T> InputResolution<T> {
-    /// Convert a matched value, keeping the other outcomes.
     pub fn map<U>(self, convert: impl FnOnce(T) -> U) -> InputResolution<U> {
         match self {
             Self::NoMatch => InputResolution::NoMatch,
@@ -177,16 +158,12 @@ impl<T> InputResolution<T> {
     }
 }
 
-/// Resolve raw input before a component handler runs.
 pub trait InputMatcher<C, E>: 'static {
-    /// The value passed to the component handler after a match.
     type Output: ApplicationEvent;
 
-    /// Test and resolve one raw input value.
     fn resolve(&mut self, component: &C, input: &E) -> InputResolution<Self::Output>;
 }
 
-/// Match every value of one input type.
 pub struct AnyInput;
 
 impl<C, E> InputMatcher<C, E> for AnyInput
@@ -200,31 +177,21 @@ where
     }
 }
 
-/// A component with explicit typed event subscriptions.
 pub trait Component<A>: Sized + 'static
 where
     A: Send + 'static,
 {
-    /// Declare all event subscriptions for this component type.
     fn register_subscriptions(subscriptions: &mut ComponentSubscriptions<'_, Self, A>);
 }
 
-/// An opaque reference to one mounted component.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ComponentTarget(u64);
 
-/// The application state that makes a component eligible for routed input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputScope {
-    /// Keyboard input delivered to global shortcut handlers.
     Global,
-    /// Keyboard input delivered to the component that owns focus.
     Focused,
-    /// Keyboard input offered, before the focused component, to a component
-    /// that shows the focused one inside itself. The subscriber decides from
-    /// its own state whether it encloses the focused component.
     Enclosing,
-    /// Pointer input delivered to the component under the pointer.
     Hovered,
 }
 
@@ -255,7 +222,6 @@ impl<A> Clone for Subscription<A> {
     }
 }
 
-/// A registrar used by a component to declare its handlers.
 pub struct ComponentSubscriptions<'a, C, A> {
     component_id: ComponentTarget,
     subscriptions_by_event: &'a mut HashMap<TypeId, Vec<Subscription<A>>>,
@@ -267,7 +233,6 @@ where
     C: Component<A>,
     A: Send + 'static,
 {
-    /// Subscribe the component to one event type.
     pub fn subscribe<E, R>(&mut self, handler: fn(&mut C, &E) -> R)
     where
         E: ApplicationEvent,
@@ -295,7 +260,6 @@ where
         });
     }
 
-    /// Subscribe to routed input in one application scope.
     pub fn subscribe_input<E, M, R>(
         &mut self,
         scope: InputScope,
@@ -334,39 +298,29 @@ where
     }
 }
 
-/// A failure at the internal type-erasure or event-cycle boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DispatchError {
-    /// The subscription points to a component that is not mounted.
     ComponentNotFound,
-    /// The mounted component does not have the registered concrete type.
     ComponentTypeMismatch,
-    /// The published value does not have the registered concrete event type.
     EventTypeMismatch,
-    /// Component publications formed a cycle or an unbounded cascade.
     EventCycleLimitExceeded,
 }
 
-/// Results from targeted input delivery and optional global delivery.
 pub struct InputDispatch<A> {
     results: Vec<DispatchResult<A>>,
-    /// A handler in this phase expects the next input value.
     input_pending: bool,
 }
 
 impl<A> InputDispatch<A> {
-    /// Return the handler results from this phase.
     pub fn into_results(self) -> Vec<DispatchResult<A>> {
         self.results
     }
 
-    /// Return whether a global handler expects the next input value.
     pub fn global_input_pending(&self) -> bool {
         self.input_pending
     }
 }
 
-/// Mounted components and the single typed event path between them.
 pub struct ComponentEventBus<A: Send + 'static> {
     next_component_id: u64,
     pending_events: Rc<RefCell<VecDeque<EventEnvelope>>>,
@@ -381,7 +335,6 @@ impl<A: Send + 'static> Default for ComponentEventBus<A> {
 }
 
 impl<A: Send + 'static> ComponentEventBus<A> {
-    /// Create an empty component event bus.
     pub fn new() -> Self {
         Self {
             next_component_id: 0,
@@ -391,8 +344,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         }
     }
 
-    /// Construct, subscribe, and mount one component.
-    ///
     /// # Panics
     ///
     /// Panics if the process mounts more than `u64::MAX` components through
@@ -420,7 +371,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         component_id
     }
 
-    /// Remove one exact mounted component and all its subscriptions.
     pub fn remove(&mut self, target: ComponentTarget) -> bool {
         let removed = self.components.remove(&target).is_some();
         if removed {
@@ -432,7 +382,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         removed
     }
 
-    /// Borrow one exact mounted component and verify its concrete type.
     pub fn get<C>(&self, target: ComponentTarget) -> Option<&C>
     where
         C: Component<A>,
@@ -440,7 +389,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         self.components.get(&target)?.downcast_ref::<C>()
     }
 
-    /// Mutably borrow one exact mounted component and verify its concrete type.
     pub fn get_mut<C>(&mut self, target: ComponentTarget) -> Option<&mut C>
     where
         C: Component<A>,
@@ -448,7 +396,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         self.components.get_mut(&target)?.downcast_mut::<C>()
     }
 
-    /// Publish one external event through the bus.
     pub fn publish<E>(&mut self, event: E) -> Result<Vec<DispatchResult<A>>, DispatchError>
     where
         E: ApplicationEvent,
@@ -456,7 +403,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         self.publish_envelope(EventEnvelope::new(event))
     }
 
-    /// Publish one transported external event through the bus.
     pub fn publish_envelope(
         &mut self,
         event: EventEnvelope,
@@ -465,7 +411,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         self.deliver_pending_events()
     }
 
-    /// Deliver input to matching focused subscriptions, then global subscriptions.
     pub fn dispatch_input(
         &mut self,
         event: &EventEnvelope,
@@ -501,10 +446,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         })
     }
 
-    /// Offer input to the components that enclose the focused one.
-    ///
-    /// Return `None` when none of them claimed the input, which then belongs
-    /// to the focused component.
     pub fn dispatch_enclosing_input(
         &mut self,
         event: &EventEnvelope,
@@ -523,7 +464,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         Ok(Some(dispatch.results))
     }
 
-    /// Deliver input only to global subscribers.
     pub fn dispatch_global_input(
         &mut self,
         event: &EventEnvelope,
@@ -533,7 +473,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         Ok(dispatch)
     }
 
-    /// Deliver pointer input to the hovered component.
     pub fn dispatch_hovered_input(
         &mut self,
         event: &EventEnvelope,
@@ -568,7 +507,6 @@ impl<A: Send + 'static> ComponentEventBus<A> {
         self.invoke_input(subscriptions, event)
     }
 
-    /// Offer input to each subscription, noting whether one awaits more input.
     fn invoke_input(
         &mut self,
         subscriptions: Vec<Subscription<A>>,

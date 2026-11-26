@@ -43,7 +43,6 @@ impl ConversationFixture {
     }
 }
 
-/// Posts from the Threads view reach the agent's next fetch.
 #[test]
 fn mcp_receives_ui_posts_before_and_after_the_final_fetch() {
     let fixture = ConversationFixture::start("codex");

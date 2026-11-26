@@ -23,7 +23,6 @@ impl CommentFixture {
         Self::with_saved(book, SavedDrafts::default())
     }
 
-    /// A reviewer started on the threads and drafts saved so far.
     fn restart(&self) -> Self {
         Self::with_saved(self.book.clone(), self.drafts.clone())
     }
@@ -651,7 +650,6 @@ fn f2_switches_keymaps_through_comment_input_and_remembers_the_choice() {
     assert!(fixture.text().contains('x'));
     fixture.key(Key::EditorMode);
     assert!(fixture.text().contains("Vim · NORMAL"));
-    // Normal-mode x deletes rather than inserts.
     fixture.key(Key::Char('x'));
     assert!(matches!(
         fixture.key(Key::ControlEnter).as_slice(),
@@ -711,7 +709,6 @@ fn recovered_editors_restore_without_posting_and_cancel_discards_the_saved_draft
             restarted.text()
         );
         if !reply {
-            // Recovered new-thread drafts stay collapsed until the reviewer opens one.
             restarted.assert_editor(false);
             restarted.click_text("Recovered draft");
         }
@@ -906,7 +903,6 @@ fn the_reply_field_starts_a_new_message_even_before_the_agent_answers() {
 
     fixture.click_text("Reply…");
     fixture.assert_editor(true);
-    // Empty replies cancel without posting or altering the existing message.
     assert!(matches!(
         fixture.key(Key::ControlEnter).as_slice(),
         [Action::Thread(
@@ -1166,7 +1162,6 @@ fn a_failed_wakeup_shows_once_in_the_threads_it_covered_until_another_goes_or_a_
     fixture.assert_editor(true);
     let replying = shown(&fixture);
     fixture.paste("Still there?");
-    // A reviewer started again on the saved reply shows it parked.
     let mut restarted = fixture.restart();
     restarted
         .registry

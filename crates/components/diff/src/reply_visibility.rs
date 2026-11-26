@@ -126,7 +126,6 @@ impl ReplyVisibility {
 }
 
 impl SourceViewer {
-    /// Start observations for a fresh frame, including frames that do not show this viewer.
     pub(super) fn begin_replies(&self) {
         let unit = self.comments.book().map(|book| book.review_unit.clone());
         let mut visibility = self.reply_visibility.borrow_mut();
@@ -139,17 +138,14 @@ impl SourceViewer {
         visibility.pending.clear();
     }
 
-    /// Capture the reply rows drawn so far, before application overlays cover any.
     pub(super) fn capture_replies(&self, buffer: &Buffer) {
         self.reply_visibility.borrow_mut().capture(buffer);
     }
 
-    /// Exclude rows covered by a popup, menu, notification, or other overlay.
     pub(super) fn finish_replies(&self, buffer: &Buffer) {
         self.reply_visibility.borrow_mut().finish(buffer);
     }
 
-    /// Mark read the replies this viewer showed whole.
     pub(super) fn displayed_reply_actions(&mut self) -> Vec<Action> {
         let Some(book) = self.comments.book() else {
             return Vec::new();

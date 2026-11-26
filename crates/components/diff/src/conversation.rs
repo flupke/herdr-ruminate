@@ -1,6 +1,3 @@
-//! The pane shows one review thread as a conversation while the Files viewer
-//! keeps its document untouched.
-
 use std::cell::RefCell;
 
 use component_core::InputResolution;
@@ -22,17 +19,11 @@ pub(super) use peek::SourcePeek;
 
 #[derive(Default)]
 pub(super) struct ConversationView {
-    /// The pane shows the selected thread instead of the Files diff.
     pub(super) active: bool,
     selected: Option<ThreadId>,
     scroll: usize,
-    /// What the view keeps in sight as the thread opens, until the reviewer scrolls: the rows
-    /// above can still grow, as the thread's code loads.
     anchor: Option<ConversationAnchor>,
-    /// Whether the reviewer scrolled the thread since it was selected: coming back to the
-    /// Threads tab then keeps where they were.
     scrolled: bool,
-    /// The shown thread laid out for the pane's width: a frame and a scroll step reuse it.
     laid_out: RefCell<Option<render::LaidOutThread>>,
     pub(super) peek: Option<SourcePeek>,
     next_peek: u64,
@@ -40,11 +31,8 @@ pub(super) struct ConversationView {
     original: Option<context::OriginalCode>,
 }
 
-/// Where the view of a thread that just opened stays.
 enum ConversationAnchor {
-    /// The top of the thread's first unread reply, at the top of the view.
     Reply(MessageId),
-    /// The end of a thread without unread replies, at the bottom of the view.
     End,
 }
 
@@ -62,7 +50,6 @@ pub(super) enum ConversationAction {
 }
 
 impl ConversationView {
-    /// Forget the thread shown for a review that is no longer shown.
     pub(super) fn reset_review(&mut self) {
         self.selected = None;
         self.scroll = 0;
@@ -72,8 +59,6 @@ impl ConversationView {
         self.original = None;
     }
 
-    /// Whether `key` is bound to leaving the conversation view, which closes
-    /// an open source peek before the peek's own keys apply.
     pub(super) fn goes_back(key: Key) -> bool {
         ShortcutMatcher::<ConversationShortcut>::new().resolve_key(key)
             == InputResolution::Matched(ConversationShortcut::Back)
@@ -86,7 +71,6 @@ impl DiffComponent {
             return;
         };
         let Some((path, code)) = thread.path().zip(thread.code()) else {
-            // A round conversation discusses no code.
             self.conversation.original = None;
             return;
         };
@@ -112,7 +96,6 @@ impl DiffComponent {
             .thread(self.conversation.selected.as_ref()?)
     }
 
-    /// Whether the conversation shows the editor of a reply to its thread.
     pub(super) fn conversation_editor_visible(&self) -> bool {
         self.conversation.peek.is_none()
             && self.files.comments.focused().is_some()
@@ -121,7 +104,6 @@ impl DiffComponent {
                 .is_some_and(|thread| self.files.comments.replies_to(thread))
     }
 
-    /// Show the conversation instead of the Files diff, or the reverse.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub(super) fn conversation_navigation(&mut self, event: &ReviewNavigationChanged) {
         let active = event.0 == ReviewNavigation::Threads;
@@ -143,7 +125,6 @@ impl DiffComponent {
     }
 
     pub(super) fn conversation_selected(&mut self, event: &ThreadSelectionChanged) -> Vec<Action> {
-        // Explore hides the conversation, which keeps the thread it showed.
         if self.explore_shown() {
             return Vec::new();
         }
@@ -167,9 +148,6 @@ impl DiffComponent {
         Vec::new()
     }
 
-    /// Keeps the top of the shown thread's first unread reply at the top of the view, as the
-    /// thread opens. A thread without one keeps where it opened, though its replies were read
-    /// since, or else its end in view.
     fn open_shown_thread(&mut self) {
         let Some(thread) = self.conversation_thread() else {
             return;
@@ -186,8 +164,6 @@ impl DiffComponent {
         }
     }
 
-    /// Opens the shown thread once it loads, and shows a reply that arrives while the view keeps
-    /// the thread's end from its top. A reply arriving as the reviewer writes leaves the view.
     pub(super) fn follow_arriving_replies(&mut self) {
         if self.conversation.active
             && !self.conversation.scrolled
@@ -198,7 +174,6 @@ impl DiffComponent {
         }
     }
 
-    /// Reopen the reply saved for the shown thread once its drafts loaded.
     pub(super) fn restore_conversation_editor(&mut self) {
         if self.files.comments.focused_id().is_none()
             && self.conversation.active
@@ -243,7 +218,6 @@ impl DiffComponent {
         Vec::new()
     }
 
-    /// The shown thread and the path its code was saved on; a round conversation has none.
     pub(super) fn conversation_code_thread(&self) -> Option<(&ReviewThread, &str)> {
         let thread = self.conversation_thread()?;
         Some((thread, thread.path()?))
@@ -339,7 +313,6 @@ impl DiffComponent {
             .min(self.conversation_scroll_limit());
     }
 
-    /// Paste into the reply the conversation edits.
     pub(super) fn conversation_paste(&mut self, input: &TextPasted) -> Vec<Action> {
         if !self.conversation_editor_visible() {
             return Vec::new();

@@ -6,7 +6,6 @@ use crate::document::DiffDocument;
 use crate::render::DiffViewport;
 use crate::{DiffPresentation, PresentedRow, SourceViewer};
 
-/// The cursor's place in the document and on screen, kept while context folds.
 struct CursorAnchor {
     location: PresentationLocation,
     column: usize,

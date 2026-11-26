@@ -1,8 +1,3 @@
-//! Run-ahead with a real Codex TUI in the private Herdr's pane, on an app server of its own,
-//! with a scratch Codex home where the reviewer's Codex plugin and Herdr's Codex integration
-//! are installed and trusted, and the local model fixture, which submits the turns the test
-//! writes: it calls no model API.
-
 use std::collections::HashSet;
 use std::ffi::OsStr;
 
@@ -13,25 +8,18 @@ use review_test_support::codex::{AppServer, CodexHome, ExplorePrompt, Provider};
 use super::*;
 use crate::runtime::tests::explore_flow::agent_update;
 
-/// A round whose agent is a real Codex TUI, with run-ahead on for every choice.
 struct CodexRunAhead {
     run: RunAheadFlow,
     provider: Provider,
-    /// The prompts the provider gave that the test has not taken yet.
     unread: Vec<ExplorePrompt>,
-    /// The access values of the forks' prompts the test read.
     fork_accesses: HashSet<String>,
-    /// The app server the TUI runs its sessions on, when it runs on one.
     _daemon: Option<AppServer>,
     _codex: CodexHome,
 }
 
-/// How the Codex TUI runs.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Tui {
-    /// On the app server of its home, which the test started, as on the user's daemon.
     OnDaemon,
-    /// With an app server of its own (`--no-daemon`).
     WithoutDaemon,
 }
 
@@ -40,7 +28,6 @@ impl CodexRunAhead {
         Self::start_with(tui, test_waits())
     }
 
-    /// The round, whose forks' host waits as `waits` say.
     fn start_with(tui: Tui, waits: review_run_ahead::ForkWaits) -> Self {
         let repository_files = repository_fixture(RepoType::Git);
         repository_files.write("reviewed.rs", b"pub fn reviewed() {}\n");
@@ -49,7 +36,6 @@ impl CodexRunAhead {
         let endpoint =
             review_mcp::Endpoint::for_repository(repository_files.root(), Some(port.number()))
                 .unwrap();
-        // The agent's own calls to the submits run without asking, as the user set them.
         let provider = Provider::start(
             &codex,
             &format!(
@@ -66,7 +52,6 @@ impl CodexRunAhead {
                 install_plugin(&codex);
                 codex.trust_hooks();
                 if tui == Tui::OnDaemon {
-                    // The daemon was started from the agent's pane, as a plain TUI starts it.
                     let variable = |name: &str| server.environment()[OsStr::new(name)].clone();
                     daemon = Some(AppServer::start(
                         &codex,
@@ -85,7 +70,6 @@ impl CodexRunAhead {
             ReviewFlowFixture::start_on_port(repository_files, herdr, port, |setup, _| {
                 setup.run_ahead.waits = waits;
             });
-        // The agent's session starts its MCP servers: the reviewer's listens by now.
         let arguments: &[&str] = match tui {
             Tui::OnDaemon => &["--remote", "unix://"],
             Tui::WithoutDaemon => &["--no-daemon"],
@@ -116,8 +100,6 @@ impl CodexRunAhead {
         self.run.herdr()
     }
 
-    /// The next prompt the provider gave that `wanted` takes, once it gave one; the others wait
-    /// for a later call.
     fn prompt_where(&mut self, wanted: impl Fn(&ExplorePrompt) -> bool) -> ExplorePrompt {
         if let Some(index) = self.unread.iter().position(&wanted) {
             return self.unread.remove(index);
@@ -131,8 +113,6 @@ impl CodexRunAhead {
         }
     }
 
-    /// The agent in the pane takes the turn `request`: it submits `update` from its prompt, and
-    /// the reviewer acknowledges it as the pane does. Returns once the round holds it.
     fn agent_takes(&mut self, request: &review_explore::TurnRequest, update: &serde_json::Value) {
         let line = format!("Explore request: {}\n", request.request);
         let forks = self.fork_accesses.clone();
@@ -162,7 +142,6 @@ impl CodexRunAhead {
         }
     }
 
-    /// Waits until `count` forks got their prompt, and returns their prompts.
     fn fork_prompts(&mut self, count: usize) -> Vec<ExplorePrompt> {
         let prompts: Vec<_> = (0..count)
             .map(|_| {
@@ -175,8 +154,6 @@ impl CodexRunAhead {
         prompts
     }
 
-    /// Each fork of `prompts` submits the next question its prompt leads to; returns once the
-    /// round's record keeps every fork's turn.
     fn forks_submit(&mut self, prompts: &[ExplorePrompt]) {
         for prompt in prompts {
             let question = fork_question(&self.run.flow, &prompt.prompt);
@@ -198,7 +175,6 @@ impl CodexRunAhead {
         });
     }
 
-    /// The session Herdr reports for the agent in the pane.
     fn herdr_session(&self) -> Option<String> {
         self.herdr()
             .client()
@@ -208,7 +184,6 @@ impl CodexRunAhead {
             .map(|session| session.value)
     }
 
-    /// The daemon the agent in the pane runs on.
     fn daemon(&self) -> Daemon {
         let processes = self
             .herdr()
@@ -218,7 +193,6 @@ impl CodexRunAhead {
         Daemon::of_pane(&processes.foreground_processes).unwrap()
     }
 
-    /// Whether the daemon still holds the session `session`.
     fn daemon_holds(&self, session: &str) -> bool {
         let rpc = self.daemon().connect(|_, _| {}).unwrap();
         rpc.request(
@@ -229,8 +203,6 @@ impl CodexRunAhead {
         .is_ok()
     }
 
-    /// What the reviewer's `list_threads` answers the agent in the pane, which a fork's guard
-    /// refuses, once the agent called it.
     fn agent_lists_threads(&self) -> String {
         review_test_support::codex::prompt(
             &self.herdr().server,
@@ -240,8 +212,6 @@ impl CodexRunAhead {
         self.provider.next_output("call the reviewer")
     }
 
-    /// The approval policy of the session `session`, as the daemon gives it to a client that
-    /// joins it.
     fn approval_policy(&self, session: &str) -> serde_json::Value {
         let rpc = self.daemon().connect(|_, _| {}).unwrap();
         rpc.request(
@@ -253,14 +223,12 @@ impl CodexRunAhead {
             .clone()
     }
 
-    /// Asks the first question of the round, as the agent's kickoff turn.
     fn first_question(&mut self) {
         let kickoff = self.run.flow.exploration.request(None, None).unwrap();
         let kickoff = self.flow().post_turn(&kickoff);
         self.agent_takes(&kickoff, &agent_update(&kickoff, 1));
     }
 
-    /// The reviewer answers the latest question with `choice` and the comment `text`.
     fn answer(&mut self, choice: &str, text: &str) -> review_explore::TurnRequest {
         let question = self.run.flow.exploration.questions.last().cloned();
         let request = self
@@ -280,8 +248,6 @@ impl CodexRunAhead {
     }
 }
 
-/// Installs the reviewer's Codex plugin in `codex`'s home, as `make install` does, with the
-/// test build's `reviewer-control` in its hooks.
 fn install_plugin(codex: &CodexHome) {
     let status = std::process::Command::new(effects::fixture::test_fork_tools().control)
         .args(["codex-plugin", "install"])
@@ -337,7 +303,6 @@ fn a_bare_answer_continues_the_codex_agent_as_its_fork_and_the_next_answer_reach
         codex.daemon_holds(&fork),
         "the fork's session is the agent's now"
     );
-    // The session is the agent's as it was: its own approval policy, and no fork's guard.
     assert_eq!(codex.approval_policy(&fork), "never");
     let listed = codex.agent_lists_threads();
     assert!(
@@ -345,8 +310,6 @@ fn a_bare_answer_continues_the_codex_agent_as_its_fork_and_the_next_answer_reach
         "the agent's own tool runs unasked on the fork's session: {listed}"
     );
 
-    // Run-ahead forks the next question from the fork's session; the answer, with a comment,
-    // goes to the agent in the pane, on the fork's session.
     codex.fork_prompts(2);
     let next = codex.answer("keep", "Keep it, with a test.");
     codex.agent_takes(&next, &agent_update(&next, 3));
@@ -392,7 +355,6 @@ fn text_left_in_codex_s_input_box_runs_no_turn_and_the_answer_waits_for_retry() 
     let prompts = codex.fork_prompts(2);
     codex.forks_submit(&prompts);
     let agent_session = codex.run.saved().forks[0].from.clone().unwrap();
-    // The reviewer left half a thought in the agent's input box.
     let pane = codex.herdr().pane_id.clone();
     codex
         .herdr()
@@ -408,7 +370,6 @@ fn text_left_in_codex_s_input_box_runs_no_turn_and_the_answer_waits_for_retry() 
         })
     });
     assert!(!typed, "the agent ran neither the text nor the /resume");
-    // Codex shows the text back, joined to the /resume, and why it did not run.
     for shown in [
         "half a thought /resume",
         "The progressive reviewer stopped this prompt",
@@ -426,7 +387,6 @@ fn text_left_in_codex_s_input_box_runs_no_turn_and_the_answer_waits_for_retry() 
         Some(agent_session.as_str()),
         "the agent stays on its own session"
     );
-    // The agent's user empties the input box.
     codex
         .herdr()
         .run_cli(&["pane", "send-keys", &pane.0, "ctrl+u"]);
@@ -438,7 +398,6 @@ fn text_left_in_codex_s_input_box_runs_no_turn_and_the_answer_waits_for_retry() 
         .explore(ExploreCommand::Retry(Box::new(request.clone())));
 
     codex.agent_takes(&request, &agent_update(&request, 2));
-    // The agent's session is its own as it was.
     assert_eq!(codex.approval_policy(&agent_session), "never");
     let listed = codex.agent_lists_threads();
     assert!(
@@ -477,7 +436,6 @@ fn a_codex_agent_without_the_daemon_runs_the_plain_chain_and_the_setting_says_wh
 fn a_reopened_reviewer_interrupts_and_deletes_the_codex_forks_a_stopped_one_left() {
     let mut codex = CodexRunAhead::start(Tui::OnDaemon);
     codex.first_question();
-    // The forks' turns wait for the model, which never answers them.
     codex.fork_prompts(2);
     let left: Vec<_> = codex.run.wait_for_saved("the forks' turns", |saved| {
         saved
@@ -494,7 +452,6 @@ fn a_reopened_reviewer_interrupts_and_deletes_the_codex_forks_a_stopped_one_left
             "the fork is guarded"
         );
     }
-    // A reviewer reopened later finds them in the saved record alone.
     let hooks = std::sync::Arc::new(agent_hooks::AgentHooks::listen(&directory).unwrap());
     let (herdr, log) = (
         std::sync::Arc::new(codex.herdr().client())
@@ -535,8 +492,6 @@ fn a_reopened_reviewer_interrupts_and_deletes_the_codex_forks_a_stopped_one_left
         );
         assert!(!directory.root().is_codex_fork(&fork.session));
     }
-    // The stopped reviewer's own connection heard each turn end, interrupted, as both the
-    // interrupt and the deletion end it.
     codex
         .run
         .wait_for_saved("the forks' interrupted turns", |saved| {
@@ -554,7 +509,6 @@ fn a_reopened_reviewer_interrupts_and_deletes_the_codex_forks_a_stopped_one_left
 
 #[test]
 fn a_codex_agent_put_back_after_a_switch_it_never_confirmed_runs_its_own_tools_unasked() {
-    // The switch gives the agent no time to confirm the /resume it types.
     let waits = review_run_ahead::ForkWaits {
         resume: Duration::ZERO,
         ..test_waits()
@@ -572,7 +526,6 @@ fn a_codex_agent_put_back_after_a_switch_it_never_confirmed_runs_its_own_tools_u
         .unwrap()
         .session
         .clone();
-    // A client of the fork's session hears every other client join it.
     let (heard, events) = std::sync::mpsc::channel();
     let _follow = codex
         .daemon()
@@ -586,15 +539,12 @@ fn a_codex_agent_put_back_after_a_switch_it_never_confirmed_runs_its_own_tools_u
 
     let request = codex.answer("keep", "");
 
-    // The reviewer's own client joins the fork's session, then the agent's TUI resumes it late,
-    // once the switch gave up.
     let mut joins = 0;
     while joins < 2 {
         if events.recv().unwrap() == codex_daemon::SessionEvent::Resumed {
             joins += 1;
         }
     }
-    // It goes back to its own session.
     codex.run.wait_for_saved("the agent put back", |saved| {
         saved
             .forks

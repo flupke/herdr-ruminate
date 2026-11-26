@@ -1,6 +1,3 @@
-//! Sharing the running round over a tunnel from the pane: its switch with the Explore page
-//! settings, then its link and QR code, or why it is not there.
-
 use super::*;
 use crate::ExplorePageAction;
 use review_explore_page_tunnel::TunnelState;
@@ -10,12 +7,10 @@ const LINK: &str =
     "https://quiet-river-stone-lamp.trycloudflare.com/?token=0123456789abcdef0123456789abcdef";
 
 impl ExploreUi {
-    /// Turns the tunnel's switch over with its key, and returns what the pane asks for.
     fn share_key(&mut self) -> Vec<Action> {
         self.app.update(UserInput::Key(Key::Char('O')))
     }
 
-    /// The pane, scrolled to its end, where the tunnel's link shows.
     fn end(&mut self) -> String {
         self.app.update(UserInput::MouseScroll {
             column: 0,
@@ -30,7 +25,6 @@ impl ExploreUi {
     }
 }
 
-/// Whether `text` shows a QR code: rows of cells that each draw two of its modules.
 fn shows_qr_code(text: &str) -> bool {
     text.contains(&"▀".repeat(30))
 }

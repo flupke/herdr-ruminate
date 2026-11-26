@@ -43,8 +43,6 @@ impl Inbox {
         }
     }
 
-    /// The next event, or `None` once `guard` ran out with none: for tests, whose guard only
-    /// ends a wait that failed.
     #[cfg(test)]
     pub(super) fn recv_within(&mut self, guard: std::time::Duration) -> Option<EventEnvelope> {
         let deadline = std::time::Instant::now() + guard;
@@ -74,8 +72,6 @@ impl Inbox {
         }
     }
 
-    /// Waits until an event is queued, without taking it; false once `guard` ran out: for
-    /// tests that let the event loop take it.
     #[cfg(test)]
     pub(super) fn wait_until_queued(&self, guard: std::time::Duration) -> bool {
         let mut select = crossbeam_channel::Select::new();

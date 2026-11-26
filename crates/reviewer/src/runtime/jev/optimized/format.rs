@@ -1,5 +1,3 @@
-//! Request state formats and compact unified-diff encoding.
-
 #[cfg(test)]
 use super::hunk_starts;
 use review_repository::diff::DiffRow;

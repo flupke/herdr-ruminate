@@ -80,10 +80,8 @@ fn a_hunk_from_an_older_comparison_is_refused() {
     );
 }
 
-/// Classifies these lines of the first file insignificant on both sides.
 struct InsignificantLines(&'static [u32]);
 
-/// Classifies line 3 of the first file insignificant on both sides.
 const LINE_THREE: InsignificantLines = InsignificantLines(&[3]);
 
 impl review_significance::SignificanceClassifier for InsignificantLines {
@@ -161,7 +159,6 @@ fn automatic_review_announces_the_hunks_it_marks(kind: RepoType) {
     );
 }
 
-/// Classifies as [`LINE_THREE`] does, once the test lets it go on.
 struct HeldLineThree(std::sync::Mutex<crossbeam_channel::Receiver<()>>);
 
 impl review_significance::SignificanceClassifier for HeldLineThree {
@@ -266,7 +263,6 @@ fn a_round_started_from_the_page_waits_for_jev_to_mark_what_it_dismisses(kind: R
     });
     fixture.refreshed_checkpoint();
     let (reply, replied) = review_explore_page::CommandReply::channel();
-    // The start the page offers.
     let review_explore_page::RoundStage::NoRound { start } = page.unwrap().stage() else {
         panic!("the page offers no start");
     };

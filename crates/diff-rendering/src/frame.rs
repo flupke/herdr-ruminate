@@ -4,7 +4,6 @@ use std::ops::Range;
 
 use crate::{FrameBorderCell, FramedRow, wrap_line};
 
-/// A gutter-aligned frame for review conversations and source evidence.
 #[derive(Clone, Copy)]
 pub struct DiffFrame {
     width: u16,
@@ -13,7 +12,6 @@ pub struct DiffFrame {
     style: Style,
 }
 
-/// The horizontal boundaries of an inline diff frame.
 #[derive(Clone, Copy)]
 pub enum FrameRule<'a> {
     Top(Option<&'a str>),
@@ -31,7 +29,6 @@ impl DiffFrame {
         }
     }
 
-    /// Set the horizontal padding inside the frame's content borders.
     #[must_use]
     pub fn with_padding(self, padding: u16) -> Self {
         Self {
@@ -40,18 +37,15 @@ impl DiffFrame {
         }
     }
 
-    /// Width available to content after the gutter and frame padding.
     pub fn content_width(self) -> u16 {
         self.width
             .saturating_sub(u16::try_from(self.left + 2 + self.padding * 2).unwrap_or(u16::MAX))
     }
 
-    /// First content column after the gutter, border, and padding.
     pub fn content_column(self) -> usize {
         self.left + 1 + self.padding
     }
 
-    /// Frame an existing diff line without replacing its colors.
     pub fn enclose_line(self, line: &mut Line<'static>) -> Vec<FrameBorderCell> {
         let width = usize::from(self.width);
         let available = width.saturating_sub(line.width());
@@ -96,7 +90,6 @@ impl DiffFrame {
         }
     }
 
-    /// Place a rendered line inside the padded content columns, preserving its style.
     fn content(self, mut line: Line<'static>, source_row: usize) -> FramedRow {
         let style = std::mem::take(&mut line.style);
         for span in &mut line.spans {
@@ -114,7 +107,6 @@ impl DiffFrame {
         }
     }
 
-    /// Wrap a styled content line without coloring the diff gutter.
     pub fn wrapped_content(self, line: &Line<'static>, source_row: usize) -> Vec<FramedRow> {
         self.wrapped_content_with_ranges(line, source_row)
             .into_iter()
@@ -122,7 +114,6 @@ impl DiffFrame {
             .collect()
     }
 
-    /// Return each wrapped row with the columns occupied by its source content.
     pub fn wrapped_content_with_ranges(
         self,
         line: &Line<'static>,

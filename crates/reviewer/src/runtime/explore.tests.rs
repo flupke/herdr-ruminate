@@ -15,18 +15,13 @@ impl ReviewFlowFixture {
 pub(super) struct ExploreFlow {
     pub(super) fixture: ReviewFlowFixture,
     pub(super) exploration: Exploration,
-    /// How many of the agent's prompts the test went through.
     prompt_offset: usize,
     endpoint: review_mcp::Endpoint,
     pub(super) access: String,
-    /// What the reviewer saved.
     pub(super) state: SavedState,
-    /// Whether the agent holds each turn until the test submitted it, as an agent does that
-    /// calls the reviewer's tools during its turn.
     pub(super) holds_turns: bool,
 }
 
-/// Says that an MCP call of the test has its answer.
 struct McpAnswered;
 
 impl ExploreFlow {
@@ -34,7 +29,6 @@ impl ExploreFlow {
         Self::start_on(ReviewFlowFixture::start(kind, |_, _| {}))
     }
 
-    /// Starts a round in `fixture`, and waits for its change to be captured.
     pub(super) fn start_on(mut fixture: ReviewFlowFixture) -> Self {
         let state = SavedState::watch(fixture.runtime.state.path());
         fixture.explore(ExploreCommand::Start);
@@ -55,8 +49,6 @@ impl ExploreFlow {
         }
     }
 
-    /// Posts the turn `request` as the pane does, and adopts the round saved, as the pane does
-    /// too: the session may save an answer under other identities. Returns the turn as saved.
     pub(super) fn post_turn(
         &mut self,
         request: &review_explore::TurnRequest,
@@ -82,7 +74,6 @@ impl ExploreFlow {
         let request = self.post_turn(&request);
         self.wait_for_prompt(&request);
         let statuses = self.holds_turns.then(|| {
-            // The agent submits during its turn, which Herdr saw start.
             self.fixture.herdr.wait_for_agent_event(
                 from,
                 "the agent's turn",
@@ -199,8 +190,6 @@ impl ExploreFlow {
                 && acknowledge
             {
                 self.exploration = event.round.exploration.clone();
-                // A round committed with no submit waiting, such as a turn run-ahead prepared,
-                // has nobody to hear the acknowledgement.
                 let _ = event.response.send(Ok(event.applied));
             }
         }
@@ -208,8 +197,6 @@ impl ExploreFlow {
         result.recv().unwrap()
     }
 
-    /// Waits for the prompt of `request`, the first prompt with an access value among those
-    /// the agent read after the ones the test went through, and goes through them.
     pub(super) fn wait_for_prompt(&mut self, request: &review_explore::TurnRequest) {
         let offset = self.prompt_offset;
         let has_access = |prompts: &[String]| {
@@ -238,13 +225,11 @@ impl ExploreFlow {
         if let Some(answer) = &request.answer {
             assert!(prompt.contains(&format!("Answer ID: {}\n", answer.id)));
         }
-        // Every turn carries the round's data, the repository it reviews included.
         assert!(prompt.contains(self.fixture.runtime.repository.root().to_str().unwrap()));
         self.prompt_offset = prompts.len();
     }
 
     pub(super) fn saved(&self) -> review_explore::ExploreRound {
-        // Opening a store touches the state directory, which a wait on `state` watches.
         self.fixture
             .runtime
             .store
@@ -266,7 +251,6 @@ impl ExploreFlow {
         drop(self.fixture);
     }
 
-    /// Wait until the session reports that the prompt of `request` failed.
     fn wait_for_failure(&mut self, request: &review_explore::TurnRequest) {
         loop {
             let event = self.fixture.runtime.next_event();
@@ -279,7 +263,6 @@ impl ExploreFlow {
         }
     }
 
-    /// Wait until the saved round records `state` for the latest prompt of `request`.
     fn wait_for_dispatch(
         &self,
         request: &review_explore::TurnRequest,
@@ -293,14 +276,11 @@ impl ExploreFlow {
         );
     }
 
-    /// Forget the prompts the agent already read, so that waiting for a prompt waits for a new
-    /// one.
     fn skip_prompts(&mut self) {
         self.fixture.herdr.mark();
         self.prompt_offset = self.fixture.herdr.prompts().len();
     }
 
-    /// The prompts the agent read once the reviewer sent every prompt it was to send by now.
     fn settled_prompts(&self) -> Vec<String> {
         self.fixture.settle();
         self.fixture.herdr.prompts()
@@ -310,7 +290,6 @@ impl ExploreFlow {
         let request = self.exploration.request(None, None).unwrap();
         self.fixture
             .explore(ExploreCommand::Turn(Box::new(request.clone())));
-        // A rejected submission confirms preparation reached the serial runtime owner.
         let result = self.submit(&Self::empty_update(&request));
         assert_eq!(result.is_error, Some(true));
         assert!(
@@ -332,9 +311,6 @@ impl ExploreFlow {
     }
 }
 
-/// The update the agent submits on its turn `request`: an interpretation of its answer, if any,
-/// which keeps the outcome of a choice without a comment, the design of a kickoff, and the
-/// question `q{version}` of the topic `topic{version}`, whose choices are `keep` and `change`.
 pub(super) fn agent_update(
     request: &review_explore::TurnRequest,
     version: u32,
@@ -365,7 +341,6 @@ pub(super) fn agent_update(
 #[test]
 fn explore_turn_prompts_a_working_agent_once() {
     let mut flow = ExploreFlow::start(RepoType::Git);
-    // An agent that is working already counts as started, even with no new activity.
     flow.fixture.herdr.swallow_prompts(true);
     flow.native_status(herdr_client::protocol::AgentStatus::Working);
     let request = flow.enqueue();
@@ -382,7 +357,6 @@ fn explore_turn_prompts_a_working_agent_once() {
 
 #[test]
 fn a_kickoff_the_agent_does_not_start_on_waits_for_a_retry_of_the_same_request() {
-    // Herdr gives up on the agent at once, in place of its own 5 seconds.
     let mut flow =
         ExploreFlow::start_on(ReviewFlowFixture::start(RepoType::Git, |setup, herdr| {
             setup.agents = std::sync::Arc::new(
@@ -401,7 +375,6 @@ fn a_kickoff_the_agent_does_not_start_on_waits_for_a_retry_of_the_same_request()
 
     flow.skip_prompts();
     flow.fixture.herdr.swallow_prompts(false);
-    // An agent that works already starts on the prompt at once, within Herdr's short wait.
     flow.native_status(herdr_client::protocol::AgentStatus::Working);
     flow.fixture
         .explore(ExploreCommand::Retry(Box::new(request.clone())));
@@ -433,7 +406,6 @@ fn selected_agent_receives_working_copy_turns_without_freshness_checks(kind: Rep
         .files
         .write("unchanged-caller.rs", b"external edit\n");
     flow.fixture.runtime.effects.refresh().unwrap();
-    // This milestone assumes code stays unchanged; edits do not block another turn.
     flow.turn(
         Some(AnswerInput {
             text: "Continue with the working copy".into(),
@@ -568,7 +540,6 @@ fn the_agent_revises_the_open_question_from_the_round_conversation() {
             .version,
         2
     );
-    // A revision written before the reviewer's answer reached the agent is refused, with why.
     let mut late = serde_json::to_value(flow.exploration.questions.last().unwrap()).unwrap();
     late["version"] = 2.into();
     let current = std::mem::replace(&mut flow.access, before_answer);

@@ -1,6 +1,3 @@
-//! A run-ahead fork does not outlive the reviewer: started through `reviewer-control
-//! fork-exec`, it gets SIGTERM when the reviewer dies, even of SIGKILL, outside any terminal.
-
 use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -10,7 +7,6 @@ use std::time::Duration;
 use agent_fork::{Exit, ForkCommand, ForkOutput, Launcher, Wrapper};
 use review_test_support::GUARD;
 
-/// Ignores a fork's output.
 struct Ignored;
 
 impl ForkOutput for Ignored {
@@ -19,8 +15,6 @@ impl ForkOutput for Ignored {
     fn ended(self: Box<Self>, _exit: Exit) {}
 }
 
-/// The reviewer the test kills, run in a child process: it starts one fork, which holds the
-/// named pipe the test names open for writing for as long as it runs, then waits to be killed.
 #[test]
 #[ignore = "runs in a child process of a_fork_ends_when_its_reviewer_is_killed"]
 fn reviewer_to_kill() {
@@ -70,7 +64,6 @@ fn a_fork_ends_when_its_reviewer_is_killed() {
     let (opened, fork_started) = mpsc::channel();
     let (closed, fork_ended) = mpsc::channel();
     std::thread::spawn(move || {
-        // Opening the pipe waits for the fork, and reading it ends once no process holds it.
         let mut fork = std::fs::File::open(pipe).unwrap();
         let _ = opened.send(());
         let _ = fork.read_to_end(&mut Vec::new());

@@ -1,4 +1,4 @@
-//! Keep ratatui-markdown's 0.29 types at the rendering boundary until it supports 0.30.
+// ratatui-markdown still uses ratatui 0.29's types.
 
 use ratatui::layout::Alignment;
 use ratatui::style::{Color, Modifier, Style};

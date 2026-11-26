@@ -133,7 +133,6 @@ fn a_complete_list_keeps_its_plain_title() {
     assert!(!title.contains("incomplete"), "{title}");
 }
 
-/// The top row of the list, which holds its title.
 fn rendered_title(
     event_bus: &ComponentEventBus<Action>,
     target: component_core::ComponentTarget,
@@ -165,7 +164,6 @@ fn location_list(
     (event_bus, target)
 }
 
-/// A list component on the review's snapshot, with nothing to show yet.
 fn mounted_locations() -> (ComponentEventBus<Action>, component_core::ComponentTarget) {
     let mut event_bus = ComponentEventBus::new();
     let target = event_bus.mount(|events| {

@@ -1,13 +1,6 @@
-//! Keyboard commands grouped by the scope that owns them.
-//!
-//! Each [`ShortcutCommand`] variant is one owning scope. A command belongs to
-//! exactly one scope because it is a variant of exactly one owner enum, so the
-//! table entry that builds the command also declares its owner.
-
 use crate::Key;
 use crate::table::{ShortcutSequence, bindings};
 
-/// One command in the shortcut table, tagged with the scope that owns it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShortcutCommand {
     Application(ApplicationShortcut),
@@ -24,7 +17,6 @@ pub enum ShortcutCommand {
     ExploreGlobal(ExploreGlobalShortcut),
 }
 
-/// Commands the application runs when no focused component handled a key.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ApplicationShortcut {
     ChangeFocus,
@@ -37,13 +29,11 @@ pub enum ApplicationShortcut {
     Quit,
 }
 
-/// Starting a search, shared by the application and the focused diff.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SearchShortcut {
     Begin,
 }
 
-/// Cursor movement shared by every list and source view.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MovementShortcut {
     MoveDown,
@@ -55,8 +45,6 @@ pub enum MovementShortcut {
 }
 
 impl MovementShortcut {
-    /// The signed number of rows this move covers in a view that pages by
-    /// `page` rows. Going to the first or last row saturates.
     pub fn row_delta(self, page: isize) -> isize {
         match self {
             Self::MoveDown => 1,
@@ -69,7 +57,6 @@ impl MovementShortcut {
     }
 }
 
-/// Commands the diff runs while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiffShortcut {
     Comment(CommentShortcut),
@@ -80,7 +67,6 @@ pub enum DiffShortcut {
     StartSelection,
 }
 
-/// Commands the diff runs whichever pane has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiffGlobalShortcut {
     PreviousComment,
@@ -90,7 +76,6 @@ pub enum DiffGlobalShortcut {
     OpenInEditor,
 }
 
-/// Commands the file list runs whichever pane has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FilesShortcut {
     GoToNextUnreviewed,
@@ -100,14 +85,12 @@ pub enum FilesShortcut {
     UnreviewAll,
 }
 
-/// Commands that open an overlay.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OverlayShortcut {
     ShowCommitMessage,
     OpenHelp,
 }
 
-/// Commands that change the reviewed revisions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RevisionShortcut {
     GoToParent,
@@ -115,7 +98,6 @@ pub enum RevisionShortcut {
     OpenSelector,
 }
 
-/// Commands the Threads list runs while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThreadsShortcut {
     ShowUnresolved,
@@ -123,7 +105,6 @@ pub enum ThreadsShortcut {
     OpenConversation,
 }
 
-/// Commands the thread conversation view runs while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConversationShortcut {
     Reply,
@@ -131,43 +112,29 @@ pub enum ConversationShortcut {
     Peek,
     MarkRead,
     FocusThreads,
-    /// Close the source peek, or return to Files when nothing is peeked.
     Back,
 }
 
-/// Commands the Explore conversation runs while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExploreShortcut {
-    /// Select the next answer, or scroll down when no answer is selectable.
     SelectNext,
-    /// Select the previous answer, or scroll up when no answer is selectable.
     SelectPrevious,
     ScrollDown,
     ScrollUp,
-    /// Send the selected answer, or start replying to the current turn.
     Confirm,
-    /// Send the composed answer or implementation instructions.
     Send,
-    /// Leave the evidence list or close the conclusion preview.
     Back,
-    /// Select one answer by its zero-based position.
     ChooseAnswer(usize),
     Turn(ExploreTurnShortcut),
     Evidence(ExploreEvidenceShortcut),
 }
 
-/// Explore commands that act on the interview turn.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExploreTurnShortcut {
-    /// Start a round from the start screen.
     Start(ExploreStartShortcut),
-    /// Open the Explore page of a round on the page again.
     OpenPage,
-    /// Show the interview of a round on the page in the pane.
     ContinueInPane,
-    /// Open the Explore page on its list of past rounds, from the start screen.
     PastRounds,
-    /// Change an Explore setting: one of the next round or of the Explore page.
     Setting(ExploreSettingShortcut),
     Cancel,
     Retry,
@@ -176,65 +143,42 @@ pub enum ExploreTurnShortcut {
     ToggleMap,
 }
 
-/// The four ways to start a round from Explore's start screen.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExploreStartShortcut {
-    /// Start a round on the Explore page, which opens in the browser.
     Start,
-    /// The same, with a challenger reviewing beside the agent.
     StartWithChallenger,
-    /// Start a round in the pane.
     StartInPane,
-    /// Start a round in the pane, with a challenger.
     StartInPaneWithChallenger,
 }
 
-/// The Explore settings that the pane changes: the next round's and the Explore page's.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExploreSettingShortcut {
-    /// Turn over whose change the round started from the start screen reviews: the reviewer's
-    /// or someone else's.
     Whose,
-    /// Change the writing style of the next round: plain, Simplified Technical English, concise.
     WritingStyle,
-    /// Change which choices run-ahead prepares: off, the recommended one, every one.
     RunAhead,
-    /// Change a setting of the Explore page.
     Page(ExplorePageSettingShortcut),
 }
 
-/// The settings of the Explore page that the pane changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExplorePageSettingShortcut {
-    /// Turn over whether Start and Start with Challenger open the page in the browser.
     PaneStarts,
-    /// Turn network access on or off.
     Network,
-    /// Edit the network interface the page listens on.
     Interface,
-    /// Edit the first port the page tries.
     FirstPort,
-    /// Share the running round over a tunnel, or stop sharing it.
     Tunnel,
 }
 
-/// Explore commands that choose which evidence the conversation shows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExploreEvidenceShortcut {
-    /// Return to the turn's first, most decisive evidence.
     First,
-    /// Show the turn's next evidence.
     Next,
 }
 
-/// Commands Explore runs whether its conversation or its evidence has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExploreGlobalShortcut {
-    /// Move focus through the conversation, the inline evidence and the answer.
     CycleFocus,
     GrowEvidence,
     ShrinkEvidence,
-    /// Fit the evidence window to its wrapped relevant range.
     FitEvidence,
 }
 
@@ -282,27 +226,15 @@ pub enum SourceShortcut {
     MoveToStartOfLine,
 }
 
-/// The commands one input subscription resolves.
-///
-/// Every owner enum is a subscription to its own scope. A component that
-/// listens to several scopes subscribes through an enum that combines them.
 pub trait ShortcutSubscription: Copy + Eq + Send + Sync + 'static {
-    /// Return this subscription's command, or `None` when it does not listen
-    /// to the scope that owns `command`.
     fn select(command: ShortcutCommand) -> Option<Self>;
 
-    /// Return the command `key` runs on its own in this subscription's scopes.
-    ///
-    /// Components use it to recognize a key that belongs to another scope,
-    /// such as an application command they must let through, without naming
-    /// the key. Two-key sequences are ignored.
     fn bound_to(key: Key) -> Option<Self> {
         bindings()
             .filter(|binding| binding.sequence == ShortcutSequence::One(key))
             .find_map(|binding| Self::select(binding.command))
     }
 
-    /// Every key that runs this command on its own.
     fn keys(self) -> impl Iterator<Item = Key> {
         bindings().filter_map(move |binding| match binding.sequence {
             ShortcutSequence::One(key) if Self::bound_to(key) == Some(self) => Some(key),
@@ -337,7 +269,6 @@ owner_subscription!(ConversationShortcut, Conversation);
 owner_subscription!(ExploreShortcut, Explore);
 owner_subscription!(ExploreGlobalShortcut, ExploreGlobal);
 
-/// The scopes the application resolves after focused components pass on a key.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ApplicationCommand {
     Application(ApplicationShortcut),
@@ -352,7 +283,6 @@ impl ShortcutSubscription for ApplicationCommand {
     }
 }
 
-/// The scopes the diff resolves while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiffPaneCommand {
     Movement(MovementShortcut),
@@ -369,7 +299,6 @@ impl ShortcutSubscription for DiffPaneCommand {
     }
 }
 
-/// The scopes the Threads list resolves while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThreadsCommand {
     Movement(MovementShortcut),
@@ -386,7 +315,6 @@ impl ShortcutSubscription for ThreadsCommand {
     }
 }
 
-/// The scopes the thread conversation view resolves while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConversationCommand {
     Movement(MovementShortcut),
@@ -401,7 +329,6 @@ impl ShortcutSubscription for ConversationCommand {
     }
 }
 
-/// The scopes the Explore conversation resolves while it has focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExploreCommand {
     Global(ExploreGlobalShortcut),

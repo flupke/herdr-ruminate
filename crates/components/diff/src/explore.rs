@@ -5,7 +5,6 @@ use std::sync::Arc;
 use ui_actions::Action;
 use ui_events::ExploreEvidence;
 
-/// The comparison and the evidence one Explore viewer shows.
 #[derive(Default)]
 pub(super) struct ShownEvidence {
     pub(super) comparison: Option<Arc<Comparison>>,
@@ -68,12 +67,9 @@ impl ShownEvidence {
     }
 }
 
-/// How the pane brought an evidence viewer to the front.
 #[derive(Clone, Copy)]
 pub(super) struct EvidenceShown {
-    /// The viewer did not exist before.
     pub(super) opened: bool,
-    /// Another viewer was in front before.
     pub(super) switched: bool,
 }
 
@@ -144,7 +140,6 @@ impl SourceViewer {
         Ok(())
     }
 
-    /// Show `comparison` from its first file, forgetting the previous one.
     pub(super) fn install_comparison(&mut self, comparison: Arc<Comparison>) {
         self.review_checkpoint = Some(comparison.checkpoint.clone());
         self.source_session = Some(format!("explore:{}", uuid::Uuid::new_v4()));
@@ -172,8 +167,6 @@ impl SourceViewer {
         self.search = diff_search::Search::default();
     }
 
-    /// Show the evidence a question cites. A viewer that already showed it
-    /// keeps its place unless `event` asks to reveal the evidence again.
     pub(super) fn show_question_evidence(
         &mut self,
         event: &ExploreEvidence,
@@ -226,7 +219,6 @@ impl SourceViewer {
         actions
     }
 
-    /// Continue this viewer's search after another viewer was shown.
     pub(super) fn resume_evidence_search(&mut self) -> Vec<Action> {
         self.publish_search_status();
         let intents = self.search.resume(&self.documents);
@@ -298,8 +290,6 @@ impl SourceViewer {
                 return self.request_visible_highlights();
             }
         }
-        // Restored comparison entries contain metadata only. A source view must replace
-        // that placeholder, otherwise path-based selection finds the empty entry first.
         self.documents
             .retain(|document| document.path != path || document.content.is_some());
         let event = ui_events::SourceContentLoaded {

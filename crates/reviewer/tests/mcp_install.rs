@@ -71,7 +71,6 @@ fn installation_registers_selected_clients_outside_a_repository(custom_paths: bo
     assert_eq!(fs::read_dir(working_directory).unwrap().count(), 0);
 }
 
-/// A `PATH` of a directory in `directory` that holds a `codex`.
 fn path_with_codex(directory: &Path) -> std::path::PathBuf {
     let path = directory.join("path");
     fs::create_dir(&path).unwrap();

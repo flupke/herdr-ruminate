@@ -546,7 +546,6 @@ fn an_incoming_reply_keeps_the_conversation_viewport_and_draft() {
     assert_eq!(ui.app.navigation.focus(), focus);
     assert!(ui.text().contains("Still writing"), "{}", ui.text());
     assert!(ui.text().contains("Cancel") && ui.text().contains("Post"));
-    // Adding messages below the original context cannot move that context.
     let after = ui.buffer();
     for row in 4..10 {
         for column in 36..108 {
@@ -1430,7 +1429,6 @@ fn empty_filters_clear_conversation_actions_and_park_the_reply() {
         ui.key(Key::Enter);
         ui.key(Key::Char('A'));
         ui.paste("Preserved reply");
-        // The tab shortcut reaches navigation even in a narrow composing pane.
         ui.key(Key::Control('t'));
         ui.key(Key::Control('t'));
         ui.key(Key::Control('t'));
@@ -1480,8 +1478,6 @@ fn empty_filters_clear_conversation_actions_and_park_the_reply() {
 #[path = "threads/resolution.tests.rs"]
 mod resolution;
 
-/// The diff's reply editor takes every key except the ones the table binds
-/// to switching navigation.
 #[test]
 fn navigation_switches_reach_the_application_while_a_diff_reply_is_composed() {
     for key in ApplicationShortcut::ToggleNavigation.keys() {
@@ -1511,7 +1507,6 @@ fn thread_cards_show_where_each_thread_sits_before_its_code_loads() {
     assert!(text.contains("Outside diff"), "{text}");
 }
 
-/// A thread whose first reply, long and already read, comes before a short unread one.
 fn thread_with_a_read_and_an_unread_reply() -> ThreadUi {
     let mut ui = ThreadUi::new(110);
     let read = "00000000-0000-4000-8000-000000000091";
@@ -1526,7 +1521,6 @@ fn thread_with_a_read_and_an_unread_reply() -> ThreadUi {
     ui.book
         .mark_replies_read(&[MessageId::parse(read).unwrap()]);
     ui.publish_book();
-    // Long enough to fill the view below its own top.
     let unread = format!(
         "Unread answer\n\n```\n{}\n```",
         (0..40)
@@ -1551,7 +1545,6 @@ fn a_thread_opens_with_the_top_of_its_first_unread_reply_at_the_top() {
         .iter()
         .position(|row| row.contains("Review thread"))
         .unwrap();
-    // The first row under the pane's border is the rule above the reply, then its header.
     assert!(rows[title + 1].contains('├'), "{text}");
     assert!(
         rows[title + 2..title + 4]
@@ -1573,7 +1566,6 @@ fn scrolling_up_from_the_unread_reply_shows_the_reply_before_it() {
     ui.key(Key::PageUp);
     ui.present();
 
-    // One page up from the unread reply: the end of the reply before it, not its start.
     let text = ui.text();
     assert!(text.contains("seen line 39"), "{text}");
     assert!(!text.contains("seen line 00"), "{text}");
@@ -1613,7 +1605,6 @@ fn scrolling_up_from_a_short_last_unread_reply_moves_at_once() {
     ui.book
         .mark_replies_read(&[MessageId::parse(read).unwrap()]);
     ui.publish_book();
-    // Too short to reach the top: the view stops at the end of the thread.
     ui.answer(
         0,
         "00000000-0000-4000-8000-000000000097",
@@ -1638,7 +1629,6 @@ fn coming_back_to_the_threads_tab_keeps_the_reply_it_opened_at_once_read() {
         "00000000-0000-4000-8000-000000000101",
         "Short unread answer",
     );
-    // The reviewer's long follow-up keeps the end of the thread far below the answer.
     let follow_up = (0..40)
         .map(|row| format!("follow-up line {row:02}"))
         .collect::<Vec<_>>()
@@ -1651,7 +1641,6 @@ fn coming_back_to_the_threads_tab_keeps_the_reply_it_opened_at_once_read() {
     ui.key(Key::Enter);
     ui.present();
     assert!(ui.text().contains("Short unread answer"), "{}", ui.text());
-    // Shown whole, the answer was read.
     ui.publish_book();
     assert!(!ui.book.thread(&ui.ids[0]).unwrap().has_unread_replies());
 
@@ -1733,6 +1722,5 @@ fn coming_back_to_the_threads_tab_keeps_where_the_reviewer_scrolled() {
     ui.key(Key::Char('t'));
     ui.present();
 
-    // Opened again at the unread reply, the end of the reply before it would be out of view.
     assert!(ui.text().contains("seen line 39"), "{}", ui.text());
 }

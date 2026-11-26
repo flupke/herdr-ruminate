@@ -1,5 +1,3 @@
-//! Repository header and application status line.
-
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 
@@ -22,30 +20,20 @@ use unicode_width::UnicodeWidthStr;
 
 const MIN_TERMINAL_WIDTH: u16 = 40;
 const MIN_TERMINAL_HEIGHT: u16 = 6;
-/// Before the change ID, at the header's left edge.
 const LEADING: &str = " ";
-/// Between the change ID and the commit title.
 const TITLE_GAP: &str = "  ";
-/// Between the title and the first Linear issue, between two issues, and after the last.
 const ISSUE_GAP: &str = "  ";
-/// The title's columns, with the change ID's, that the issues leave at least, when the header
-/// is too narrow for all of them: the issues that do not fit are left out from the last.
 const MIN_TITLE_ROOM: usize = 32;
-/// Between two keys of the footer.
 const FOOTER_GAP: &str = "  ";
 const PROGRESS_BAR_CELLS: usize = 12;
 const PROGRESS_BAR_MIN_WIDTH: u16 = 72;
 
-/// Where the header's change ID and commit title sit, as columns from the header's left edge:
-/// a click on one or the other.
 struct HeaderColumns {
     id: Range<usize>,
     title: Range<usize>,
 }
 
 impl HeaderColumns {
-    /// The columns of an ID and a title `id_width` and `title_width` wide, in the `room` columns
-    /// the header leaves them beside its summary.
     fn new(id_width: usize, title_width: usize, room: usize) -> Self {
         let id_start = LEADING.width().min(room);
         let title_start = (id_start + id_width + TITLE_GAP.width()).min(room);
@@ -56,20 +44,14 @@ impl HeaderColumns {
     }
 }
 
-/// State and behavior for the repository header and status line.
 pub struct StatusComponent {
     events: EventPublisher,
     description: String,
     display_id: Line<'static>,
     overview: FilesOverviewChanged,
     search: SearchStatusChanged,
-    /// The Linear issues the change names, which the header links to.
     issues: Vec<LinearIssue>,
-    /// The columns the header last left the change ID and the title, beside its summary and
-    /// the Linear issues: a click falls on what was drawn.
     title_room: Cell<u16>,
-    /// The columns the header last drew each issue at, from its left edge, with the address of
-    /// its page: a click opens the issue that was drawn there.
     issue_links: RefCell<Vec<(Range<usize>, String)>>,
 }
 
@@ -87,7 +69,6 @@ impl StatusComponent {
         }
     }
 
-    /// Render the complete small-terminal state when the viewport is too small.
     pub fn render_terminal_too_small(&self, area: Rect, buffer: &mut Buffer) -> bool {
         if area.width >= MIN_TERMINAL_WIDTH && area.height >= MIN_TERMINAL_HEIGHT {
             return false;
@@ -155,9 +136,6 @@ impl StatusComponent {
             );
     }
 
-    /// The columns of the issues that fit in the `room` columns beside the summary, right-aligned
-    /// before it, from the header's left edge: those that would leave the title less than it
-    /// needs, up to [`MIN_TITLE_ROOM`] columns, are left out from the last.
     fn issue_columns_in(&self, room: usize) -> Vec<Range<usize>> {
         let title_needs = (LEADING.width()
             + self.display_id.width()
@@ -169,7 +147,6 @@ impl StatusComponent {
         while shown > 0 {
             let widths = self.issues[..shown].iter().map(|issue| issue.id.width());
             let issues_width = widths.clone().sum::<usize>() + gap * (shown - 1);
-            // The last gap is the summary's own column and one more.
             let end = room.saturating_sub(gap - 1);
             if let Some(start) = end.checked_sub(issues_width)
                 && start >= title_needs + gap
@@ -187,9 +164,6 @@ impl StatusComponent {
         Vec::new()
     }
 
-    /// The changed line counts and the reviewed share of changed lines,
-    /// with a progress bar when the header is wide enough to keep room for
-    /// the title.
     fn summary(&self, width: u16, palette: Palette) -> Line<'static> {
         let FilesOverviewChanged {
             progress,
@@ -223,8 +197,6 @@ impl StatusComponent {
         Line::from(spans)
     }
 
-    /// The search being typed, or else the keys of `hints`, those the open pane offers, then the
-    /// help key. Hints that do not fit beside the help key are left out from the last.
     pub fn render_footer(
         &self,
         area: Rect,
@@ -296,8 +268,6 @@ impl StatusComponent {
         self.search.clone_from(event);
     }
 
-    /// A click on the header's change ID opens the revision selector; one on the commit title
-    /// toggles the commit message; one on a Linear issue opens its page in the browser.
     fn pointer_input(&mut self, input: PointerInput) -> Vec<Action> {
         if !matches!(input.kind, PointerInputKind::Click) {
             return Vec::new();
@@ -338,7 +308,6 @@ impl StatusComponent {
     }
 }
 
-/// A count of columns as a ratatui coordinate, clamped.
 fn clamp_u16(columns: usize) -> u16 {
     u16::try_from(columns).unwrap_or(u16::MAX)
 }

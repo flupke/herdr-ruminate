@@ -119,7 +119,6 @@ fn unread_work_survives_a_lost_fetch_and_reopening_until_its_exact_snapshot_is_a
             fixture.store.load_threads(&"review".into()).unwrap(),
             original
         );
-        // The caller disconnects without acting on its response.
         client.cancel().await.unwrap();
         fetched
     });
@@ -150,7 +149,6 @@ fn unread_work_survives_a_lost_fetch_and_reopening_until_its_exact_snapshot_is_a
         value(&client, "reply", json!({"review": access, "thread_id": thread,
             "message_id": "97061f99-9880-4bc9-89be-94f3480f7324", "text": "Answer to follow-up",
             "in_reply_to": pending["threads"][0]["in_reply_to"]})).await;
-        // Retrying an older reply cannot undo acknowledgement of the newer answer.
         value(&client, "reply", reply).await;
         assert_eq!(value(&client, "get_new_messages", json!({"review": access})).await["threads"], json!([]));
         let stored = fixture.store.load_threads(&"review".into()).unwrap();

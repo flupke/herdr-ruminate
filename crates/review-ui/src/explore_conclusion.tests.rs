@@ -86,7 +86,6 @@ fn authorized_round(
     round
 }
 
-/// The saved request `delivery`, in the state `state` the session decided for it.
 fn progress(
     delivery: &review_explore::ImplementationDelivery,
     state: ImplementationState,
@@ -98,8 +97,6 @@ fn progress(
     }
 }
 
-/// Restores a saved request as if the app restarted, with the session deciding that it is in
-/// `state`.
 fn restart_with_delivery(
     fixture: &mut ExploreUi,
     kickoff: &TurnRequest,

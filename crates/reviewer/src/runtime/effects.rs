@@ -1,9 +1,3 @@
-//! Everything the runtime does outside the application: background workers, their
-//! channels and their lifecycle.
-//!
-//! The event loop hands actions to [`Effects`] and receives every result as an event
-//! on the [`Outputs`] channels.
-
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -40,51 +34,32 @@ use super::route::WorkerStopped;
 use super::worker::{Worker, WorkerCommand};
 use crate::watcher::SourceWatchRequests;
 
-/// What the effects need from the process that runs them.
 pub(super) struct Setup {
     pub(super) repository: Repository,
     pub(super) store: ReviewStore,
     pub(super) target: AgentTarget,
-    /// Herdr, or herdr-core under herdr-app.
     pub(super) agents: Arc<dyn AgentHost>,
     pub(super) endpoint: Result<review_mcp::Endpoint, String>,
     pub(super) theme: Theme,
     pub(super) jev: JevClassifier,
-    /// The Linear workspace and teams whose issues the header and the page link to.
     pub(super) linear: Option<LinearSettings>,
-    /// Where a vision session reads the Explore prompts sent.
     pub(super) turns: Option<vision_turns::TurnLog>,
-    /// The herdr-bus file the new review comments are published on, or why there is none, which
-    /// the reviewer reports; `None` publishes none.
     pub(super) bus: Option<Result<PathBuf, String>>,
     pub(super) source_watches: Option<SourceWatchRequests>,
-    /// Where the Explore session publishes its round for the Explore page.
     pub(super) page: RoundPublisher,
-    /// The Explore page's link to the review threads, which hold the round's conversation.
     pub(super) page_threads: Arc<PageThreads>,
-    /// Where the hooks of the agents of Herdr's server reach the reviewer; `None` when it is
-    /// not known.
     pub(super) hook_directory: Option<agent_hooks::HookDirectory>,
-    /// How run-ahead forks the agent.
     pub(super) run_ahead: RunAheadSetup,
 }
 
-/// How run-ahead forks the agent's session.
 pub(super) struct RunAheadSetup {
-    /// The programs the forks start through.
     pub(super) tools: claude_fork::ForkTools,
-    /// Where run-ahead writes its log; `None` writes none.
     pub(super) log: Option<PathBuf>,
-    /// How long the forks' host waits on Herdr and on the forks.
     pub(super) waits: review_run_ahead::ForkWaits,
-    /// How long the reviewer's talk with the agent in the round conversation stays quiet
-    /// before run-ahead takes forks again.
     pub(super) talk_quiet: std::time::Duration,
 }
 
 impl RunAheadSetup {
-    /// The forks of the agents `agents` reports, Claude Code's and Codex's, which hears the
-    /// agents' hooks through `hooks`.
     fn forks(
         self,
         agents: &Arc<dyn AgentHost>,
@@ -103,8 +78,6 @@ impl RunAheadSetup {
     }
 }
 
-/// The reviewer's end of the hooks of the agents of its host, Herdr's server or herdr-core,
-/// whose directory is `directory`, or why it does not listen to them.
 fn listen_to_hooks(
     directory: Option<&agent_hooks::HookDirectory>,
 ) -> Result<Arc<AgentHooks>, String> {
@@ -117,17 +90,11 @@ fn listen_to_hooks(
         .map_err(|error| format!("cannot listen to the agents' hooks: {error}"))
 }
 
-/// Where effects deliver their results.
 pub(super) struct Outputs {
-    /// Results of slow or unrequested work.
     pub(super) background: EventSender<EventEnvelope>,
-    /// Results the user waits for, which overtake background results.
     pub(super) interactive: EventSender<EventEnvelope>,
 }
 
-/// The running workers, reached only through actions and a few runtime signals.
-///
-/// Dropping it stops the workers and waits for them.
 pub(super) struct Effects {
     repository_root: PathBuf,
     target: AgentTarget,
@@ -135,29 +102,21 @@ pub(super) struct Effects {
     source_watches: Option<SourceWatchRequests>,
     commands: Sender<WorkerCommand>,
     documents: Sender<document::Command>,
-    /// Opens the Explore page that this reviewer serves, when the pane asks; `None` until the
-    /// page is served, and in tests that open no browser.
     page_opener: Option<PageOpener>,
     page_threads: Arc<PageThreads>,
-    /// Applies the network settings to the Explore page; `None` until the page is served, and
-    /// in tests that serve no page.
     page_sharing: Option<PageSharing>,
-    /// Where results of slow or unrequested work go.
     messages: ApplicationEventSender,
-    /// Taken first on drop, so agent delivery stops before repository work does.
     front: Option<FrontWorkers>,
     lsp: review_lsp::Worker,
     threads: Vec<JoinHandle<()>>,
 }
 
-/// Workers that answer the UI directly, stopped before repository work.
 struct FrontWorkers {
     comments: comments::Worker,
     search: text_search::Worker,
     highlighting: highlighting::Worker,
 }
 
-/// Runs terminal actions, which need the terminal the event loop owns.
 type TerminalExecutor<'a> = dyn FnMut(TerminalAction) -> eyre::Result<ControlFlow<()>> + 'a;
 
 impl Effects {
@@ -184,7 +143,6 @@ impl Effects {
         let (commands, command_receiver) = mpsc::channel();
         let (documents, document_thread) =
             start_documents(repository.clone(), Arc::clone(&tracker), messages.clone());
-        // One listener serves the thread service's prompts and run-ahead.
         let hooks = listen_to_hooks(hook_directory.as_ref());
         let comments = start_comments(
             &store,
@@ -264,7 +222,6 @@ impl Effects {
         }
     }
 
-    /// Run actions in order until one stops the runtime.
     pub(super) fn perform_all(
         &self,
         actions: Vec<Action>,
@@ -277,13 +234,11 @@ impl Effects {
         .run_all(actions)
     }
 
-    /// Poll the repository; results arrive after earlier repository work.
     pub(super) fn refresh(&self) -> eyre::Result<()> {
         self.commands.send(WorkerCommand::Poll)?;
         Ok(())
     }
 
-    /// The user focused a pane, which later prompts prefer as their agent.
     pub(super) fn agent_focused(&mut self, pane_id: &PaneId) {
         self.target.observe_focus(pane_id);
         self.front()
@@ -291,7 +246,6 @@ impl Effects {
             .send(comments::Command::ActiveAgentChanged);
     }
 
-    /// Let agent delivery see Herdr traffic.
     pub(super) fn observe(&self, event: &HerdrEvent) {
         self.front()
             .comments
@@ -302,41 +256,33 @@ impl Effects {
         self.front.as_ref().expect("front workers run until drop")
     }
 
-    /// Apply later network settings to the Explore page through `sharing`.
     pub(super) fn share_page(&mut self, sharing: PageSharing) {
         self.page_sharing = Some(sharing);
     }
 
-    /// Open the Explore page with `opener` when the pane asks.
     pub(super) fn open_page_with(&mut self, opener: PageOpener) {
         self.page_opener = Some(opener);
     }
 
-    /// Where inputs for the Explore session join repository work.
     pub(super) fn explore_inbox(&self) -> explore_session::Inbox {
         inbox_for(self.commands.clone())
     }
 
-    /// Where the Explore page sends its thread commands, which write the round's conversation:
-    /// to the thread worker, as the pane's do.
     pub(super) fn page_thread_sender(&self) -> review_explore_page::ThreadSender {
         self.page_threads
             .sender(self.front().comments.thread_commands())
     }
 
-    /// Where the repository watcher sends the files that change on disk.
     pub(super) fn lsp_file_changes(&self) -> review_lsp::FileChangeSender {
         self.lsp.file_change_sender()
     }
 
-    /// Language-server events, which the runtime forwards on its own schedule.
     pub(super) fn lsp_events(&self) -> EventReceiver<review_lsp::Event> {
         self.lsp.event_receiver()
     }
 
     fn load_documents(&self, load: DocumentLoad) -> eyre::Result<()> {
         match load {
-            // One command per path keeps each diff ordered against later snapshots.
             DocumentLoad::Diffs {
                 review_checkpoint,
                 paths,
@@ -369,9 +315,6 @@ impl Effects {
         Ok(())
     }
 
-    /// Open the Explore page in the browser on `screen`, on a thread of its own since the browser
-    /// program may take its time; the pane hears only of a failure. Without a page, there is none
-    /// to open: the pane hears why.
     fn open_page(&self, screen: PageScreen) {
         let Some(opener) = self.page_opener.clone() else {
             let _ = self
@@ -390,8 +333,6 @@ impl Effects {
         });
     }
 
-    /// Open `url` in the default browser, on a thread of its own since the browser program may
-    /// take its time; the pane hears only of a failure, in a toast.
     fn open_link(&self, url: String) {
         let messages = self.messages.clone();
         thread::spawn(move || {
@@ -404,8 +345,6 @@ impl Effects {
         });
     }
 
-    /// Shares the running round over a tunnel, or stops the tunnel. Without a page, there is
-    /// none to share: the pane hears why, or that no tunnel runs.
     fn share_round(&self, on: bool) {
         use review_explore_page_host::TunnelState;
         match (&self.page_sharing, on) {
@@ -422,7 +361,6 @@ impl Effects {
         }
     }
 
-    /// Paths from the application are relative to the repository root.
     fn resolve(&self, path: PathBuf) -> PathBuf {
         if path.is_relative() {
             self.repository_root.join(path)
@@ -431,7 +369,6 @@ impl Effects {
         }
     }
 
-    /// Keep later repository work pending until the hold drops.
     #[cfg(test)]
     pub(super) fn hold_repository_work(&self) -> EventSender<()> {
         let (hold, release) = crossbeam_channel::bounded(0);
@@ -441,8 +378,6 @@ impl Effects {
         hold
     }
 
-    /// Returns once the repository worker handled every command sent before, and every prompt
-    /// the thread worker got by then is sent, withdrawn or failed.
     #[cfg(test)]
     pub(super) fn flush(&self) {
         self.hold_repository_work()
@@ -459,7 +394,6 @@ impl Effects {
 
 impl Drop for Effects {
     fn drop(&mut self) {
-        // No prompt or MCP request reaches the Explore session while it winds down.
         drop(self.front.take());
         let _ = self.commands.send(WorkerCommand::Quit);
         let _ = self.documents.send(document::Command::Quit);
@@ -469,14 +403,12 @@ impl Drop for Effects {
     }
 }
 
-/// Route inputs the Explore session produces later back to the worker's serial order.
 fn inbox_for(commands: Sender<WorkerCommand>) -> explore_session::Inbox {
     explore_session::Inbox::new(move |input| {
         let _ = commands.send(WorkerCommand::Explore(input));
     })
 }
 
-/// Documents load on a worker of their own, beside the repository's.
 fn start_documents(
     repository: Repository,
     tracker: Arc<ReviewTracker>,
@@ -495,7 +427,6 @@ fn start_documents(
     (documents, thread)
 }
 
-/// Conversation traffic bypasses slow repository operations.
 fn start_comments(
     store: &ReviewStore,
     agents: Arc<dyn AgentHost>,
@@ -523,8 +454,6 @@ fn start_comments(
     )
 }
 
-/// Records each comments wakeup in a vision session's turn log `turns`, and publishes each new
-/// review comment on the herdr-bus file `bus`, when given.
 fn share_comments(
     comments: &comments::Worker,
     turns: Option<&vision_turns::TurnLog>,
@@ -538,8 +467,6 @@ fn share_comments(
     }
 }
 
-/// Where the thread worker's events go: the Explore page, the Explore session for a message of
-/// the round conversation, and the pane.
 fn thread_events(
     commands: &Sender<WorkerCommand>,
     messages: ApplicationEventSender,
@@ -555,7 +482,6 @@ fn thread_events(
     }
 }
 
-/// Shows the thread worker's `event` in the pane.
 fn publish_thread_event(messages: &ApplicationEventSender, event: comments::Event) {
     match event {
         comments::Event::Loaded(event) => {
@@ -564,7 +490,6 @@ fn publish_thread_event(messages: &ApplicationEventSender, event: comments::Even
         comments::Event::Posted(event) => {
             let _ = messages.send(event);
         }
-        // The threads it covers show why it waits, or why it failed beside their Retry agent.
         comments::Event::Wakeup {
             review_unit,
             notice,
@@ -584,7 +509,6 @@ fn publish_thread_event(messages: &ApplicationEventSender, event: comments::Even
     }
 }
 
-/// Hands each action group to the worker that runs it.
 struct Performer<'a, 't> {
     effects: &'a Effects,
     terminal: &'a mut TerminalExecutor<'t>,

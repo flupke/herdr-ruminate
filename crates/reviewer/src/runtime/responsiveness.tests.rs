@@ -122,7 +122,6 @@ fn agent_detection_events_and_batched_idle_ticks_do_not_repaint() {
     assert_eq!(runtime.terminal.get_frame().count(), frames + 1);
 }
 
-/// Highlight results wait until the test releases them.
 struct DelayedHighlights {
     started: Receiver<()>,
     release: Sender<()>,
@@ -158,7 +157,6 @@ impl Drop for DelayedHighlights {
 }
 
 struct Scenario {
-    // Declared first so stalled highlights are released before the workers stop.
     highlighting: DelayedHighlights,
     fixture: EffectsFixture,
     terminal: Terminal<TestBackend>,
@@ -225,7 +223,6 @@ impl Scenario {
     }
 
     fn flood_background(&self) {
-        // Old loads still in flight when a revision changes must not starve input.
         let stale = EventEnvelope::new(DiffContentLoaded {
             review_checkpoint: ReviewCheckpoint::new("old change", "old checkpoint"),
             path: "source.rs".to_owned(),
@@ -259,8 +256,6 @@ impl Scenario {
             .collect()
     }
 
-    /// Runs the event loop until the screen shows `text`. Each cycle starts with a tick, as
-    /// the runtime's timer sends them, and the next waits for another event to arrive.
     fn wait_for_screen(&mut self, text: &str) {
         loop {
             self.fixture

@@ -1,6 +1,3 @@
-//! Opening a review split must synchronize its PTY before further user input,
-//! and split the focused pane across the side that looks longer.
-
 use std::process::Command;
 
 use test_case::test_case;

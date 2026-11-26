@@ -1,5 +1,3 @@
-//! Adapt direct vertical motions while leaving native Vim key sequences intact.
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use edtui::{
     EditorEventHandler, EditorMode, EditorState, actions::SwitchMode, events::KeyEventRegister,
@@ -72,9 +70,7 @@ impl VisualMotion {
             },
             _ => return None,
         };
-        // Edtui keeps pending sequences private and accepts only its own action
-        // enum. Probe a cloned handler with a marker action: `fj`, `dk`, searches,
-        // etc. still use Edtui's parser and cannot be mistaken for a bare motion.
+        // Edtui keeps pending key sequences private and accepts only its own action enum.
         let mut probe = handler.clone();
         probe.key_handler.insert(
             KeyEventRegister::new(vec![edtui::events::KeyInput::from(event)], mode),

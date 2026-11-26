@@ -22,7 +22,6 @@ pub(super) fn restore(
     round: &ExploreRound,
     view: Option<ViewSave>,
 ) -> Vec<Action> {
-    // Serialization removes comparison buffers, preserving only history/source locators.
     let round = serde_json::from_slice(&serde_json::to_vec(round).unwrap()).unwrap();
     fixture.app.publish(ui_events::ExploreRestored {
         implementations: Vec::new(),
@@ -603,7 +602,6 @@ fn the_path_run_ahead_took_for_a_turn_shows_under_the_question_it_asked() {
     fixture.app.publish(path_of_turn(&prepared));
     assert_eq!(shows(&fixture), [true, false], "{}", fixture.text());
 
-    // A reopened reviewer knows it from the saved forks.
     let saved = serde_json::from_slice(&serde_json::to_vec(&round).unwrap()).unwrap();
     fixture.app.publish(ui_events::ExploreRestored {
         implementations: Vec::new(),

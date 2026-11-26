@@ -1,5 +1,3 @@
-//! Thread state and the diff component's comment commands.
-
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -24,29 +22,22 @@ mod focus;
 
 pub(super) struct Comments {
     book: Option<ReviewThreads>,
-    /// Shared with every viewer of the pane, so each draft has one owner.
     drafts: Rc<RefCell<Drafts>>,
     focus: Option<DraftId>,
     site: EditorSite,
     selected: Option<MessageId>,
     pending_path: Option<String>,
     mapped: HashMap<ThreadId, Option<FrozenHunk>>,
-    /// Threads whose current source could not be read.
     unavailable: HashSet<ThreadId>,
     files: ThreadFiles,
     editor_height: u16,
-    /// Shared with every viewer of the pane.
     wakeup_notices: WakeupNotices,
 }
 
-/// For each review, the latest wakeup for its pending comments that waits to reach the agent or
-/// did not reach it, until another is on its way or it went.
 #[derive(Clone, Default)]
 pub(super) struct WakeupNotices(Rc<RefCell<HashMap<ReviewUnit, WakeupNotice>>>);
 
 impl WakeupNotices {
-    /// Record what became of the latest wakeup for a review's pending comments; returns whether
-    /// that changed what the review's threads show.
     pub(super) fn report(&self, event: &ThreadWakeupReported) -> bool {
         let mut notices = self.0.borrow_mut();
         match &event.notice {
@@ -58,20 +49,13 @@ impl WakeupNotices {
     }
 }
 
-/// The files a viewer matches threads to.
 enum ThreadFiles {
-    /// The reviewed files, associated with threads by the shared projection.
     Review(SharedThreadProjection),
-    /// The files of a saved Explore comparison.
     Comparison(ThreadPaths),
 }
 
-/// Where the pane shows the editor of the focused draft.
 enum EditorSite {
-    /// In the viewer's document.
     File,
-    /// In the pane's conversation view, which edits a reply. The file editor
-    /// returns when the conversation closes.
     Conversation { file_focus: Option<DraftId> },
 }
 
@@ -97,7 +81,6 @@ pub(super) struct ConversationButton {
 }
 
 impl ConversationButton {
-    /// The action of the button under `column`.
     pub(super) fn at(buttons: Vec<Self>, column: usize) -> Option<ConversationAction> {
         buttons
             .into_iter()
@@ -116,7 +99,6 @@ impl CommentTarget {
 }
 
 impl Comments {
-    /// Comments editing the pane's shared `drafts`, showing its shared `wakeup_notices`.
     pub(super) fn new(
         drafts: Rc<RefCell<Drafts>>,
         wakeup_notices: WakeupNotices,
@@ -137,15 +119,12 @@ impl Comments {
         }
     }
 
-    /// What the latest wakeup for the comment of `thread` that waits for a reply shows: why it
-    /// waits to reach the agent, or why it did not reach it, if either.
     pub(super) fn wakeup_notice(&self, thread: &ReviewThread) -> Option<WakeupNotice> {
         let notices = self.wakeup_notices.0.borrow();
         let notice = notices.get(&self.book.as_ref()?.review_unit)?;
         notice.covers(thread).then(|| notice.clone())
     }
 
-    /// Whether the focus edits a reply in the pane's conversation view.
     pub(super) fn in_conversation(&self) -> bool {
         matches!(self.site, EditorSite::Conversation { .. })
     }
@@ -154,7 +133,6 @@ impl Comments {
         self.unavailable.contains(thread)
     }
 
-    /// Record whether the current source of `thread` could be read.
     pub(super) fn set_unavailable(&mut self, thread: ThreadId, unavailable: bool) {
         if unavailable {
             self.unavailable.insert(thread);
@@ -167,7 +145,6 @@ impl Comments {
         self.unavailable.clear();
     }
 
-    /// Whether a thread saved on `path` belongs to the file at `current` now.
     pub(super) fn is_current_path(&self, path: &str, current: &str) -> bool {
         match &self.files {
             ThreadFiles::Review(projection) => projection.read().current_path(path) == current,
@@ -175,12 +152,10 @@ impl Comments {
         }
     }
 
-    /// Match threads to the files of a saved comparison instead of the review.
     pub(super) fn use_comparison(&mut self, paths: ThreadPaths) {
         self.files = ThreadFiles::Comparison(paths);
     }
 
-    /// Size editors for a viewport of `height` rows.
     pub(super) fn fit_editors(&mut self, height: u16) {
         self.editor_height = height.saturating_sub(6).clamp(1, 5);
     }
@@ -193,7 +168,6 @@ impl Comments {
         self.book.as_ref()
     }
 
-    /// Whether `path` finished loading after comment navigation asked for it.
     pub(super) fn take_pending_path(&mut self, path: &str) -> bool {
         let pending = self.pending_path.as_deref() == Some(path);
         if pending {
@@ -202,12 +176,10 @@ impl Comments {
         pending
     }
 
-    /// Drafts are shared, so the viewer that loaded `book` already recovered its drafts.
     pub(super) fn inherit_book(&mut self, book: &ReviewThreads) {
         self.book = Some(book.clone());
     }
 
-    /// Reopen the drafts saved for `unit` that no viewer holds yet.
     fn recover(&self, unit: &review_types::ReviewUnit, saved: &review_threads::SavedDrafts) {
         self.drafts.borrow_mut().recover(unit, saved);
     }
@@ -232,7 +204,6 @@ impl Comments {
         })
     }
 
-    /// Whether this viewer edits a reply to one of `thread`'s messages.
     pub(super) fn replies_to(&self, thread: &ReviewThread) -> bool {
         self.focused().is_some_and(|open| {
             thread
@@ -262,7 +233,6 @@ impl Comments {
         }
     }
 
-    /// Whether `file` holds the code `thread` discusses; a round conversation is on no file.
     pub(super) fn shows_thread(&self, file: &LoadedDocument, thread: &ReviewThread) -> bool {
         thread
             .path()
@@ -294,7 +264,6 @@ impl Comments {
         }
     }
 
-    /// Change the focused draft's text, returning the save it needs.
     fn edit(
         &mut self,
         edit: impl FnOnce(&mut Drafts, DraftId) -> Option<ThreadCommand>,
@@ -303,8 +272,6 @@ impl Comments {
         edit(&mut self.drafts.borrow_mut(), id)
     }
 
-    /// Submit or cancel the focused draft. A draft that is no longer composed
-    /// returns focus to the message it answered.
     fn finish(&mut self, action: EditorAction) -> Option<Submission> {
         let id = self.focused_id()?;
         let reply_to = self
@@ -321,8 +288,6 @@ impl Comments {
         Some(submission)
     }
 
-    /// Adopt a loaded `book`: settle the drafts it shows posted and return the
-    /// saves of drafts renewed meanwhile.
     fn accept_book(&mut self, book: &ReviewThreads) -> Vec<ThreadCommand> {
         let renewed = self.drafts.borrow_mut().reconcile(book);
         self.book = Some(book.clone());
@@ -347,7 +312,6 @@ impl Comments {
         self.activate(id);
     }
 
-    /// Once the focused draft has been posted, select its message instead.
     fn release_posted(&mut self) -> bool {
         let posted = self
             .focus
@@ -362,7 +326,6 @@ impl Comments {
 }
 
 impl SourceViewer {
-    /// Whether this viewer shows the editor of its focused draft.
     pub(super) fn editor_is_visible(&self) -> bool {
         !self.comments.in_conversation()
             && self
@@ -422,7 +385,6 @@ impl SourceViewer {
         self.paste_into_draft(input)
     }
 
-    /// Paste into the focused draft, wherever the pane shows its editor.
     pub(super) fn paste_into_draft(&mut self, input: &TextPasted) -> Vec<Action> {
         let save = self.comments.edit(|drafts, id| drafts.paste(id, &input.0));
         save.map(Action::Thread).into_iter().collect()
@@ -498,7 +460,6 @@ impl SourceViewer {
         self.keep_comment_visible();
     }
 
-    /// Buttons of an unfocused editor act on their own draft.
     pub(super) fn finish_draft(&mut self, draft: DraftId, action: EditorAction) -> Vec<Action> {
         self.comments.activate(draft);
         self.finish_comment(action)
@@ -588,8 +549,6 @@ impl SourceViewer {
         self.keep_comment_visible();
     }
 
-    /// Scroll the open editor or the selected comment into view. The pane
-    /// keeps an editor shown in its conversation visible itself.
     pub(super) fn keep_comment_visible(&mut self) {
         if self.comments.in_conversation() {
             return;
@@ -608,7 +567,6 @@ impl SourceViewer {
         }
     }
 
-    /// Show the threads and drafts loaded for this viewer's review.
     pub(super) fn threads_loaded(&mut self, event: &ReviewThreadsLoaded) -> Vec<Action> {
         let mut actions = Vec::new();
         if !self.role.shows_comments()
@@ -623,7 +581,6 @@ impl SourceViewer {
         let mut visible_anchor = None;
         if let Ok(book) = &event.result {
             self.comments.recover(&event.review_unit, &event.drafts);
-            // Another viewer may already have settled the shared draft this one edits.
             let editing = self.comments.focus.is_some();
             let height = usize::from(self.viewport_height);
             visible_anchor = (editing && !self.comments.in_conversation())
@@ -650,7 +607,6 @@ impl SourceViewer {
             }
         }
         self.refresh_comment_documents();
-        // The posted thread is placed in the diff only after its anchor is remapped.
         let pinned = visible_anchor.and_then(|anchor| {
             let viewport = self.displayed_viewport()?;
             let row = viewport.anchor_row(&anchor)?;
@@ -666,8 +622,6 @@ impl SourceViewer {
         actions
     }
 
-    /// Show in the threads of this viewer's review what became of the latest wakeup for
-    /// `unit`'s pending comments, when it is this viewer's review.
     pub(super) fn wakeup_reported(&mut self, unit: &ReviewUnit) {
         let shown = self
             .comments
@@ -678,8 +632,6 @@ impl SourceViewer {
         }
     }
 
-    /// Settle the draft whose post finished. Returns whether this viewer's
-    /// editor held that draft and now selects the posted message.
     pub(super) fn post_finished(&mut self, event: &ThreadPostFinished) -> bool {
         if !self.role.shows_comments() {
             return false;
@@ -699,7 +651,6 @@ impl SourceViewer {
         released
     }
 
-    /// Where this viewer's loaded code places `thread`.
     fn thread_placement(&self, thread: &ReviewThread) -> ThreadPlacement {
         if self.comments.is_unavailable(&thread.id) {
             return ThreadPlacement::Unavailable;
@@ -723,7 +674,6 @@ impl SourceViewer {
         ThreadPlacement::Current
     }
 
-    /// Report where this viewer's loaded code places each thread.
     pub(super) fn place_threads(&self) {
         if let Some(book) = self.comments.book() {
             self.thread_projection.place(
@@ -827,13 +777,11 @@ impl SourceViewer {
         Vec::new()
     }
 
-    /// Run a button of a thread or editor shown in the diff.
     pub(super) fn comment_action(&mut self, action: ConversationAction) -> Vec<Action> {
         match action {
             ConversationAction::Resolve(id) => self.resolve_thread(&id),
             ConversationAction::Retry(id) => self.retry_thread(id),
             ConversationAction::Editor(action, draft) => self.finish_draft(draft, action),
-            // Only the pane's conversation view shows these buttons.
             ConversationAction::Back
             | ConversationAction::Reply
             | ConversationAction::Peek

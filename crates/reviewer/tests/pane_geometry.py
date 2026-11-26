@@ -1,9 +1,3 @@
-"""Exercise reviewer-control with a real, privately attached Herdr server.
-
-Every wait waits on an event: a line Herdr prints, an event Herdr sends, a paint the probe
-pane reports on a socket. Its only clock is a guard that ends a wait that failed.
-"""
-
 import fcntl
 import json
 import os
@@ -20,14 +14,10 @@ import termios
 import textwrap
 import threading
 
-# How long a wait lasts before it fails: a guard that never delays a check that passes.
 GUARD = 30
 
 
 class ProbePane:
-    """Paint width-dependent reply rows on start and on each resize, and report the
-    dimensions used for each paint to the test's socket."""
-
     @staticmethod
     def run(address):
         report = socket.socket(socket.AF_UNIX)
@@ -49,13 +39,10 @@ class ProbePane:
                 report.sendall((json.dumps(dict(width=width, height=height,
                                                 lines=lines)) + "\n").encode())
                 previous = (width, height)
-            # The pane runs until Herdr closes it.
             signal.sigwait({signal.SIGWINCH})
 
 
 class Lines:
-    """The lines a socket or a pipe delivers, read within the guard."""
-
     def __init__(self, source):
         self.source = source
         self.buffer = b""
@@ -80,7 +67,6 @@ class IsolatedHerdr:
         self.client = None
         self.master = None
         self.log = None
-        # The release the dev shell pins, as in review-test-support.
         self.binary = os.environ.get("TEST_HERDR_BIN_PATH", "herdr")
         self.env = {key: value for key, value in os.environ.items()
                     if not key.startswith("HERDR_")}
@@ -165,7 +151,6 @@ class IsolatedHerdr:
         return self.request("pane.layout", dict(pane_id=self.original))["layout"]
 
     def check_open(self, control, scenario):
-        # A lone 220x60 pane looks wide; one beside a neighbour looks tall.
         expected_direction = dict(wide="right", beside_a_neighbour="down")[scenario]
         if scenario == "beside_a_neighbour":
             self.request("pane.split", dict(target_pane_id=self.original, direction="right"))
@@ -214,7 +199,7 @@ class IsolatedHerdr:
             pass
         assert all(len(line) == expected[0] and line.endswith("|") for line in paint["lines"])
         expected_text = "\n".join(paint["lines"])
-        # Herdr matches one line at a time: wait for the last row, painted with the others.
+        # Herdr matches one line at a time.
         self.request("pane.wait_for_output", dict(
             pane_id=pane["pane_id"], source="visible", timeout_ms=GUARD * 1000,
             match=dict(type="substring", value=paint["lines"][-1])), timeout=GUARD + 5)

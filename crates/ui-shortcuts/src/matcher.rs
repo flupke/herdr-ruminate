@@ -1,5 +1,3 @@
-//! Stateful matching of keys against one subscription's commands.
-
 use std::marker::PhantomData;
 
 use component_core::{InputMatcher, InputResolution};
@@ -8,10 +6,6 @@ use crate::Key;
 use crate::commands::ShortcutSubscription;
 use crate::table::bindings;
 
-/// Stateful matching for one shortcut subscription.
-///
-/// The matcher only sees bindings whose command belongs to a scope that `S`
-/// listens to, and resolves them to `S`.
 pub struct ShortcutMatcher<S> {
     prefix: Option<Key>,
     subscription: PhantomData<fn() -> S>,

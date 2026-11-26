@@ -37,7 +37,6 @@ pub(super) struct Case {
 pub(super) struct LineLabel {
     pub(super) side: SourceSide,
     pub(super) line: u32,
-    /// 0: no independent review decision; 1: needs an explanation.
     pub(super) significance: u8,
     pub(super) category: String,
     pub(super) reason: String,

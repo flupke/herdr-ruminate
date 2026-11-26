@@ -29,48 +29,34 @@ mod run_ahead;
 use fake_agent::{Events, Reported, Role, variables};
 use herdr_client::protocol::AgentStatus;
 
-/// The name the fake agent in the agent's pane reports under ([`variables::NAME`]).
 const AGENT_NAME: &str = "agent";
-/// The name a second fake agent, in a pane of its own, reports under.
 const SECOND_AGENT_NAME: &str = "second";
 
-/// The fake agent in the agent's pane, on the event socket.
 fn agent_role() -> Role {
     Role::agent(AGENT_NAME)
 }
 
-/// A second fake agent, in a pane of its own, on the event socket.
 fn second_agent_role() -> Role {
     Role::agent(SECOND_AGENT_NAME)
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum AgentLifecycle {
-    /// The agent reports its state to Herdr, until the test releases it.
     Reported,
-    /// Herdr detects the agent and reads its state from its title.
     Native,
 }
 
-/// A private Herdr server whose workspace runs the fake agent, which reports to the test's
-/// event socket ([`Self::events`]).
 struct IsolatedHerdrServer {
     server: PrivateHerdrServer,
     workspace_id: WorkspaceId,
-    /// The tab of the agent's pane, where the review pane would open.
     tab_id: TabId,
     pane_id: PaneId,
     agent_binary: PathBuf,
     agent: String,
-    /// The variables of the agent's workspace, `NAME=value`.
     environment: Vec<String>,
-    /// Whether Herdr reads the title of the agent that runs now.
     title_read: std::sync::atomic::AtomicBool,
-    /// What the fake agent and its forks report.
     events: Events,
-    /// Whether real Claude Code runs in the agent's pane, in place of the fake agent.
     real_agent: bool,
-    /// The arguments the agent starts with.
     agent_arguments: Vec<String>,
 }
 
@@ -99,7 +85,6 @@ impl IsolatedHerdrServer {
         )
     }
 
-    /// The server, with its agent's workspace, where `run` starts a real agent in the pane.
     fn start_real(
         repository_root: &Path,
         agent: &str,
@@ -111,8 +96,6 @@ impl IsolatedHerdrServer {
         server
     }
 
-    /// A fake agent playing Claude Code, with the session `session`, which run-ahead can fork, set
-    /// up as `kind` says: named `claude`, it plays a fork when it is started as one.
     fn start_forkable(repository_root: &Path, session: &str, kind: run_ahead::FakeAgent) -> Self {
         let server = Self::start_fake_agent(
             repository_root,
@@ -121,13 +104,10 @@ impl IsolatedHerdrServer {
             AgentLifecycle::Reported,
             kind,
         );
-        // Herdr's own detection follows the agent's turns from here on.
         server.release_agent();
         server
     }
 
-    /// Starts the server and the agent `agent` on the session `session`, and returns once Herdr
-    /// knows the agent.
     fn start_fake_agent(
         repository_root: &Path,
         agent: &str,
@@ -142,8 +122,6 @@ impl IsolatedHerdrServer {
         server
     }
 
-    /// Starts the server and the agent's workspace, whose variables are the fake agent's and those
-    /// `more` gives for the server's directory; no agent runs in its pane yet.
     fn create(
         repository_root: &Path,
         agent: &str,
@@ -156,7 +134,6 @@ impl IsolatedHerdrServer {
             format!("{}={}", variables::HERDR, server.binary().display()),
             format!("{}={agent}", variables::PLAYS),
             format!("{}={AGENT_NAME}", variables::NAME),
-            // A turn ends once Herdr saw it, unless the test holds turns.
             format!("{}=auto", variables::TURNS),
             events.environment(),
         ];
@@ -208,14 +185,10 @@ impl IsolatedHerdrServer {
         }
     }
 
-    /// Runs the agent on the session `session` in the pane, and returns once Herdr knows it:
-    /// once it reported itself and its session, or once Herdr detected it. Herdr detects an
-    /// agent that runs where it released one before, whatever the agent reports.
     fn start_agent(&self, session: Option<&str>, lifecycle: AgentLifecycle) {
         let detected = self.server.events();
         let from = self.received().len();
         let agent = self.agent_binary.to_string_lossy();
-        // Empty, it names no session: the agent starts none.
         let session_variable = format!("{}={}", variables::SESSION, session.unwrap_or_default());
         let lifecycle_variable = format!(
             "{}={}",
@@ -267,7 +240,6 @@ impl IsolatedHerdrServer {
         }
     }
 
-    /// Waits until the agent reported `event`, after the first `from` events received.
     fn wait_for_agent_event(&self, from: usize, what: &str, event: &fake_agent::Event) {
         self.events.wait_until(what, |received| {
             received[from..]
@@ -276,15 +248,13 @@ impl IsolatedHerdrServer {
         });
     }
 
-    /// Ends the agent in the pane, and returns once Herdr no longer reports it.
     fn stop_agent(&self) {
         let gone = self.server.events();
         let from = self.received().len();
-        // Native detection must observe the exit; release-agent would reset it
-        // and could leave a stale agent record after the process is gone.
+        // Herdr's release-agent resets native detection and can leave a stale agent record after the
+        // process is gone.
         self.run_cli(&["pane", "send-keys", &self.pane_id.0, "ctrl+d"]);
         self.wait_for_agent_event(from, "the agent's exit", &fake_agent::Event::Disconnected);
-        // Herdr releases an agent whose process ended.
         gone.wait_for("the agent's end", |event| {
             matches!(event, HerdrEvent::AgentDetected { pane_id, released: true, .. }
                 if *pane_id == self.pane_id)
@@ -296,8 +266,6 @@ impl IsolatedHerdrServer {
         self.server.client()
     }
 
-    /// Where the hooks of the agents of this server reach a reviewer, as a hook in one of its
-    /// panes finds it.
     fn hook_directory(&self) -> agent_hooks::HookDirectory {
         let variable =
             |name: &str| PathBuf::from(&self.server.environment()[std::ffi::OsStr::new(name)]);
@@ -307,35 +275,28 @@ impl IsolatedHerdrServer {
         )
     }
 
-    /// The fake agent's directory: its switches, and what its forks record.
     fn directory(&self) -> fake_agent::Directory {
         fake_agent::Directory::new(self.server.root().to_owned())
     }
 
-    /// What the fake agent and its forks report.
     fn events(&self) -> &Events {
         &self.events
     }
 
-    /// Every event the fake agent and its forks reported so far.
     fn received(&self) -> Vec<Reported> {
         self.events.try_received().unwrap()
     }
 
-    /// Every event the fake agent reported up to a marker typed in its pane after what
-    /// Herdr wrote there before: what the agent did with it.
     fn mark(&self) -> Vec<Reported> {
         self.events.mark(|prompt| {
             self.client().submit_prompt(&self.pane_id, prompt).unwrap();
         })
     }
 
-    /// The prompts the agent read, as far as the test received its reports.
     fn prompts(&self) -> Vec<String> {
         prompts_of(&agent_role(), &self.received())
     }
 
-    /// The prompts the agent read, once they are as `holds` says.
     fn wait_for_prompts(&self, what: &str, holds: impl Fn(&[String]) -> bool) -> Vec<String> {
         prompts_of(
             &agent_role(),
@@ -345,8 +306,6 @@ impl IsolatedHerdrServer {
         )
     }
 
-    /// The sessions the agent resumed with Claude Code's `/resume`, in order, as far as the
-    /// test received its reports.
     fn resumed(&self) -> Vec<String> {
         resumed_sessions(&self.received())
     }
@@ -355,8 +314,6 @@ impl IsolatedHerdrServer {
         self.server.run_cli(arguments)
     }
 
-    /// Show `title`, which Herdr's own detection reads, and wait until Herdr reports the agent
-    /// `status`.
     fn show_title(&self, title: &str, status: AgentStatus) {
         let statuses = self.server.agent_statuses(&self.pane_id);
         self.events.send(
@@ -368,26 +325,19 @@ impl IsolatedHerdrServer {
         statuses.wait_for(status);
     }
 
-    /// Show the idle title, and wait until Herdr sees it. An agent whose state is reported
-    /// instead would not show the turns it starts.
     fn show_idle(&self) {
         self.show_title("✳ Ready", AgentStatus::Idle);
     }
 
-    /// Show a working title, and wait until Herdr sees it.
     fn show_working(&self) {
         self.show_title("⠋ Working", AgentStatus::Working);
     }
 
-    /// Make the agent end each turn only when the test ends it (`hold`), or as soon as Herdr
-    /// saw it start; returns once the agent does.
     fn hold_turns(&self, hold: bool) {
         self.events
             .obey(&agent_role(), &fake_agent::Command::HoldTurns { hold });
     }
 
-    /// Make the agent read each prompt typed from now on without starting on it, or start on
-    /// each prompt again.
     fn swallow_prompts(&self, swallow: bool) {
         let switch = self.directory().swallow();
         if swallow {
@@ -397,7 +347,6 @@ impl IsolatedHerdrServer {
         }
     }
 
-    /// Releases the agent: Herdr reads its title from now on. Returns once the agent knows.
     fn release_agent(&self) {
         self.run_cli(&[
             "pane",
@@ -418,7 +367,6 @@ impl IsolatedHerdrServer {
         }
     }
 
-    /// Reports the agent's session as `session`, which Herdr knows once this returns.
     fn report_session(&self, session: &str) {
         self.run_cli(&[
             "pane",
@@ -442,7 +390,6 @@ impl IsolatedHerdrServer {
     }
 }
 
-/// The prompts that the fake agent `role` read, among the events `received`.
 fn prompts_of(role: &Role, received: &[Reported]) -> Vec<String> {
     received
         .iter()
@@ -454,14 +401,12 @@ fn prompts_of(role: &Role, received: &[Reported]) -> Vec<String> {
         .collect()
 }
 
-/// The fake agent that Cargo built beside the reviewer's programs.
 fn fake_agent_program() -> PathBuf {
     let control = effects::fixture::test_fork_tools().control;
     reviewer_fake_agent::program(control.parent().unwrap())
         .unwrap_or_else(|error| panic!("{error}"))
 }
 
-/// The prompts `prompts`, each on its lines.
 fn prompts_text(prompts: &[String]) -> String {
     prompts.iter().fold(String::new(), |mut text, prompt| {
         text.push_str(prompt);
@@ -470,8 +415,6 @@ fn prompts_text(prompts: &[String]) -> String {
     })
 }
 
-/// The sessions the agent resumed with Claude Code's `/resume`, in order, among the events
-/// `received`.
 fn resumed_sessions(received: &[Reported]) -> Vec<String> {
     received
         .iter()
@@ -483,20 +426,16 @@ fn resumed_sessions(received: &[Reported]) -> Vec<String> {
         .collect()
 }
 
-/// Wakes a test on each change of the files under a directory, so that it waits until what the
-/// code under test saved there says what the test waits for.
 struct SavedState {
     _watcher: notify::RecommendedWatcher,
     changes: Receiver<()>,
 }
 
 impl SavedState {
-    /// Follows the changes under `directory`, from now on.
     fn watch(directory: &Path) -> Self {
         let (sender, changes) = mpsc::channel();
         let mut watcher =
             notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-                // The test's own reads change nothing.
                 if event.is_ok_and(|event| !event.kind.is_access()) {
                     let _ = sender.send(());
                 }
@@ -509,8 +448,6 @@ impl SavedState {
         }
     }
 
-    /// What `check` finds, once it finds something: it checks now, then after each change.
-    /// Fails after [`GUARD`] without a change, with `what` it waited for and `state`.
     fn wait_until<T>(
         &self,
         what: &str,
@@ -520,7 +457,6 @@ impl SavedState {
         self.wait_within(GUARD, what, check, state)
     }
 
-    /// [`Self::wait_until`], which fails after `guard` without a change.
     fn wait_within<T>(
         &self,
         guard: Duration,
@@ -535,7 +471,6 @@ impl SavedState {
             if let Err(error) = self.changes.recv_timeout(guard) {
                 panic!("{what} did not happen ({error}): {}", state());
             }
-            // One check covers every change already made.
             while self.changes.try_recv().is_ok() {}
         }
     }
@@ -591,7 +526,6 @@ fn herdr_event_subscription_stops_without_a_new_server_event() {
     forwarding.join().unwrap().unwrap();
 }
 
-/// A fake agent whose state Herdr detects from its title, shown idle.
 fn native_agent(repository: &Path) -> (IsolatedHerdrServer, review_test_support::AgentStatusWatch) {
     let herdr = IsolatedHerdrServer::start_native(repository);
     let statuses = herdr.server.agent_statuses(&herdr.pane_id);
@@ -605,7 +539,6 @@ fn native_agent(repository: &Path) -> (IsolatedHerdrServer, review_test_support:
     (herdr, statuses)
 }
 
-/// The events of `reported`, without the fake agent that reported them.
 fn fake_agent_events(reported: Vec<Reported>) -> Vec<fake_agent::Event> {
     reported
         .into_iter()
@@ -666,7 +599,6 @@ fn a_held_turn_lasts_until_the_test_ends_it() {
 }
 
 struct ReviewFlowFixture {
-    /// Declared first so the workers stop before the Herdr server.
     runtime: EffectsFixture,
     herdr: IsolatedHerdrServer,
     review_unit: ReviewUnit,
@@ -675,7 +607,6 @@ struct ReviewFlowFixture {
 }
 
 impl ReviewFlowFixture {
-    /// A review whose effects `adjust` sets up further.
     fn start(
         repository_type: RepoType,
         adjust: impl FnOnce(&mut effects::Setup, &IsolatedHerdrServer),
@@ -686,8 +617,6 @@ impl ReviewFlowFixture {
         Self::start_on(repository_files, herdr, adjust)
     }
 
-    /// The review of `repository_files`, whose agent runs in `herdr`, and whose effects
-    /// `adjust` sets up further.
     fn start_on(
         repository_files: Box<dyn review_test_support::ReviewRepositoryFixture>,
         herdr: IsolatedHerdrServer,
@@ -701,7 +630,6 @@ impl ReviewFlowFixture {
         )
     }
 
-    /// The same, with the reviewer's MCP server on `port`, which the agent was told of.
     fn start_on_port(
         repository_files: Box<dyn review_test_support::ReviewRepositoryFixture>,
         herdr: IsolatedHerdrServer,
@@ -711,7 +639,6 @@ impl ReviewFlowFixture {
         let endpoint =
             review_mcp::Endpoint::for_repository(repository_files.root(), Some(port.number()))
                 .unwrap();
-        // A real agent shows its own state.
         if !herdr.real_agent {
             herdr.show_idle();
         }
@@ -748,9 +675,6 @@ impl ReviewFlowFixture {
         }
     }
 
-    /// Every event the agent reported up to a marker typed in its pane once the reviewer sent
-    /// every prompt that the inputs it got so far lead to: a prompt it did not report by then,
-    /// the reviewer did not send.
     fn settle(&self) -> Vec<Reported> {
         self.runtime.effects.flush();
         self.herdr.mark()
@@ -786,7 +710,6 @@ fn disk_content_changes_replace_the_visible_diff(repository_type: RepoType) {
     assert!(!rendered.contains("before_refresh"), "{rendered}");
 }
 
-/// Publish a refresh's events and return the document loads they request.
 fn publish_refresh(
     fixture: &mut EffectsFixture,
     application: &mut ReviewApplication,
@@ -799,7 +722,6 @@ fn publish_refresh(
         .collect()
 }
 
-/// Perform the loads and publish events until the last diff arrives.
 fn load_requested_diffs(
     fixture: &mut EffectsFixture,
     application: &mut ReviewApplication,
@@ -928,7 +850,6 @@ fn modified_mouse_inputs_reuse_existing_actions() {
         }),
         Some(UserInput::MouseDrag { column: 40, row: 5 })
     );
-    // A terminal reports Alt on every move of a drag it started with Alt held.
     assert_eq!(
         normalize_mouse(MouseEvent {
             kind: MouseEventKind::Drag(MouseButton::Left),
@@ -1039,9 +960,6 @@ fn a_resize_back_to_the_same_size_repaints_the_rows_the_terminal_dropped() {
     };
     event_loop.redraw().unwrap();
     let painted = event_loop.terminal.backend().buffer().clone();
-    // herdr-app shrinks a new pane and grows it back at once: the terminal drops rows when it
-    // shrinks, and gives blank ones back when it grows. herdr-core drops the top rows and the
-    // test backend the bottom ones: either loses painted cells.
     event_loop.terminal.backend_mut().resize(80, 10);
     event_loop.terminal.backend_mut().resize(80, 20);
     assert_ne!(event_loop.terminal.backend().buffer(), &painted);
@@ -1084,7 +1002,6 @@ fn runtime_event_producers_join_active_lsp_adapter() {
 fn terminal_event_producer_stops_while_waiting_for_input() {
     let (event_sender, events) = unbounded();
     let (reader_started_sender, reader_started_receiver) = mpsc::channel();
-    // A terminal without input: each read waits its whole wait, which the test makes short.
     let producer = TerminalEventProducer::start_with_reader(
         event_sender,
         Duration::from_millis(1),
@@ -1146,7 +1063,6 @@ fn terminal_hunk_shortcut_moves_application_data_while_files_are_focused() {
         move |wait| {
             let next = terminal_events.lock().unwrap().next();
             if next.is_none() {
-                // No more input: wait, as a terminal does.
                 thread::sleep(wait);
             }
             Ok(next)

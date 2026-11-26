@@ -19,7 +19,6 @@ fn tabs_are_padded_labels_one_space_apart() {
             (ReviewNavigation::Explore, 18..27),
         ]
     );
-    // The unread marker belongs to Threads and pushes Explore along.
     assert_eq!(
         columns(true),
         [

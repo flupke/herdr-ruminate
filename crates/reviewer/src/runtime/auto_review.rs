@@ -1,5 +1,3 @@
-//! Explicit Jev classification and review marks for one immutable comparison.
-
 use super::worker::{Worker, WorkerCommand};
 use component_core::ApplicationEventSender;
 use review_explore::{Comparison, SourceSide};
@@ -20,7 +18,6 @@ use std::sync::{
 
 #[derive(Debug)]
 pub(super) struct AutoReview {
-    /// The classified files, at the classified commit.
     snapshot: Snapshot,
     comparison: Comparison,
     significance: SignificanceLedger,
@@ -32,7 +29,6 @@ pub(super) struct AutoReview {
 struct MarkSummary {
     marked: usize,
     hunks: usize,
-    /// Paths whose review mark changed.
     changed: Vec<String>,
     remaining: usize,
     failed_classifications: usize,
@@ -125,14 +121,9 @@ impl AutoReview {
         };
         let whole_files = self.significance.fully_excluded_files(&self.comparison);
         for (index, file) in self.snapshot.files.iter().enumerate() {
-            // Preserve manual marks and unknown schemas, including writes by another reviewer.
             match self.unchanged_mark(store, index) {
                 Ok(false) => {}
-                // A file marked before keeps who reviewed which line: its
-                // open hunks are accepted instead.
                 Ok(true) if whole_files.contains(&index) && !self.marked_before(index) => {
-                    // Checked again under the lock: a reviewer of another workspace may have
-                    // marked the file since.
                     let marked = store
                         .lock_marks(&checkpoint.review_unit)
                         .map_err(eyre::Report::from)
@@ -160,22 +151,16 @@ impl AutoReview {
         Ok(summary)
     }
 
-    /// Whether the file had a review mark when classification started.
     fn marked_before(&self, index: usize) -> bool {
         matches!(&self.prior_marks[index], LoadResult::Reviewed(_))
     }
 
-    /// Whether the file's review mark is still the one classification started from.
     fn unchanged_mark(&self, store: &ReviewStore, index: usize) -> eyre::Result<bool> {
         let path = self.comparison.files[index].review_path().as_bytes();
         let current = store.load(&self.comparison.checkpoint.review_unit, path)?;
         Ok(current == self.prior_marks[index] && current != LoadResult::UnknownSchema)
     }
 
-    /// Accept the open hunks of a file whose every changed line Jev excluded,
-    /// or `None` when they could not be saved. A file that changes more than
-    /// its lines keeps at least one hunk open, since only a whole-file review
-    /// covers the rest.
     fn review_hunks(
         &self,
         tracker: &ReviewTracker,
@@ -201,11 +186,7 @@ impl AutoReview {
     }
 }
 
-/// Whether Jev excluded every line an open hunk changes. A hunk that rewrites
-/// approved lines stays open: Jev judged its lines against the base, not
-/// against what the reviewer approved.
 fn insignificant(excluded: &ExcludedLines, lines: &ChangedLines) -> bool {
-    // Diff rows number lines from one.
     let contains = |side, line: &u32| excluded.contains(side, line + 1);
     if lines.rewrites_reviewed || (lines.removed.is_empty() && lines.added.is_empty()) {
         return false;
@@ -242,7 +223,6 @@ impl MarkSummary {
         }
     }
 
-    /// What Jev marked and what it could not, as one sentence or a few.
     fn describe(&self) -> String {
         let count =
             |count: usize, one: &str| format!("{count} {one}{}", if count == 1 { "" } else { "s" });
@@ -343,8 +323,6 @@ impl Worker {
         let toast = match review.apply(&self.repository, &self.tracker, &self.store) {
             Ok(summary) => {
                 self.poll(messages);
-                // The comparison is unchanged, so loaded diffs learn of the
-                // new marks only from these states.
                 self.announce_review_states(messages, |file| {
                     summary.changed.contains(&file.review_path().display())
                 });
@@ -361,21 +339,17 @@ impl Worker {
         }
     }
 
-    /// Send an Explore kickoff.
     fn kickoff(&mut self, request: review_explore::TurnRequest) {
         self.explore.handle(review_explore_session::Input::Command(
             review_explore::Command::Turn(Box::new(request)),
         ));
     }
 
-    /// Start an Explore round: Jev first marks what it dismisses, when it
-    /// can, then the kickoff goes out.
     pub(super) fn start_round(
         &mut self,
         request: review_explore::TurnRequest,
         messages: &ApplicationEventSender,
     ) {
-        // A Jev run already under way marks first.
         if self.auto_review.is_some() {
             self.held_kickoff = Some(request);
             return;

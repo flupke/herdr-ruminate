@@ -38,7 +38,6 @@ fn a_status_mark_opens_a_cell() {
     );
 }
 
-/// Every marker of `M` is its own, and reads back as its mark.
 fn markers_are_distinct<M: Mark + PartialEq + std::fmt::Debug>() {
     for (index, mark) in M::ALL.iter().enumerate() {
         let marker = mark.marker();

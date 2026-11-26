@@ -1,9 +1,3 @@
-//! The reviewed share of each revision of the history the revision selector shows. The worker
-//! computes them after the history, one revision at a time, so that the selector shows at once
-//! and other repository work waits for one revision at most. A share stays known while the
-//! revision keeps its commit and its marks keep their stamp, which the review store changes with
-//! each mark, from any process: those come at once, and only the others are computed.
-
 use std::collections::{HashMap, VecDeque};
 
 use review_repository::repository::{ChangeId, Repository, RevisionHistoryLine, SnapshotId};
@@ -11,9 +5,6 @@ use review_state::{ReviewProgress, ReviewTracker};
 use review_store::ReviewStore;
 use ui_events::RevisionHistoryLoadId;
 
-/// The revisions of the latest loaded history whose share is still to compute, whether the
-/// worker's command for the next one is queued (one at a time, so that a command that comes
-/// meanwhile waits for one revision at most), and the shares known so far.
 #[derive(Debug, Default)]
 pub(super) struct HistoryProgress {
     load_id: Option<RevisionHistoryLoadId>,
@@ -22,8 +13,6 @@ pub(super) struct HistoryProgress {
     known: HashMap<ChangeId, Known>,
 }
 
-/// A share as it was computed: valid while the revision's commit and its marks' stamp are the
-/// same.
 #[derive(Debug)]
 struct Known {
     commit: SnapshotId,
@@ -31,17 +20,12 @@ struct Known {
     progress: ReviewProgress,
 }
 
-/// What a new history starts with.
 pub(super) struct Started {
-    /// The shares still valid, to show at once.
     pub(super) known: Vec<(ChangeId, ReviewProgress)>,
-    /// Whether to queue the worker's command for the others.
     pub(super) queue: bool,
 }
 
 impl HistoryProgress {
-    /// Starts on the revisions of `lines` that the selector can open, nearest to the current one
-    /// first, since the reviewer reads around it; they replace those of an earlier history.
     pub(super) fn start(
         &mut self,
         load_id: RevisionHistoryLoadId,
@@ -58,7 +42,6 @@ impl HistoryProgress {
         rows.sort_by_key(|(row, _)| row.abs_diff(current));
         self.load_id = Some(load_id);
         self.revisions.clear();
-        // Shares of revisions the history no longer shows go: they were rewritten or abandoned.
         self.known.retain(|change_id, _| {
             rows.iter()
                 .any(|(_, line)| line.change_id.as_ref() == Some(change_id))
@@ -79,8 +62,6 @@ impl HistoryProgress {
         }
     }
 
-    /// The share of `change_id`, if it was computed at `commit` with the marks as they are, and
-    /// the revision would take no marks of the changes jj made it from.
     fn still_known(
         &self,
         change_id: &ChangeId,
@@ -96,24 +77,17 @@ impl HistoryProgress {
         .then_some(known.progress)
     }
 
-    /// The next revision to compute, as the worker's queued command runs.
     pub(super) fn next(&mut self) -> Option<(RevisionHistoryLoadId, ChangeId)> {
         self.queued = false;
         Some((self.load_id?, self.revisions.pop_front()?))
     }
 
-    /// Whether to queue the worker's command for the next revision: when one is left and none
-    /// is queued.
     pub(super) fn queue(&mut self) -> bool {
         let queue = !self.queued && !self.revisions.is_empty();
         self.queued |= queue;
         queue
     }
 
-    /// How much of the revision of `change_id` its review marks cover, as the status line counts
-    /// it for the current revision; the reason, for the selector to show, when it cannot be
-    /// computed. The share is kept with the stamp the marks had before it was computed, so that
-    /// a mark made meanwhile makes the next history compute it again.
     pub(super) fn compute(
         &mut self,
         repository: &Repository,
@@ -121,7 +95,6 @@ impl HistoryProgress {
         store: &ReviewStore,
         change_id: &ChangeId,
     ) -> Result<ReviewProgress, String> {
-        // A stamp that cannot be read lets the share be computed, not kept.
         let stamp = store.marks_stamp(change_id.review_unit());
         let snapshot = match repository.snapshot_of(change_id) {
             Ok(Some(snapshot)) => snapshot,
