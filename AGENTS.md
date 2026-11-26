@@ -17,7 +17,8 @@ on tests alone.
 # Standards
 
 - Name things with the terms of `CONTEXT.md`, in code, docs and UI text, and use
-  none of the synonyms it lists to avoid.
+  none of the synonyms it lists to avoid. Add a `CONTEXT.md` entry only for a
+  term the user introduces or corrects, in one line.
 - Keep crates small, don't hesitate to create tiny ones or split a big one.
 - Reuse existing types between workspace crates. Do not create a local copy of
   a type only to adapt it for another crate.
@@ -43,6 +44,10 @@ on tests alone.
   block, to avoid the trailing-semicolon macro warning.
 - Before writing an Explore page e2e test, load the `explore-page-tools` and
   `e2e` skills.
+- Test a change that only moves or removes docs or comments with `make lint` and
+  `make check-changed`, check that a comment removal changes comment lines only
+  (doc tests, `#[doc]` text a test or a prompt reads, and Markdown compiled into a
+  crate are code), and try each skill it changes once by running the tool it describes.
 
 # Change workflow
 
