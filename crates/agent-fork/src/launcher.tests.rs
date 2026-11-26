@@ -6,8 +6,6 @@ use super::*;
 use crate::stop::StopWaits;
 use crate::stop_recorded;
 
-/// A wrapper that runs the fork without arming a death signal: it drops the reviewer's
-/// process ID the launcher passes and runs the rest.
 fn plain_wrapper() -> Wrapper {
     Wrapper {
         program: "sh".into(),
@@ -24,7 +22,6 @@ fn shell(script: &str) -> ForkCommand {
     }
 }
 
-/// Collects a fork's lines and sends them with its end.
 struct Collected {
     lines: Vec<String>,
     sent: mpsc::Sender<(Vec<String>, Exit)>,
@@ -51,14 +48,12 @@ fn collected() -> (Box<Collected>, mpsc::Receiver<(Vec<String>, Exit)>) {
     )
 }
 
-/// What a fork showed, as it came: a line of its standard output, then its end.
 #[derive(Debug)]
 enum Shown {
     Line(String),
     Ended(Exit),
 }
 
-/// Sends each line of a fork's standard output as it comes, then its end.
 struct Streamed(mpsc::Sender<Shown>);
 
 impl ForkOutput for Streamed {
@@ -91,7 +86,6 @@ fn a_fork_reads_its_input_sees_only_its_environment_and_reports_its_lines_and_en
     assert!(fork.has_exited());
 }
 
-/// Sends each line of a fork's standard error as it comes.
 struct Errors(mpsc::Sender<String>);
 
 impl ForkOutput for Errors {
@@ -150,7 +144,6 @@ fn terminate_kills_a_fork_that_ignores_sigterm_once_its_wait_is_over() {
         },
     );
     let (sent, shown) = mpsc::channel();
-    // The shell ignores SIGTERM, and so does the program it becomes.
     let fork = launcher
         .spawn(
             shell("trap '' TERM; echo ready; exec sleep 30"),
@@ -158,7 +151,6 @@ fn terminate_kills_a_fork_that_ignores_sigterm_once_its_wait_is_over() {
             Box::new(Streamed(sent)),
         )
         .unwrap();
-    // The trap is set once the shell prints.
     assert!(matches!(shown.recv().unwrap(), Shown::Line(line) if line == "ready"));
 
     fork.terminate();
@@ -171,8 +163,6 @@ fn terminate_kills_a_fork_that_ignores_sigterm_once_its_wait_is_over() {
 
 #[test]
 fn a_recorded_fork_is_stopped_only_when_it_still_runs_with_its_session() {
-    // A process this test did not start, as one a killed reviewer left behind. It prints its
-    // ID once its trap is set, then lets go of the output, which ends this command.
     let output = std::process::Command::new("sh")
         .args([
             "-c",

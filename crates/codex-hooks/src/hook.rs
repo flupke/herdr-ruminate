@@ -1,24 +1,19 @@
-//! What the plugin's hook runs.
-
 use std::io::{Read, Write};
 use std::time::Duration;
 
 use agent_hooks::{AgentEvent, HookRoot, Report};
 use serde::Deserialize;
 
-/// The subcommand of `reviewer-control` that the plugin's hook runs.
 pub const SUBCOMMAND: &str = "codex-hook";
 
-/// How long a submitted prompt waits for the reviewers' answer before it goes on: Codex waits
-/// for the hook before it takes the prompt.
+// Codex waits for the hook before it takes the prompt.
 const ASK_LIMIT: Duration = Duration::from_millis(500);
 
-/// Runs the hook whose event Codex writes on standard input, and prints the decision Codex
-/// reads, if one is made. It ignores the `HERDR_*` variables: under the daemon, they name the
-/// pane and the Herdr server of the terminal that started it.
+// Under Codex's app-server daemon, a hook's HERDR_* variables name the pane and the Herdr
+// server of the terminal that started the daemon, not the agent's.
 pub fn run_hook() {
     let mut payload = Vec::new();
-    // Read whole, so that Codex never writes to a closed pipe.
+    // Read whole, so that Codex never writes the event to a closed pipe.
     if std::io::stdin().read_to_end(&mut payload).is_err() {
         return;
     }
@@ -30,12 +25,10 @@ pub fn run_hook() {
     }
 }
 
-/// The events of Codex's hooks that the reviewer reads, with the fields it reads.
 #[derive(Deserialize)]
 #[serde(tag = "hook_event_name")]
 enum Payload {
     UserPromptSubmit {
-        /// The session's thread ID.
         session_id: String,
         prompt: String,
     },
@@ -45,13 +38,10 @@ enum Payload {
         #[serde(default)]
         tool_input: serde_json::Value,
     },
-    /// An event the plugin does not register.
     #[serde(other)]
     Other,
 }
 
-/// Answers the event `payload` with the reviewers of `root`; returns the decision Codex reads,
-/// when one is made.
 fn hook(root: &HookRoot, payload: &[u8]) -> Option<String> {
     match serde_json::from_slice::<Payload>(payload).ok()? {
         Payload::UserPromptSubmit { session_id, prompt } => {
@@ -62,7 +52,6 @@ fn hook(root: &HookRoot, payload: &[u8]) -> Option<String> {
             tool_name,
             tool_input,
         } => {
-            // Every tool call of every session of the user comes here: one file check.
             if !root.is_codex_fork(&session_id) {
                 return None;
             }
@@ -80,8 +69,6 @@ fn hook(root: &HookRoot, payload: &[u8]) -> Option<String> {
     }
 }
 
-/// Records that the session `session_id` runs the hook, and asks the reviewers of `root`
-/// whether they block its prompt `prompt`; returns the decision Codex reads, when one does.
 fn prompt_submitted(root: &HookRoot, session_id: String, prompt: String) -> Option<String> {
     let _ = root.record_codex_session(&session_id);
     let report = Report {

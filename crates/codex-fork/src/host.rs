@@ -1,5 +1,3 @@
-//! [`CodexForks`]: run-ahead's forks of a Codex agent in a Herdr pane, on the agent's daemon.
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -18,31 +16,18 @@ use crate::fields;
 use crate::live::{LiveFork, TurnWatch};
 use crate::resume::Resume;
 
-/// How long the host waits for the daemon's answer to a request.
 const REQUEST_LIMIT: Duration = Duration::from_secs(10);
 
-/// Forks of a Codex agent's session, run by the agent's daemon and followed over a connection
-/// of their own until they are discarded. A fork lives in the daemon, not in the reviewer's
-/// process: the reviewer's session discards those that run when it closes, and a reopened
-/// reviewer those a stopped one left. Dropping the host lets the discards under way finish.
 pub struct CodexForks {
     host: Arc<dyn AgentHost>,
-    /// What the agents' hooks tell the reviewer, when it listens to them: the session a Codex
-    /// agent named last, whether its session runs the reviewer's plugin, and the forks' marks
-    /// its guard reads.
     hooks: Option<Arc<AgentHooks>>,
     log: RunAheadLog,
     waits: ForkWaits,
-    /// The forks that run, or ran, by session.
     live: Mutex<HashMap<String, LiveFork>>,
-    /// The discards and switches under way.
     threads: Mutex<Vec<thread::JoinHandle<()>>>,
 }
 
 impl CodexForks {
-    /// Forks of the Codex agents `herdr` reports, logged to `log`, waiting on Herdr, the daemon
-    /// and the forks as `waits` say, and on what the agents' hooks tell the reviewer through
-    /// `hooks`, when it listens to them.
     pub fn new(
         host: Arc<dyn AgentHost>,
         log: RunAheadLog,
@@ -63,7 +48,6 @@ impl CodexForks {
         self.live.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// What moves the agent between sessions, on a thread of its own.
     fn mover(&self) -> Mover {
         Mover {
             host: Arc::clone(&self.host),
@@ -73,14 +57,12 @@ impl CodexForks {
         }
     }
 
-    /// Runs `work` on a thread of its own, which a dropped host waits for.
     fn in_background(&self, work: impl FnOnce() + Send + 'static) {
         let mut threads = self.threads.lock().unwrap_or_else(PoisonError::into_inner);
         threads.retain(|thread| !thread.is_finished());
         threads.push(thread::spawn(work));
     }
 
-    /// The daemon of `agent`, as its process in its pane says.
     fn daemon_of(&self, agent: &Agent) -> Result<Daemon, NoDaemon> {
         let processes = self
             .host
@@ -89,8 +71,6 @@ impl CodexForks {
         Daemon::of_pane(&processes.foreground_processes)
     }
 
-    /// Whether the reviewer's Codex plugin has its fork guard installed and trusted, so that a
-    /// new session of `daemon`, a fork, runs it.
     fn guarded(daemon: &Daemon) -> Result<bool, String> {
         let rpc = connect(daemon)?;
         let listed = rpc.request("hooks/list", &json!({}), REQUEST_LIMIT)?;
@@ -110,7 +90,6 @@ impl CodexForks {
         }))
     }
 
-    /// The last turn of `session` on the daemon `rpc` reaches.
     fn last_turn(rpc: &Rpc, session: &str) -> Result<Option<String>, String> {
         Ok(latest_turn(rpc, session)?
             .get("id")
@@ -120,7 +99,6 @@ impl CodexForks {
 }
 
 impl Drop for CodexForks {
-    /// Lets the discards under way finish, so that no discarded fork is left on the daemon.
     fn drop(&mut self) {
         let threads =
             std::mem::take(&mut *self.threads.lock().unwrap_or_else(PoisonError::into_inner));
@@ -130,13 +108,11 @@ impl Drop for CodexForks {
     }
 }
 
-/// A connection to `daemon` that hears nothing but the answers to its requests.
 fn connect(daemon: &Daemon) -> Result<Rpc, String> {
     daemon.connect(|_, _| {})
 }
 
-/// Interrupts the turn `turn` of the session `session`, over `rpc`. A turn that ended refuses
-/// it, which changes nothing.
+// Codex refuses to interrupt a turn that ended, which changes nothing.
 fn interrupt(rpc: &Rpc, session: &str, turn: &str) {
     let _ = rpc.request(
         "turn/interrupt",
@@ -145,8 +121,6 @@ fn interrupt(rpc: &Rpc, session: &str, turn: &str) {
     );
 }
 
-/// Gives the session `session` the settings `settings`, as `thread/settings/update` takes them,
-/// over `rpc`.
 fn update_settings(rpc: &Rpc, session: &str, settings: &Value) -> Result<(), String> {
     let mut params = settings.clone();
     params["threadId"] = session.into();
@@ -154,16 +128,9 @@ fn update_settings(rpc: &Rpc, session: &str, settings: &Value) -> Result<(), Str
         .map(|_| ())
 }
 
-/// Ends the turn of the fork `fork` of `daemon`, followed over `live` when the host started it:
-/// waits `waits.answer` for it to end by itself, as it does once its submit has its answer, then
-/// interrupts it and waits as long again. Returns whether it ended. The fork's connection, its
-/// only client, closes: the agent's TUI is its session's client from then on, and answers its
-/// approvals.
 fn end_turn(live: Option<LiveFork>, daemon: &Daemon, fork: &OwnedFork, waits: ForkWaits) -> bool {
     let limit = waits.answer;
     let Some(live) = live else {
-        // A fork a stopped reviewer left: no client follows its turn, so the daemon is asked
-        // where it stands, every `resume_poll`, which no event tells this connection.
         let Ok(rpc) = connect(daemon) else {
             return false;
         };
@@ -189,8 +156,6 @@ fn end_turn(live: Option<LiveFork>, daemon: &Daemon, fork: &OwnedFork, waits: Fo
     }
 }
 
-/// The last turn of `session`, over `rpc`, as `thread/turns/list` gives it; null when it has
-/// none.
 fn latest_turn(rpc: &Rpc, session: &str) -> Result<Value, String> {
     let mut turns = rpc.request(
         "thread/turns/list",
@@ -203,7 +168,6 @@ fn latest_turn(rpc: &Rpc, session: &str) -> Result<Value, String> {
         .unwrap_or_default())
 }
 
-/// Whether the last turn of `session`, over `rpc`, ended, as the daemon says.
 fn last_turn_ended(rpc: &Rpc, session: &str) -> bool {
     latest_turn(rpc, session).is_ok_and(|turn| {
         turn.get("status")
@@ -212,12 +176,10 @@ fn last_turn_ended(rpc: &Rpc, session: &str) -> bool {
     })
 }
 
-/// Why a fork cannot be moved to: its record names no daemon.
 fn no_daemon() -> SwitchFailure {
     SwitchFailure::untyped("the fork's record names no Codex daemon")
 }
 
-/// What moves the agent of a pane between sessions, on a thread of its own.
 struct Mover {
     host: Arc<dyn AgentHost>,
     hooks: Option<Arc<AgentHooks>>,
@@ -226,9 +188,7 @@ struct Mover {
 }
 
 impl Mover {
-    /// Makes the session of the fork `fork`, on `daemon`, one the agent may run: the guard no
-    /// longer treats it as a fork's, and it takes back the agent's settings, so that the agent's
-    /// own tools run as they did. Logs what failed.
+    // Codex keeps a session's settings when another client resumes it.
     fn hand_over(&self, daemon: &Daemon, fork: ForkTrace<'_>) {
         let session = fork.session;
         if let Some(hooks) = &self.hooks
@@ -248,8 +208,6 @@ impl Mover {
         }
     }
 
-    /// Has the agent of `pane` resume `session` of `daemon`, waiting `limit` for it, as
-    /// [`Resume`] says.
     fn resume(
         &self,
         pane: &PaneId,
@@ -274,8 +232,6 @@ impl Mover {
     }
 }
 
-/// Interrupts the turn `turn` of the fork `session`, if it still runs, then deletes the fork,
-/// over `rpc`. Returns what failed, if anything.
 fn stop_and_delete(rpc: &Rpc, session: &str, turn: Option<&str>) -> Result<(), String> {
     if let Some(turn) = turn {
         interrupt(rpc, session, turn);
@@ -298,7 +254,6 @@ impl ForkHost for CodexForks {
     }
 
     fn unhooked(&self, agent: &Agent) -> Option<String> {
-        // An agent run-ahead cannot fork for another reason has that reason.
         let hooks = self.hooks.as_ref()?;
         if matches!(
             self.daemon_of(agent),
@@ -306,8 +261,6 @@ impl ForkHost for CodexForks {
         ) {
             return None;
         }
-        // The session is unknown until the agent calls the reviewer's tools, as after the
-        // reviewer reopened: the agent may still run the hooks.
         hooks.named_session(&agent.pane_id)?;
         hooks.hooked(&*self.host, agent).is_none().then(|| {
             "the Codex agent's session runs without the reviewer's Codex plugin: install it \
@@ -332,7 +285,6 @@ impl ForkHost for CodexForks {
             Err(error @ (NoDaemon::WithoutDaemon | NoDaemon::Remote(_))) => {
                 return Some(error.to_string());
             }
-            // The agent may be starting: `point` says why it cannot be forked yet.
             Err(_) => return None,
         };
         match Self::guarded(&daemon) {
@@ -374,7 +326,8 @@ impl ForkHost for CodexForks {
             .ok_or("the reviewer hears no agent's hooks")?;
         let turn = Arc::new(TurnWatch::default());
         let rpc = daemon.connect(turn.handler(self.log.clone()))?;
-        // A fork without overrides keeps the agent's settings, which its answer gives.
+        // Codex's `thread/fork` without overrides keeps the session's settings, and its answer
+        // gives them.
         let forked = rpc.request(
             "thread/fork",
             &json!({"threadId": point.session, "excludeTurns": true}),
@@ -390,8 +343,7 @@ impl ForkHost for CodexForks {
             "sandboxPolicy": forked.get("sandbox"),
             "approvalsReviewer": forked.get("approvalsReviewer"),
         });
-        // Read-only, with every approval asked of the reviewer, the fork's only client. Codex
-        // appends these permissions after the history at the next turn, which leaves the
+        // Codex appends a settings change after the history at the next turn, which keeps the
         // agent's prompt cache.
         let guarded = hooks
             .root()
@@ -505,7 +457,6 @@ impl ForkHost for CodexForks {
         self.in_background(move || {
             let daemon = fields::daemon(&fork.host).ok_or_else(no_daemon);
             done(daemon.and_then(|daemon| {
-                // The agent may run the fork's session, which a switch had it resume.
                 let maybe_on = Some(fork.session.as_str());
                 mover.resume(&pane, daemon, &session, maybe_on, mover.waits.settle)
             }));

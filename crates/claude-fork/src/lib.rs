@@ -1,16 +1,3 @@
-//! Run-ahead with Claude Code: the forks of the session of a Claude Code agent in a Herdr pane.
-//!
-//! A fork is `claude -p --resume <session> --fork-session --session-id <new>` with the pane
-//! agent's own binary, arguments, working directory and environment, less Herdr's variables,
-//! so that it reads the agent's prompt cache and Herdr never takes it for the pane's agent; the
-//! agent's `--settings` come apart, and the fork runs them with its guard (`settings`). A
-//! `PreToolUse` hook keeps it read-only: a hook leaves the tool list, and so the prompt cache,
-//! as the agent has them. [`ClaudeForks`] is the [`review_run_ahead::ForkHost`] that starts,
-//! follows and stops them, and switches the agent to a fork's session with Claude Code's own
-//! `/resume`, which the hooks of the reviewer's Claude Code plugin confirm (`agent_hooks`).
-//! A session in Code Mode (as its last `repl-mode` entry says) is never forked: Claude Code
-//! resumes it only in its interactive terminal, never with `-p` (`Transcripts::code_mode`).
-
 mod arguments;
 mod fields;
 mod guard;

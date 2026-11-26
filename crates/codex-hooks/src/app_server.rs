@@ -1,7 +1,3 @@
-//! [`AppServer`]: a Codex app server of the user's Codex home, on standard input and output,
-//! through which the installation reads and writes Codex's configuration as Codex's own
-//! clients do.
-
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -9,8 +5,6 @@ use eyre::WrapErr as _;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-/// A `codex app-server` that this process talks to in JSON-RPC, one message per line. Dropping
-/// it closes the server's input, which stops it.
 pub(crate) struct AppServer {
     child: Child,
     input: Option<ChildStdin>,
@@ -19,7 +13,6 @@ pub(crate) struct AppServer {
 }
 
 impl AppServer {
-    /// Starts the app server of `codex`, and makes the handshake.
     pub(crate) fn start(codex: &str) -> eyre::Result<Self> {
         let mut child = Command::new(codex)
             .arg("app-server")
@@ -44,7 +37,6 @@ impl AppServer {
         Ok(server)
     }
 
-    /// Calls `method` with `params`, and returns its result, once the server answers it.
     pub(crate) fn request<T: DeserializeOwned>(
         &mut self,
         method: &str,
@@ -60,7 +52,6 @@ impl AppServer {
             }
             let message: Value = serde_json::from_str(&line)
                 .wrap_err_with(|| format!("Codex's app server wrote {line:?}"))?;
-            // Notifications and the server's own requests go by.
             if message.get("id").and_then(Value::as_u64) != Some(id)
                 || message.get("method").is_some()
             {

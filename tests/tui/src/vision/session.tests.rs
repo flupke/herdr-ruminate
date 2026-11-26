@@ -1,7 +1,3 @@
-//! Sessions in herdr-common's app sandbox, with the reviewer that `make e2e-tui` builds, in its
-//! dev shell, which names the sandbox's pinned programs. Every wait ends on an event of the
-//! app's, the fake agent's or its forks': the guard fires only when a test fails.
-
 use fake_agent::Reported;
 use serde_json::Value;
 
@@ -20,8 +16,7 @@ impl Fixture {
         Self::start_with(true)
     }
 
-    /// A session whose fake agent runs the reviewer's plugin hooks with `agent_hooks`, in a
-    /// directory under `target`: the bubblewrap sandbox does not show the host's `/tmp`.
+    // The bubblewrap sandbox does not show the host's `/tmp`.
     fn start_with(agent_hooks: bool) -> (Self, Screen) {
         let sessions = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/vision-tests");
         fs::create_dir_all(&sessions).unwrap();
@@ -46,7 +41,6 @@ impl Fixture {
         (fixture, screen)
     }
 
-    /// Press `keys` in the reviewer, and return the screen of its reaction.
     fn keys(&mut self, keys: &[&str]) -> Screen {
         let keys: Vec<String> = keys.iter().map(|key| (*key).to_owned()).collect();
         self.session.focus_reviewer(&self.vision).unwrap();
@@ -54,21 +48,18 @@ impl Fixture {
         screen.unwrap()
     }
 
-    /// Paste `text` in the reviewer, and return the screen of its reaction.
     fn paste(&mut self, text: &str) -> Screen {
         self.session.focus_reviewer(&self.vision).unwrap();
         let (_, screen) = self.vision.act(&Input::Paste(text)).unwrap();
         screen.unwrap()
     }
 
-    /// Wait until the reviewer's screen shows `text`.
     fn wait_for(&self, text: &str) -> Screen {
         self.vision
             .wait_for(text, false, GUARD, Some(&self.session.terminals.reviewer))
             .unwrap()
     }
 
-    /// Start a round in the pane, and answer its kickoff with the example question.
     fn ask(&mut self) {
         let kickoff = self.session.next_turn(None, GUARD).unwrap();
         assert_eq!(kickoff["kind"], "kickoff", "{kickoff}");
@@ -93,7 +84,6 @@ fn each_action_returns_the_screen_of_the_reviewers_reaction() {
     let (mut fixture, _) = Fixture::start();
     let files = fixture.wait_for("math.rs");
 
-    // The help shows in the screen the key returns, with no wait of its own.
     let help = fixture.keys(&["?"]);
     assert!(help.text.contains("Keyboard shortcuts"), "{}", help.text);
     assert!(help.frame > files.frame);
@@ -122,9 +112,7 @@ fn the_host_reaches_the_explore_page_the_action_opened_in_the_sandbox() {
     let page = fixture.session.explore_page(&fixture.vision).unwrap();
     let port = loopback_port(&page).unwrap();
     let path = page.split_once(&format!(":{port}")).unwrap().1;
-    // The page's token admits the request, which the page answers by setting its cookie.
     assert_eq!(status_line(port, path), "HTTP/1.1 303 See Other", "{page}");
-    // The network listener refuses a request without a token, as on a real network.
     let network = fixture.session.scratch.page_port();
     assert!(
         status_line(network, "/").starts_with("HTTP/1.1 403"),
@@ -132,7 +120,6 @@ fn the_host_reaches_the_explore_page_the_action_opened_in_the_sandbox() {
     );
 }
 
-/// The status line of the answer to `GET <path>` on the host's `127.0.0.1:<port>`.
 fn status_line(port: u16, path: &str) -> String {
     use std::io::Write;
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -173,13 +160,10 @@ fn a_reopened_reviewer_starts_once_the_old_one_has_stopped() {
         .unwrap();
     assert_ne!(fixture.session.terminals.reviewer, before);
     fixture.wait_for("math.rs");
-    // The new reviewer serves the MCP port the old one held: Explore reaches its agent.
     fixture.keys(&["e", "p"]);
     fixture.ask();
 }
 
-/// The user's report (#157): a change reviewed in the main jj workspace showed 0% reviewed in
-/// a task's workspace of the same repository, whose reviewer kept a review state of its own.
 #[test]
 fn marks_made_in_one_jj_workspace_show_in_another_workspace_of_the_repository() {
     let (mut fixture, _) = Fixture::start();
@@ -198,7 +182,6 @@ fn marks_made_in_one_jj_workspace_show_in_another_workspace_of_the_repository() 
     assert!(screen.text.contains("✓ notes.md"), "{}", screen.text);
 }
 
-/// The JSON a reviewer MCP tool returned, from the text of its result.
 fn tool_json(result: &Value) -> Value {
     serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap()
 }
@@ -237,7 +220,6 @@ fn the_fake_agent_answers_a_review_comment_in_the_threads_tab() {
     assert_eq!(replied["isError"], false, "{replied}");
 
     fixture.keys(&["t"]);
-    // The pane wraps the answer: its first line.
     let screen = fixture.wait_for("Because the fixture needs a");
     assert!(screen.text.contains("Why this line?"), "{}", screen.text);
 }
@@ -307,8 +289,6 @@ fn fork_submit_plays_a_fork_and_a_bare_answer_continues_as_it() {
         .unwrap()
         .to_owned();
     assert_eq!(fork_of(&forks, "keep")["parent"], own);
-    // The reviewer hears the agent's hooks in the sandbox's runtime directory, never in the
-    // one this process has, which stands for the user's.
     let sandbox = fixture.vision.sandbox();
     let runtime = Path::new(sandbox.variable("XDG_RUNTIME_DIR").unwrap());
     let outside = sandbox
@@ -334,7 +314,6 @@ fn fork_submit_plays_a_fork_and_a_bare_answer_continues_as_it() {
     let shown = fixture.session.forks(None, GUARD).unwrap();
     assert_eq!(fork_of(&shown, "keep")["submitted"], true, "{shown}");
 
-    // A bare answer: the first choice, sent with no comment.
     fixture.keys(&["1", "ctrl+enter"]);
 
     let prepared = fixture.wait_for("Prepared while you were thinking");
@@ -349,14 +328,12 @@ fn fork_submit_plays_a_fork_and_a_bare_answer_continues_as_it() {
     assert_eq!(moved["agent"]["resumed"], serde_json::json!([keep]));
 }
 
-/// Starts a round in the pane with run-ahead on every choice, and asks the example question.
 fn ask_with_run_ahead(fixture: &mut Fixture) {
     fixture.wait_for("math.rs");
     fixture.keys(&["e", "z", "z", "p"]);
     fixture.ask();
 }
 
-/// The sessions of the forks of the example question: `keep`, then `saturate`.
 fn forks_of_the_question(fixture: &Fixture) -> (String, String) {
     let forks = fixture.session.forks(Some(2), GUARD).unwrap();
     let session_of = |choice: &str| {
@@ -368,8 +345,6 @@ fn forks_of_the_question(fixture: &Fixture) -> (String, String) {
     (session_of("keep"), session_of("saturate"))
 }
 
-/// The fork that takes `choice` among the forks that the `forks` tool listed: they start at once, so
-/// their order is the order run-ahead's processes happened to report in.
 fn fork_of<'a>(forks: &'a Value, choice: &str) -> &'a Value {
     forks["forks"]
         .as_array()
@@ -379,15 +354,11 @@ fn fork_of<'a>(forks: &'a Value, choice: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("no fork takes {choice}: {forks}"))
 }
 
-/// Answers the first choice with no comment, then answers the agent's turn with the next
-/// question, and returns the screen that shows it with the line of the turn's path.
 fn answer_bare_and_ask_again(fixture: &mut Fixture) -> Screen {
     fixture.keys(&["1", "ctrl+enter"]);
     ask_again(fixture)
 }
 
-/// Answers the agent's turn after an answer with the next question, and returns the screen
-/// that shows it with the line of the turn's path.
 fn ask_again(fixture: &mut Fixture) -> Screen {
     let wakeup = fixture.session.next_turn(None, GUARD).unwrap();
     assert_eq!(wakeup["kind"], "wakeup", "{wakeup}");
@@ -475,7 +446,6 @@ fn a_switch_heard_late_still_continues_as_the_fork() {
 
     fixture.keys(&["1", "ctrl+enter"]);
 
-    // The agent reads the /resume at once, and reports it to the hooks 2 s later.
     let agent = Role::agent(AGENT);
     let from_agent = |received: &[Reported], event: &Event| {
         received
@@ -508,8 +478,6 @@ fn an_unheard_switch_fails_and_retry_reaches_the_agent_once() {
     fixture.keys(&["1", "ctrl+enter"]);
     let session = &fixture.session;
 
-    // The switch waits 20 s for the agent's hook, fails, then sends the agent back to its own
-    // session: the turn waits for Retry by then.
     let own = session.forks(None, GUARD).unwrap()["agent"]["session"]
         .as_str()
         .unwrap()
@@ -536,7 +504,6 @@ fn an_unheard_switch_fails_and_retry_reaches_the_agent_once() {
         "{}",
         screen.text
     );
-    // The next turn the agent gets answers the next question: Retry sent the first answer once.
     fixture.keys(&["1"]);
     fixture.paste("With a comment.");
     fixture.keys(&["ctrl+enter"]);
@@ -581,8 +548,6 @@ fn a_prompt_typed_to_the_agent_moves_its_conversation_past_the_forks() {
     let (mut fixture, _) = Fixture::start();
     ask_with_run_ahead(&mut fixture);
     forks_of_the_question(&fixture);
-    // The agent writes the prompt into its conversation and starts no turn on it: the answer
-    // finds it idle, its conversation past the forks, whatever the answer's pace.
     let swallow = fixture.session.scratch.agent_directory().swallow();
     fs::write(&swallow, "").unwrap();
 
@@ -609,8 +574,6 @@ fn an_agent_without_the_plugin_hooks_is_never_forked() {
 
     let screen = answer_bare_and_ask_again(&mut fixture);
 
-    // Under herdr-core, the plugin's hook is what names the agent's session: without it,
-    // run-ahead has no session to fork.
     assert!(
         screen
             .text
@@ -624,7 +587,6 @@ fn an_agent_without_the_plugin_hooks_is_never_forked() {
     );
 }
 
-/// Submits the turn of the fork `session` with the example conclusion.
 fn submit_conclusion(fixture: &mut Fixture, session: &str) {
     let conclusion: Value =
         serde_json::from_str(include_str!("../../examples/conclusion.json")).unwrap();
@@ -640,8 +602,6 @@ fn submit_conclusion(fixture: &mut Fixture, session: &str) {
     assert_eq!(reply["isError"], false, "{reply}");
 }
 
-/// Waits until the agent started `started`, once its `SessionStart` hooks, the reviewer's
-/// among them, ran.
 fn wait_agent_session(session: &Session, started: &str) {
     session
         .events

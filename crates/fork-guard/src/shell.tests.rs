@@ -1,6 +1,5 @@
 use super::*;
 
-/// The texts of the words of each command of the pipe `command`.
 fn texts(command: &str) -> Vec<Vec<String>> {
     split_pipe(command)
         .unwrap_or_else(|error| panic!("{command}: {error:?}"))
@@ -57,7 +56,6 @@ fn shell_forms_outside_quotes_are_refused() {
         ("(rm x)", '('),
         ("rg {--pre=sh,x}", '{'),
         ("cat a'b'}", '}'),
-        // Inside double quotes, `$` and the backtick still substitute.
         ("rg \"$(rm x)\"", '$'),
         ("rg \"${x:=y}\"", '$'),
         ("rg \"`rm x`\"", '`'),
@@ -133,7 +131,6 @@ fn newlines_and_unclosed_quotes_are_refused() {
     }
 }
 
-/// Bash, with pathname expansion off, passes the words the guard reads.
 #[test]
 fn the_words_are_those_bash_passes() {
     let command = concat!(

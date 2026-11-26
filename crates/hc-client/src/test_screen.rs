@@ -1,9 +1,6 @@
-//! A screen of herdr-app for the tests, whose view they write as herdr-app does.
-
 use herdr_app_focus::AppHome;
 use serde_json::json;
 
-/// A home of herdr-app whose screen shows the space `sp1` and its tab `tb1`.
 pub(crate) struct Screen(tempfile::TempDir);
 
 impl Screen {
@@ -15,8 +12,7 @@ impl Screen {
         AppHome::new(self.0.path().to_owned())
     }
 
-    /// Focuses the pane `pane` of the tab: a temporary file renamed over the view, as herdr-app
-    /// writes it.
+    // herdr-app writes its view as a temporary file that it renames over `view.json`.
     pub(crate) fn focus(&self, pane: &str) {
         let written = self.0.path().join("view.json.tmp");
         let view =

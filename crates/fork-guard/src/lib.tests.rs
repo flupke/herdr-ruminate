@@ -98,14 +98,12 @@ fn quotes_hide_shell_forms_and_unquoted_ones_still_count() {
         "rg 'x' `rm y`",
         "rg 'a\nb'",
         "rg 'unclosed",
-        // A quote or a backslash does not hide an option from the guard.
         "rg '--pre'=sh x",
         "rg --p're=sh' x",
         "rg \\-\\-pre=sh x",
         "find . '-delete'",
         "rg \"--pre\" sh x",
         "'rm' x",
-        // Words that only a pipe or a list outside quotes would make commands.
         "rg x | rm y",
         "rg x | sh",
         "rg x | xargs rm",
@@ -138,7 +136,6 @@ fn jj_reads_without_snapshotting_the_working_copy() {
         "jj st",
         "jj file show -r X -- path",
         "jj file list | head",
-        // After `--`, it is a path, not an option.
         "jj file show -r X -- --ignore-working-copy",
     ] {
         let reason = command_refusal(snapshots).unwrap_or_else(|| panic!("{snapshots}"));

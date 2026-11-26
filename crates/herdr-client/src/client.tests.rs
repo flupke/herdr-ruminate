@@ -151,7 +151,6 @@ fn each_tab_of_a_workspace_keeps_its_own_pane_record() {
     assert_eq!(client.load_pane(&task.tab_id).unwrap(), Some(task));
 }
 
-/// Answer one request on `socket` with `result`, as Herdr does, and return the request.
 fn answer_once(
     socket: &std::path::Path,
     result: serde_json::Value,
@@ -207,7 +206,6 @@ fn a_review_pane_is_listed_in_the_tab_herdr_reports(current_tab: &str, listed: b
         client.load_pane(&pane.tab_id).unwrap(),
         listed.then(|| pane.clone())
     );
-    // A moved pane is recorded in the tab it is in now.
     let current = TabId(current_tab.to_owned());
     assert_eq!(
         client.load_pane(&current).unwrap(),
@@ -232,7 +230,6 @@ fn a_temporary_record_is_not_taken_for_a_record_of_earlier_versions() {
         workspace_id: WorkspaceId("w1".to_owned()),
         entrypoint_id: EntrypointId("review".to_owned()),
     };
-    // What `save_pane` writes before its rename.
     let temporary = client.pane_path(&pane.tab_id).with_extension("tmp-1");
     std::fs::create_dir_all(temporary.parent().unwrap()).unwrap();
     std::fs::write(&temporary, serde_json::to_vec(&pane).unwrap()).unwrap();
@@ -255,7 +252,6 @@ fn a_record_keyed_by_workspace_moves_to_its_tab() {
         workspace_id: WorkspaceId("w1".to_owned()),
         entrypoint_id: EntrypointId("review".to_owned()),
     };
-    // Earlier versions named the record after the hex of the workspace ID: `w1` is `7731`.
     let old = directory.path().join("state/panes/7731.json");
     std::fs::create_dir_all(old.parent().unwrap()).unwrap();
     std::fs::write(&old, serde_json::to_vec(&pane).unwrap()).unwrap();
@@ -319,8 +315,6 @@ fn an_agent_status_stream_reads_each_status_and_skips_other_events() {
     assert!(stream.next_status().is_err(), "Herdr closed the stream");
 }
 
-/// A stream whose writer stays open, as Herdr keeps an idle subscription, tied to
-/// `canceller`, and its writer.
 fn idle_stream(canceller: &EventCanceller) -> (HerdrEventStream, UnixStream) {
     let (reader, writer) = UnixStream::pair().unwrap();
     let tie = canceller.tie(&reader).unwrap().unwrap();
@@ -353,7 +347,6 @@ fn a_stream_that_ends_lets_go_of_its_socket() {
     drop(stream);
 
     assert!(canceller.lock().sockets.is_empty());
-    // The stream's socket is closed: its peer reads the end.
     assert_eq!(std::io::Read::read(&mut writer, &mut [0; 1]).unwrap(), 0);
 }
 

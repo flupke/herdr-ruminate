@@ -79,7 +79,6 @@ fn the_agent_s_session_is_the_one_it_started_last() {
             },
         ),
         from(agent(), started("fork", "resume")),
-        // A fork's own session is no session of the agent's.
         from(fork("other"), started("other", "fork")),
         from(
             fork("other"),

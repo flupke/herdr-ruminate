@@ -199,7 +199,6 @@ fn tab_id() -> TabId {
     TabId("tab".to_owned())
 }
 
-/// An agent in tab `tab_id`; every tab is in the same workspace.
 fn agent(pane_id: &str, tab_id: &str) -> Agent {
     Agent {
         pane_id: PaneId(pane_id.to_owned()),
@@ -221,7 +220,6 @@ fn a_pane_splits_across_the_side_that_looks_longer() {
     assert_eq!(size(240, 60).split_direction(), SplitDirection::Right);
     assert_eq!(size(150, 60).split_direction(), SplitDirection::Right);
     assert_eq!(size(149, 60).split_direction(), SplitDirection::Down);
-    // Half of a 320x80 screen: splitting it beside would leave three columns.
     assert_eq!(size(160, 78).split_direction(), SplitDirection::Down);
     assert_eq!(size(60, 75).split_direction(), SplitDirection::Down);
 }

@@ -4,7 +4,6 @@ use test_case::test_case;
 
 use super::*;
 
-/// The pane that the variables `set` name.
 fn pane(set: &[(&str, &str)]) -> Option<HookPane> {
     let variables: HashMap<&str, &str> = set.iter().copied().collect();
     HookPane::from_vars(|name| variables.get(name).map(OsString::from))
@@ -18,7 +17,6 @@ fn a_pane_of_herdr_reaches_the_reviewers_of_its_server() {
         RUNTIME,
         ("HERDR_SOCKET_PATH", "/run/herdr.sock"),
         ("HERDR_PANE_ID", "w1:p2"),
-        // A Herdr started from a terminal of herdr-app passes that terminal's variables on.
         ("HC_TERMINAL_SOCKET", "/run/hc.sock"),
         ("HC_TERMINAL_ID", "t7"),
     ];

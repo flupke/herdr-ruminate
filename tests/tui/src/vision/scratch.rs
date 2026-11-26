@@ -1,10 +1,3 @@
-//! The scratch repository a vision session reviews, and the files the session shares with its
-//! reviewer: its private state, its fake agent, browser and Jev script, and the turns it
-//! records. The fake agent and its forks keep their transcripts there too, never in the
-//! user's Claude Code configuration; the reviewer's hooks listen in the app sandbox's runtime
-//! directory. None of it is in the host's `/tmp`, which the bubblewrap sandbox does not show: the
-//! sandbox's processes reach each file at its own path.
-
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
@@ -22,18 +15,15 @@ use review_test_support::{
 
 use super::session::AGENT;
 
-/// Where scratch repositories go: the bubblewrap sandbox shows the host's `/var/tmp`, unlike its
-/// `/tmp`, and no `.envrc` covers it, unlike the checkout's, which direnv would refuse in the
-/// sandbox, failing the pane's language servers.
+// The bubblewrap sandbox shows the host's `/var/tmp` but not its `/tmp`; inside it, direnv
+// refuses an `.envrc`, which fails the language servers.
 const REPOSITORIES: &str = "/var/tmp";
 
-/// The loopback interface, which stands in for a network interface in a vision session.
 #[cfg(target_os = "linux")]
 const LOOPBACK: &str = "lo";
 #[cfg(not(target_os = "linux"))]
 const LOOPBACK: &str = "lo0";
 
-/// The files of a scratch repository: the base change, then the change under review.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Seed {
     pub(crate) base: BTreeMap<String, String>,
@@ -41,7 +31,6 @@ pub(crate) struct Seed {
 }
 
 impl Seed {
-    /// The default change: a rename in one file, two new files, Unicode and a long line.
     pub(crate) fn sample() -> Self {
         let file = |path: &str, content: &str| (path.to_owned(), content.to_owned());
         Self {
@@ -61,16 +50,11 @@ impl Seed {
     }
 }
 
-/// A scratch repository, and the session's files in `directory`, which outlives the session.
 pub(crate) struct Scratch {
     repository: Box<dyn ReviewRepositoryFixture>,
-    /// The root of the workspace of the repository the reviewer and its agent run in: the
-    /// repository's own, or one `enter_workspace` added.
     workspace: PathBuf,
     directory: PathBuf,
-    /// The reviewer's MCP port.
     port: TestPort,
-    /// The first port of the Explore page's network listener.
     page_port: TestPort,
 }
 
@@ -100,9 +84,6 @@ impl Scratch {
         fs::create_dir_all(scratch.state())?;
         fs::create_dir_all(scratch.turns())?;
         fs::create_dir_all(scratch.agent_directory().path())?;
-        // The Explore page's network listener, and the pane's QR code, on the loopback
-        // interface: shown as on a real network, reachable from this machine only, on a port
-        // free on the host, which the session forwards from the sandbox's loopback.
         let mut settings = ExplorePageSettings::default();
         settings.network.set_interface(LOOPBACK);
         settings.network.first_port = scratch.page_port.number();
@@ -111,15 +92,10 @@ impl Scratch {
         Ok(scratch)
     }
 
-    /// The root of the workspace the reviewer and its agent run in.
     pub(crate) fn root(&self) -> &Path {
         &self.workspace
     }
 
-    /// Run the reviewer and its agent, from their next start, in the workspace of the repository
-    /// named `name`: a jj workspace at the change under review, or a Git worktree, which the
-    /// first call with that name adds beside the repository. A name that is the repository's
-    /// own root's goes back to it.
     pub(crate) fn enter_workspace(&mut self, name: &str) -> Result<()> {
         ensure!(
             !name.is_empty()
@@ -145,43 +121,34 @@ impl Scratch {
         self.port.number()
     }
 
-    /// The first port the Explore page's network listener tries: the one it takes in the
-    /// sandbox, whose loopback only the reviewer listens on.
     pub(crate) fn page_port(&self) -> u16 {
         self.page_port.number()
     }
 
-    /// The reviewer's private state directory.
     fn state(&self) -> PathBuf {
         self.directory.join("state")
     }
 
-    /// The session's herdr-bus file, where the reviewer publishes its review comments.
     fn bus(&self) -> PathBuf {
         self.directory.join("bus.db")
     }
 
-    /// Where run-ahead says what the forks do.
     pub(crate) fn run_ahead_log(&self) -> PathBuf {
         self.state().join("run-ahead.log")
     }
 
-    /// The fake agent's directory: its switches, and what its forks record.
     pub(crate) fn agent_directory(&self) -> Directory {
         Directory::new(self.directory.join("agent"))
     }
 
-    /// The Claude Code configuration of the fake agent and its forks, with their transcripts.
     pub(crate) fn claude_config(&self) -> PathBuf {
         self.directory.join("claude-config")
     }
 
-    /// The script the `jev` tool writes; the reviewer reads it in place of the paid classifier.
     pub(crate) fn jev_script(&self) -> PathBuf {
         self.directory.join("jev-script.json")
     }
 
-    /// Where the reviewer records the Explore prompts it sent, for the scripted agent.
     pub(crate) fn turns(&self) -> PathBuf {
         self.directory.join("turns")
     }
@@ -190,21 +157,16 @@ impl Scratch {
         self.agent_bin().join("claude")
     }
 
-    /// The directory that holds the fake agent as `claude`, first on the sandbox's `PATH`.
     fn agent_bin(&self) -> PathBuf {
         self.directory.join("agent-bin")
     }
 
-    /// Installs the fake agent as `claude`, the name herdr-core detects Claude Code by: the
-    /// one Cargo built in this workspace's profile directory, beside the running program, whose
-    /// fake agent is the one this workspace speaks to on the event socket. The workspace at the
-    /// root takes fake-agent from git, at a revision that may differ from the checkout's.
     pub(crate) fn install_agent(&self) -> Result<()> {
         let running = std::env::current_exe()?;
         let mut profile = running
             .parent()
             .context("the running program has no directory")?;
-        // A test runs from the profile's `deps`.
+        // Cargo runs a test binary from the profile's `deps` directory.
         if profile.ends_with("deps") {
             profile = profile.parent().context("`deps` has no parent")?;
         }
@@ -214,11 +176,6 @@ impl Scratch {
         Ok(())
     }
 
-    /// The program of the fake agent's terminal, on its new session `session`: it plays
-    /// Claude Code, reports on the session's event socket and, with `hooks`, runs the hooks of
-    /// the reviewer's Claude Code plugin through the `reviewer-control` beside `reviewer`. Each
-    /// turn ends by itself, unless the agent driving the session holds turns. `events` is the
-    /// session's event socket, as the sandbox's processes see it.
     pub(crate) fn agent_command(
         &self,
         reviewer: &Path,
@@ -243,8 +200,6 @@ impl Scratch {
                 path_string(&reviewer.with_file_name("reviewer-control")),
             ));
         }
-        // The reviewer takes on its agent's environment under herdr-core: what it must not see
-        // goes from the agent's too.
         ["/usr/bin/env", "-u", "TYPESAFE_API_KEY", "-u", "NO_COLOR"]
             .into_iter()
             .map(str::to_owned)
@@ -257,9 +212,6 @@ impl Scratch {
             .collect()
     }
 
-    /// The program of the reviewer's terminal: `reviewer`, following the agent's terminal
-    /// `agent` and the focus of the app whose home is `app_home`, as the launcher mod opens it,
-    /// without the paid classifier's key, in colors whatever the user's terminal says.
     pub(crate) fn reviewer_command(reviewer: &Path, agent: &str, app_home: &str) -> Vec<String> {
         ["/usr/bin/env", "-u", "TYPESAFE_API_KEY", "-u", "NO_COLOR"]
             .into_iter()
@@ -274,9 +226,6 @@ impl Scratch {
             .collect()
     }
 
-    /// The variables every process of the app sandbox gets: the reviewer's in a vision session,
-    /// with private state, the session's browser, and a `PATH` that finds the fake agent as
-    /// `claude` first.
     pub(crate) fn sandbox_environment(&self) -> Vec<(OsString, OsString)> {
         let mut path = OsString::from(self.agent_bin());
         if let Some(inherited) = std::env::var_os("PATH") {
@@ -286,7 +235,6 @@ impl Scratch {
         [
             ("HERDR_REVIEWER_VISION", OsString::from("1")),
             ("HERDR_PLUGIN_STATE_DIR", self.state().into()),
-            // The bus the reviewer publishes its review comments on, the session's own.
             ("HERDR_BUS_DB", self.bus().into()),
             (
                 "HERDR_REVIEWER_MCP_PORT",
@@ -302,10 +250,6 @@ impl Scratch {
         .collect()
     }
 
-    /// Run the Herdr action that opens the Explore page, as Herdr would run it in the reviewer's
-    /// tab `tab` of its space `space`, with a browser that records the address it opens:
-    /// `action` runs `reviewer-control` in the sandbox, where the action checks that the page
-    /// answers. Returns that address, with its token.
     pub(crate) fn open_explore_page(
         &self,
         mut action: std::process::Command,
@@ -341,14 +285,10 @@ impl Scratch {
         Ok(fs::read_to_string(&opened)?)
     }
 
-    /// The reviewer's browser, which [`Self::write_browser`] writes.
     fn browser(&self) -> PathBuf {
         self.directory.join("stand-in-browser")
     }
 
-    /// The reviewer's browser: it appends each address it opens to `opened-pages` in the
-    /// session directory, and fails with exit status 3 while a file `browser-fails` exists
-    /// there. A vision session never opens the user's browser.
     fn write_browser(&self) -> Result<()> {
         write_script(
             &self.browser(),

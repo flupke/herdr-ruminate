@@ -42,7 +42,7 @@ fn an_agent_run_as_a_script_keeps_its_script_and_loses_its_prompt() {
         .spawn()
         .unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    // Right after the spawn, the child's command line can still be empty, or this test's own.
+    // Right after the spawn, Linux can show the child's command line empty, or the parent's.
     let read = loop {
         let read = PaneClaude::read(child.id());
         let started = read

@@ -1,13 +1,6 @@
-//! The reviewer's answers to what a fork's turn asks its client: the reviewer is the only client
-//! of a fork's session, so the daemon asks it every approval and elicitation of the fork. It
-//! allows the two submits and the shell commands that only read, as the forks' guard does, and
-//! declines everything else.
-
 use fork_guard::{SUBMITS, command_refusal};
 use serde_json::{Value, json};
 
-/// The reviewer's answer to the daemon's request `method`, with `params`, made by a fork's turn:
-/// the result it replies with, or the error, and what it declined, for run-ahead's log.
 pub(crate) struct Answer {
     pub(crate) result: Result<Value, String>,
     pub(crate) declined: Option<String>,
@@ -29,7 +22,6 @@ impl Answer {
     }
 }
 
-/// How the reviewer answers the daemon's request `method`, with `params`, of a fork's turn.
 pub(crate) fn answer(method: &str, params: &Value) -> Answer {
     match method {
         "mcpServer/elicitation/request" => elicitation(params),
@@ -66,8 +58,7 @@ pub(crate) fn answer(method: &str, params: &Value) -> Answer {
     }
 }
 
-/// The answer to an MCP server's elicitation: Codex asks one before an MCP tool call, which the
-/// reviewer accepts for the two submits alone.
+// Codex asks its client an elicitation before an MCP tool call.
 fn elicitation(params: &Value) -> Answer {
     let server = params
         .get("serverName")

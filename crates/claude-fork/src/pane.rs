@@ -1,5 +1,3 @@
-//! The Claude Code process of a Herdr pane, as a fork copies it.
-
 use std::ffi::OsString;
 use std::fs;
 use std::path::PathBuf;
@@ -10,22 +8,14 @@ use crate::arguments;
 use crate::settings::AgentSettings;
 use crate::transcripts::Transcripts;
 
-/// The pane agent's process: what a fork starts with so that it reads the same prompt cache.
 #[derive(Clone, Debug)]
 pub(crate) struct PaneClaude {
-    /// The binary the agent runs, resolved, so a fork runs the same version; its arguments as
-    /// a fork keeps them; its directory; its environment without the variables of Herdr and of
-    /// herdr-core, so that neither takes a fork for the pane's agent, nor its hooks report the
-    /// fork's session as the pane's.
     pub(crate) command: ForkCommand,
-    /// The model its arguments name, if any.
     pub(crate) model: Option<String>,
-    /// The settings of its `--settings`, which a fork runs with its guard.
     pub(crate) settings: AgentSettings,
 }
 
 impl PaneClaude {
-    /// Reads the running process `pid`.
     pub(crate) fn read(pid: u32) -> Result<Self, String> {
         let proc = PathBuf::from(format!("/proc/{pid}"));
         let read = |what: &str| format!("cannot read the agent's {what}");
@@ -38,7 +28,8 @@ impl PaneClaude {
             .filter(|argument| !argument.is_empty())
             .map(|argument| String::from_utf8_lossy(argument).into_owned())
             .collect();
-        // An agent started as a script, through its interpreter, names the script first.
+        // Unix: a script started through its interpreter has the interpreter as its program, then
+        // the script.
         let script = command
             .get(1)
             .filter(|first| !first.starts_with('-') && directory.join(first).is_file());
@@ -68,7 +59,7 @@ impl PaneClaude {
         })
     }
 
-    /// Where the agent keeps its transcripts: `projects` under its configuration directory.
+    // Claude Code keeps its transcripts in `projects` under its configuration directory.
     pub(crate) fn transcripts(&self) -> Transcripts {
         let variable = |name: &str| {
             self.command

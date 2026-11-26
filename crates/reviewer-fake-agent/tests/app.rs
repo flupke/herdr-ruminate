@@ -1,14 +1,9 @@
-//! What this crate's `APP` gives herdr-common's fake agent: the hooks of the reviewer's
-//! plugin, and the turn's files read with the prompt. Being an integration test, it also has
-//! Cargo build the program for every test run of the workspace, whose other tests run it too.
-
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command as Process, Stdio};
 
 use fake_agent::{Command, Event, Events, Role, variables};
 
-/// The plugin's `reviewer-control`: it logs its arguments, a line each hook.
 const CONTROL: &str =
     "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' \"$*\" >> \"$(dirname \"$0\")/hooks.log\"\n";
 

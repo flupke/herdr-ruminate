@@ -3,7 +3,6 @@ use agent_fork::ForkCommand;
 use super::*;
 use crate::settings::AgentSettings;
 
-/// A Claude Code agent whose configuration directory is `configuration`.
 fn agent_in(configuration: &std::path::Path) -> PaneClaude {
     PaneClaude {
         command: ForkCommand {
@@ -22,7 +21,6 @@ fn a_session_started_in_code_mode_is_one_no_fork_can_resume() {
     let configuration = tempfile::tempdir().unwrap();
     let project = configuration.path().join("projects/-work");
     std::fs::create_dir_all(&project).unwrap();
-    // As Claude Code 2.1.329 writes them, beside the conversation.
     std::fs::write(
         project.join("code-mode.jsonl"),
         concat!(

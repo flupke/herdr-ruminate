@@ -17,9 +17,6 @@ fn write_frame(stream: &mut UnixStream, channel: u32, kind: u8, payload: &[u8]) 
     stream.write_all(&frame).unwrap();
 }
 
-/// A stand-in for herdr-core that answers one watch with `frames`, each sent the moment the one
-/// before was, then the frames `later` hands it, ending the stream once `later` ends, and tells
-/// `credited` of each credit it gets.
 fn core_sending(
     frames: Vec<Vec<u8>>,
     later: mpsc::Receiver<Vec<u8>>,
@@ -51,7 +48,6 @@ fn core_sending(
             for frame in later {
                 write_frame(&mut writer, 1, 0, &frame);
             }
-            // The stream ends once the test has nothing more to send.
             let _ = writer.shutdown(std::net::Shutdown::Write);
         });
         while reader.read_exact(&mut header).is_ok() {
@@ -105,8 +101,6 @@ fn a_watch_tells_a_print_only_once_the_program_printed() {
 
     later_frames.send(b"printed".to_vec()).unwrap();
     watch.printed().unwrap();
-    // The stand-in core ends the stream once it sent all it was given: a paint counted as a print
-    // would leave the print above for this wait.
     drop(later_frames);
     assert!(
         watch.printed().is_err(),

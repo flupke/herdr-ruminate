@@ -82,7 +82,6 @@ fn settings_a_fork_cannot_run_its_guard_with_take_no_fork() {
 
     assert!(read("missing.json").unwrap_err().contains("cannot read"));
     assert!(read("list.json").unwrap_err().contains("not a JSON object"));
-    // Inline settings may hold secrets, which the error leaves out.
     let inline = read(r#"{"env": {"TOKEN": "secret"}"#).unwrap_err();
     assert!(!inline.contains("secret"), "{inline}");
     assert!(read(r#"{"disableAllHooks": true}"#).is_err());

@@ -24,7 +24,6 @@ fn a_turn_s_end_carries_the_tokens_of_its_requests_with_those_read_from_the_cach
         );
     }
 
-    // Another turn's end is not this one's.
     watch.hear(
         "turn/completed",
         &json!({"threadId": "fork-1", "turn": {"id": "turn-0", "status": "completed"}}),

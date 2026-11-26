@@ -1,11 +1,3 @@
-//! The rules of a fork's guard: a fork of the agent's session reads code and submits its turn
-//! to the reviewer, and does nothing else. This crate holds what the guards of every agent
-//! share: the reviewer's two submit tools, and which shell commands only read. A shell command
-//! is refused when it could write or run another program, or when it holds a shell form, such
-//! as a redirection or a substitution, that would make the shell run something else than the
-//! guard read. Claude Code's guard (`claude-fork`) and Codex's (`codex-hooks`) add the agent's
-//! own tools.
-
 use commands::Refusal;
 use shell::ShellError;
 
@@ -13,15 +5,12 @@ mod commands;
 mod sed;
 mod shell;
 
-/// The reviewer's tools a fork may call, as Claude Code and Codex name them: the two that
-/// submit a turn.
+// Claude Code and Codex name an MCP tool `mcp__<server>__<tool>`.
 pub const SUBMITS: &[&str] = &[
     "mcp__herdr_reviewer__submit_question",
     "mcp__herdr_reviewer__submit_conclusion",
 ];
 
-/// Why the shell command `command` is refused; `None` when it only reads: commands of the
-/// list, alone or piped, with no shell form outside quotes.
 pub fn command_refusal(command: &str) -> Option<String> {
     let refusal = match shell::split_pipe(command) {
         Ok(pipe) => pipe.iter().find_map(|words| commands::refusal(words))?,

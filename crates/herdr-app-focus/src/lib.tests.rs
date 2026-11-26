@@ -2,8 +2,6 @@ use std::sync::mpsc;
 
 use super::*;
 
-/// A layout of two spaces as herdr-core's `herdr-app` document holds it (herdr-app 0.1.13): a
-/// tab of a terminal beside a column of a terminal over a mod, and a tab of one terminal.
 fn layout() -> Layout {
     serde_json::from_str(
         r#"{"spaces": [
@@ -42,7 +40,6 @@ fn a_mod_a_split_and_an_unknown_pane_show_no_terminal() {
     assert_eq!(layout.terminal_of("p9"), None);
 }
 
-/// A home whose `view.json` is `view`.
 fn home_with_view(view: &str) -> (tempfile::TempDir, AppHome) {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("view.json"), view).unwrap();
@@ -94,7 +91,7 @@ fn the_watch_hears_herdr_app_replace_its_view() {
             let _ = changed.send(());
         })
         .unwrap();
-    // As herdr-app writes it: a temporary file, renamed over the view.
+    // herdr-app writes its view to a temporary file, then renames it over `view.json`.
     let written = folder.path().join("view.json.tmp.1.1");
     std::fs::write(&written, "{}").unwrap();
     std::fs::rename(&written, folder.path().join("view.json")).unwrap();
@@ -128,7 +125,6 @@ fn a_view_written_or_renamed_over_is_a_change() {
 #[test]
 fn reading_the_view_or_writing_another_file_is_no_change() {
     use notify::event::{AccessKind, AccessMode, ModifyKind, RenameMode};
-    // The read of the view that follows each change.
     assert!(!rewrites_view(&event(
         EventKind::Access(AccessKind::Open(AccessMode::Any)),
         "view.json"

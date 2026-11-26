@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Runs a command, or an interactive shell, in this repository's Nix dev shell, from the main
-# checkout or from a jj workspace. The `path:` URL to nix/ makes Nix copy that directory alone
-# into the store, never the checkout and its target/ (the `checks` skill).
-#
-# Usage: scripts/dev-shell [command [argument...]]
+# A `path:` URL makes Nix copy that directory alone into the store, not the whole checkout.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "$#" -eq 0 ]; then

@@ -1,7 +1,3 @@
-//! A scripted implementation agent for Explore and review threads. The reviewer
-//! records every prompt it sent as a numbered turn; `turn` reads the next one and
-//! `reply` answers it through the reviewer's real MCP endpoint.
-
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -14,10 +10,8 @@ use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Map, Value, json};
 
 pub(super) struct ScriptedAgent {
-    /// Where the reviewer records the turns it sent.
     turns: PathBuf,
     port: u16,
-    /// The last turn `next_turn` returned.
     returned: u64,
 }
 
@@ -30,7 +24,6 @@ impl ScriptedAgent {
         }
     }
 
-    /// Every turn the reviewer recorded, oldest first.
     fn turns(&self) -> Result<Vec<Value>> {
         let Ok(entries) = std::fs::read_dir(&self.turns) else {
             return Ok(Vec::new());
@@ -53,14 +46,10 @@ impl ScriptedAgent {
             .collect()
     }
 
-    /// The first turn after `after`, or after the last one returned, waiting up to `guard`
-    /// for the reviewer to send it. The wait ends on the reviewer's write of a turn file, not
-    /// on a poll.
     pub(super) fn next_turn(&mut self, after: Option<u64>, guard: Duration) -> Result<Value> {
         self.next_turn_watching(after, guard, || {})
     }
 
-    /// [`Self::next_turn`], which calls `watching` once it watches the turns and found none.
     fn next_turn_watching(
         &mut self,
         after: Option<u64>,
@@ -70,8 +59,7 @@ impl ScriptedAgent {
         let after = after.unwrap_or(self.returned);
         std::fs::create_dir_all(&self.turns)?;
         let (written, writes) = mpsc::channel();
-        // A turn arrives as a rename of its partial file; reading the turns, as this wait does,
-        // makes access events, which must not wake it.
+        // notify reports reading a watched file as an access event.
         let mut watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
             if event.is_ok_and(|event| {
                 matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_))
@@ -84,7 +72,6 @@ impl ScriptedAgent {
         let mut watching = Some(watching);
         loop {
             let turns = self.turns()?;
-            // Only the very next number, so a turn still being written is never skipped.
             if let Some(turn) = turns.iter().find(|turn| number(turn) == after + 1) {
                 self.returned = number(turn);
                 return Ok(turn.clone());
@@ -92,7 +79,6 @@ impl ScriptedAgent {
             if let Some(watching) = watching.take() {
                 watching();
             }
-            // Only a write ends the wait: once the guard is spent, no last look finds a turn.
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() || writes.recv_timeout(remaining).is_err() {
                 bail!(
@@ -104,8 +90,6 @@ impl ScriptedAgent {
         }
     }
 
-    /// Answer turn `turn` by calling `tool`: the turn must be the latest one,
-    /// and its identity fills what `arguments` leaves out.
     pub(super) fn reply(&self, turn: u64, tool: &str, mut arguments: Value) -> Result<Value> {
         let turns = self.turns()?;
         let latest = turns
@@ -116,8 +100,6 @@ impl ScriptedAgent {
             "turn {turn} is stale; latest is {}",
             number(latest)
         );
-        // A revision answers the round conversation with the identity of the latest Explore
-        // turn, as the agent takes it from its latest Explore prompt.
         let source = if tool == "revise_question" {
             turns
                 .iter()
@@ -127,16 +109,12 @@ impl ScriptedAgent {
         } else {
             latest
         };
-        // A turn without an identity of its own takes a reply that brings one,
-        // to check how the reviewer rejects it.
         if arguments.get("review").is_none() {
             Identity::of(source)?.fill(tool, &mut arguments)?;
         }
         self.call(tool, &arguments)
     }
 
-    /// Answer as the fork that read `prompt`, by calling `tool`: the identity of its prompt fills
-    /// what `arguments` leaves out.
     pub(super) fn reply_as_fork(
         &self,
         prompt: &str,
@@ -191,13 +169,11 @@ fn number(turn: &Value) -> u64 {
     turn["turn"].as_u64().unwrap_or(0)
 }
 
-/// What a reply to a turn must carry, as the reviewer recorded it.
 struct Identity {
     access: Value,
     round: Value,
     request: Value,
     checkpoint: Value,
-    /// The answer the turn brought, null on a kickoff.
     answer: Value,
 }
 
@@ -224,7 +200,6 @@ impl Identity {
         })
     }
 
-    /// The identity of an Explore prompt with its turn's files, as a fork reads it.
     fn of_prompt(prompt: &str) -> Result<Self> {
         let line = |label: &str| {
             super::forks::prompt_line(prompt, label)
@@ -243,9 +218,6 @@ impl Identity {
         })
     }
 
-    /// Give `arguments` this identity where they leave it out: the access
-    /// value, the turn fields where `tool` takes them, and the answer an
-    /// interpretation is about.
     fn fill(&self, tool: &str, arguments: &mut Value) -> Result<()> {
         let object = arguments
             .as_object_mut()
@@ -253,7 +225,6 @@ impl Identity {
         object
             .entry("review")
             .or_insert_with(|| self.access.clone());
-        // The thread tools take the access value alone.
         let fields = match tool {
             "submit_question" => object
                 .entry("update")

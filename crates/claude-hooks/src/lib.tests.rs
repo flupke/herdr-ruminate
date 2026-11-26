@@ -6,16 +6,12 @@ use serde_json::Value;
 
 use super::*;
 
-/// How long a test waits for an event that a failing test never gets.
 const GUARD: Duration = Duration::from_secs(30);
 
-/// The agent of `pane`, as the plugin's hooks name it.
 fn in_pane(pane: &PaneId) -> HookedAgent {
     in_session(pane, "session")
 }
 
-/// The agent of `pane` on the session `session` that Herdr reports, as the plugin's hooks name
-/// it.
 fn in_session(pane: &PaneId, session: &str) -> HookedAgent {
     HookedAgent::Pane {
         pane: pane.clone(),
@@ -23,7 +19,6 @@ fn in_session(pane: &PaneId, session: &str) -> HookedAgent {
     }
 }
 
-/// Hands `payload` of the agent of `pane`, a pane of Herdr, to the reviewers of `directory`.
 fn hook_in(pane: &PaneId, directory: &HookDirectory, payload: &[u8]) -> Option<String> {
     let target = HookTarget {
         pane,
@@ -34,7 +29,6 @@ fn hook_in(pane: &PaneId, directory: &HookDirectory, payload: &[u8]) -> Option<S
     hook(&target, std::os::unix::process::parent_id(), payload)
 }
 
-/// A reviewer listening in a new directory.
 fn reviewer() -> (tempfile::TempDir, HookDirectory, AgentHooks) {
     let runtime = tempfile::tempdir().unwrap();
     let directory = HookDirectory::for_server(runtime.path(), Path::new("/run/herdr.sock"));
@@ -42,7 +36,6 @@ fn reviewer() -> (tempfile::TempDir, HookDirectory, AgentHooks) {
     (runtime, directory, hooks)
 }
 
-/// Claude Code's `SessionStart` event, as 2.1.292 writes it, of `session` from `source`.
 fn session_start(session: &str, source: &str) -> String {
     format!(
         r#"{{"session_id":"{session}","transcript_path":"/home/u/.claude/projects/-repo/{session}.jsonl","cwd":"/repo","hook_event_name":"SessionStart","source":"{source}","model":"claude-opus-5-5"}}"#
@@ -100,7 +93,6 @@ fn a_subagent_s_session_is_not_the_agent_s() {
     directory.record(&pane, &agent).unwrap();
 
     hook_in(&pane, &directory, subagent.to_string().as_bytes());
-    // The reviewer takes the hooks one after another: it took the subagent's before this.
     hook_in(
         &PaneId("w:p9".into()),
         &directory,
@@ -112,7 +104,6 @@ fn a_subagent_s_session_is_not_the_agent_s() {
     assert_eq!(directory.hooked_sessions(&pane), [agent]);
 }
 
-/// Claude Code's `UserPromptSubmit` event, as 2.1.292 writes it, of `prompt`.
 fn prompt_submit(prompt: &str) -> String {
     serde_json::json!({
         "session_id": "session",
@@ -167,10 +158,8 @@ fn a_prompt_the_reviewer_does_not_block_goes_on_without_a_decision() {
     assert_eq!(decision, None);
 }
 
-/// A long prompt the reviewer types, as Herdr pastes it.
 const LONG: &str = "The reviewer clicked Implement.\n\nTasks from the reviewer:\n- one\n- two\n";
 
-/// `LONG` as Claude Code 2.1.309 reports it, after the text `before` left in its input box.
 fn wrapped_paste(before: &str) -> String {
     format!("{before}\n\n<pasted_content id=\"4225\">\n{LONG}</pasted_content id=\"4225\">\n")
 }
@@ -239,7 +228,6 @@ fn the_typed_prompt_in_another_session_of_the_pane_is_blocked() {
     assert_eq!(expectation.wait(Duration::ZERO), Some(Heard::Stopped));
 }
 
-/// The JSON file at `path` under this crate.
 fn manifest(path: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
@@ -263,13 +251,12 @@ fn each_hook_of_the_plugin_runs_the_agent_hook_of_the_installed_reviewer() {
         .collect();
     assert!(!commands.is_empty());
     for command in commands {
-        // Exec form: Claude Code refuses a user option in a command a shell would parse.
+        // Claude Code refuses a user option in a hook command that a shell would parse.
         assert_eq!(command["command"], "${user_config.control}");
         assert_eq!(command["args"], serde_json::json!([SUBCOMMAND]));
     }
 }
 
-/// The session label of a terminal of herdr-core: what the hook asked of it, in order.
 #[derive(Default)]
 struct Label(std::sync::Mutex<Vec<String>>);
 
@@ -291,8 +278,6 @@ impl SessionLabel for Label {
     }
 }
 
-/// Claude Code's `SessionEnd` event, as 2.1.318 writes it, of `session`, which ended for
-/// `reason`.
 fn session_end(session: &str, reason: &str) -> String {
     serde_json::json!({
         "session_id": session,
@@ -304,8 +289,6 @@ fn session_end(session: &str, reason: &str) -> String {
     .to_string()
 }
 
-/// What the session label of `pane`, a terminal of herdr-core, was asked for the events
-/// `payloads` of an agent that leads its terminal if `leads_terminal`.
 fn label_asks(directory: &HookDirectory, leads_terminal: bool, payloads: &[String]) -> Vec<String> {
     let pane = PaneId("t7".into());
     let label = Label::default();

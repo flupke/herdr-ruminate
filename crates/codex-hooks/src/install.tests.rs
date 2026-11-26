@@ -3,7 +3,6 @@ use std::process::Command;
 
 use super::*;
 
-/// The command of the hook in the marketplace written in `directory`.
 fn written_command(directory: &Path) -> String {
     let hooks: Value =
         serde_json::from_slice(&fs::read(directory.join("plugin/hooks/hooks.json")).unwrap())
@@ -32,7 +31,6 @@ fn the_written_hook_runs_the_checkout_s_program_whatever_its_path() {
 
     write_marketplace(&marketplace, &control).unwrap();
 
-    // As Codex runs it, with the user's shell.
     assert!(
         Command::new("sh")
             .args(["-c", &written_command(&marketplace)])

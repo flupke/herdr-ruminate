@@ -4,7 +4,6 @@ use test_case::test_case;
 
 use super::{Reader, is_pasted, reports_working, wait_for};
 
-/// Claude Code's input line showing `line`, painted as herdr-core paints it.
 fn claude_line(line: &str) -> String {
     format!("────\r\n❯\u{a0}{line}\r\n────\r\n")
 }

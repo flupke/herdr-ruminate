@@ -2,8 +2,6 @@ use serde_json::{Value, json};
 
 use super::*;
 
-/// A terminal of the space `sp1`, as a snapshot or a `created` event gives it (herdr-core
-/// 0.1.17), trimmed, with the OSC 7501 `status` its program reported.
 fn terminal(address: &str, status: Value) -> Value {
     let mut terminal = json!({
         "address": address,
@@ -98,7 +96,6 @@ fn an_agent_whose_program_exits_leaves_once_with_its_last_status() {
         json!({"app": "claude-code", "state": "done"}),
     )]);
 
-    // herdr-core clears the status as the program exits, then tells the terminal finished.
     let cleared = roster
         .observe(&event(
             "status",
@@ -231,7 +228,6 @@ fn an_agent_arrives_again_in_a_lost_terminal_that_restarted() {
     )]);
     roster.observe(&event("lost", "t3", json!({}))).unwrap();
 
-    // herdr-core gives a kept terminal a shell, whose agent reports again.
     let restarted = roster
         .observe(&event("restarted", "t3", terminal("t3", Value::Null)))
         .unwrap();
@@ -298,7 +294,6 @@ fn a_terminal_in_a_space_but_no_tab_holds_no_agent_yet() {
     assert_eq!((created, tabbed), (None, Some(arrival("t4"))));
 }
 
-/// A `labels` event of `t3` in the tab `tb1`, with the session label `session` if any.
 fn session_labels(session: Option<&str>) -> Event {
     let mut labels = json!({"herdr.space": "sp1", "herdr.tab": "tb1"});
     if let Some(session) = session {
@@ -339,13 +334,10 @@ fn the_session_label_of_a_terminal_without_an_agent_tells_nothing() {
     );
 }
 
-/// The data of a `foreground` event: the new leader of the terminal's foreground process group,
-/// as herdr-core 0.1.18 sends it.
 fn leader(name: &str) -> Value {
     json!({"argv": [name], "cwd": "/src", "name": name, "pid": 9})
 }
 
-/// A `labels` event of `t3` in the tab `tb1`, its session label naming Claude Code's `session`.
 fn claude_session(session: &str) -> Event {
     session_labels(Some(&format!("claude:{session}")))
 }

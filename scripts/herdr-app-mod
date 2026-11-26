@@ -1,48 +1,30 @@
 #!/usr/bin/env bash
-# Installs or uninstalls the reviewer's herdr-app mods (herdr-app-mod/), and the keys that open
-# them, in herdr-app's home: ~/.config/herdr-app, or $HERDR_APP_HOME. The launcher toggles the
-# review pane, and runs this checkout's bin/reviewer; the Explore page key opens the page of the
-# tab's review pane in this computer's browser. Each gets a copy of herdr-app-mod/common.js,
-# since a mod imports nothing from outside its folder. herdr-app reloads mods and keys at once.
-#
-# The keys are `ctrl-b d` and `ctrl-b o` in keys.json's `global` section, or $REVIEW_KEY and
-# $REVIEW_PAGE_KEY; a key bound to something else stays as it is. Uninstall removes the keys of
-# `global` that open the mods. herdr-app takes an edited keys.json as the user's, and gives it
-# no new default shortcuts.
-#
-# Usage: scripts/herdr-app-mod <install|uninstall>
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 keys="$home/keys.json"
-# Each mod: its folder in herdr-app-mod/, its name in herdr-app, its key, and what the key does.
 mods=(
   "launcher herdr-progressive-reviewer ${REVIEW_KEY:-ctrl-b d}|to open the review pane"
   "explore-page herdr-progressive-reviewer-page ${REVIEW_PAGE_KEY:-ctrl-b o}|to open the Explore page"
 )
 
-# Replaces keys.json by the output of the jq program $1, given the key $2 and the action $3. The
-# new file is written beside the file keys.json links to, if it is a link, hidden, with its
-# mode, then renamed: herdr-app never reads half a file.
+# herdr-app reloads keys.json as soon as it changes.
 edit_keys() {
   local target=$keys
   [ -L "$keys" ] && target="$(readlink -f "$keys")"
   new="$(dirname "$target")/.keys.json.new"
   trap 'rm -f "$new"' EXIT
-  # A copy first, so the new file keeps the mode of the old one.
   cp -p "$target" "$new"
   jq --arg key "$2" --arg action "$3" "$1" "$target" >"$new"
   mv -f "$new" "$target"
 }
 
-# Installs the mod of folder $1 as $2, and binds the key $3 to it, which does $4.
 install_mod() {
   local folder="$root/herdr-app-mod/$1" mod="$home/mods/$2" key=$3 what=$4 action="mod.open:$2" file reviewer bound
   mkdir -p "$mod"
-  # The path as a JavaScript string, escaped again for sed's replacement.
   reviewer="$(jq -rn --arg path "$root/bin/reviewer" '$path | tojson' | sed 's/[\\|&]/\\&/g')"
-  # Hidden while written: herdr-app reloads a mod when one of its files is saved. main.js comes
-  # last, once what it imports is in place.
+  # herdr-app reloads a mod as soon as one of its files is saved, and a mod imports nothing
+  # from outside its folder.
   sed "s|\"@REVIEWER@\"|$reviewer|" "$root/herdr-app-mod/common.js" >"$mod/.common.js.new"
   mv -f "$mod/.common.js.new" "$mod/common.js"
   for file in "$folder"/*; do
@@ -64,7 +46,6 @@ install_mod() {
   fi
 }
 
-# Removes the mod named $1, and the keys that open it.
 uninstall_mod() {
   local action="mod.open:$1"
   rm -rf "${home:?}/mods/$1"

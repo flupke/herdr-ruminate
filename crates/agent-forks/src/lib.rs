@@ -1,15 +1,9 @@
-//! Run-ahead's host for whichever agent runs in the pane: [`AgentForks`] hands each call to the
-//! Claude Code host or to the Codex host, by the agent Herdr reports, or by the fields the host
-//! keeps of a fork. The Explore session sees one [`ForkHost`] and never knows which agent it
-//! drives.
-
 use herdr_client::protocol::{Agent, PaneId};
 use review_run_ahead::{
     ForkEnd, ForkHost, ForkPoint, ForkStart, ForkTrace, HostFields, OwnedFork, PaneWatch,
     StatusReport, SwitchFailure, SwitchTo,
 };
 
-/// The run-ahead hosts of the agents run-ahead forks.
 pub struct AgentForks {
     claude: claude_fork::ClaudeForks,
     codex: codex_fork::CodexForks,
@@ -20,7 +14,6 @@ impl AgentForks {
         Self { claude, codex }
     }
 
-    /// The host of `agent`, when run-ahead forks it.
     fn of_agent(&self, agent: &Agent) -> Option<&dyn ForkHost> {
         match agent.agent.as_deref() {
             Some("claude") => Some(&self.claude),
@@ -29,7 +22,6 @@ impl AgentForks {
         }
     }
 
-    /// The host that keeps `fields`: a record saved before Codex forks names Claude Code's.
     fn of_fields(&self, fields: &HostFields) -> &dyn ForkHost {
         if codex_fork::owns(fields) {
             &self.codex
@@ -39,7 +31,6 @@ impl AgentForks {
     }
 }
 
-/// Why run-ahead never forks `agent`, an agent neither host forks.
 fn not_forked(agent: &Agent) -> String {
     format!(
         "run-ahead forks Claude Code and Codex, and the agent's pane runs {}",
@@ -52,8 +43,6 @@ fn not_forked(agent: &Agent) -> String {
 
 impl ForkHost for AgentForks {
     fn watch(&self, pane: &PaneId, report: StatusReport) -> PaneWatch {
-        // Both hosts watch the agent's status through the host alike; Claude Code's watch
-        // also waits for its transcript, and passes a Codex agent's status on at once.
         self.claude.watch(pane, report)
     }
 
@@ -123,7 +112,6 @@ impl ForkHost for AgentForks {
     }
 
     fn log(&self, line: &str) {
-        // Both hosts write run-ahead's one log.
         self.claude.log(line);
     }
 }

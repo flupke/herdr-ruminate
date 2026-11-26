@@ -1,8 +1,3 @@
-//! A fork's `stream-json` output: the tokens of its own requests, whether its submit has its
-//! answer, whether its turn ended, and whether it runs its guard: a fork whose `init` comes
-//! without the mark of its settings' `SessionStart` hook started without them, and is stopped at
-//! its `init`, as its first request starts, well before that request can call a tool.
-
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -14,37 +9,28 @@ use serde_json::Value;
 use crate::guard::SUBMITS;
 use crate::settings::GUARD_MARK;
 
-/// Reads a fork's events as they come, then reports its end with what they told.
 pub(crate) struct StreamTally {
-    /// The usage of each assistant message, by message ID: a message comes in one event per
-    /// content block, each with the message's usage.
+    // Claude Code's `stream-json` sends a message as one event per content block, each with the
+    // message's usage.
     messages: HashMap<String, TokenUsage>,
-    /// The fork's calls to a submit tool, by tool use ID.
     submits: HashSet<String>,
-    /// Set once a submit's answer reached the fork, or the fork ended.
     answered: Arc<Signal>,
-    /// Whether the turn's result came.
     finished: bool,
-    /// Whether the hook that marks the fork's settings read reported its mark.
     guarded: bool,
     unguarded: Arc<Unguarded>,
     ended: Box<dyn FnOnce(ForkEnd) + Send>,
 }
 
-/// Stops a fork that started without its guard, once both its stop and that are known.
 #[derive(Default)]
 pub(crate) struct Unguarded(Mutex<UnguardedState>);
 
 #[derive(Default)]
 struct UnguardedState {
-    /// Whether the fork's `init` came without the mark of its settings.
     found: bool,
-    /// What stops the fork, until it ran.
     stop: Option<Box<dyn FnOnce() + Send>>,
 }
 
 impl Unguarded {
-    /// What stops the fork, once it started.
     pub(crate) fn arm(&self, stop: Box<dyn FnOnce() + Send>) {
         let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if state.found {
@@ -55,7 +41,6 @@ impl Unguarded {
         }
     }
 
-    /// The fork started without its guard.
     fn found(&self) {
         let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         state.found = true;
@@ -65,13 +50,11 @@ impl Unguarded {
         }
     }
 
-    /// Whether the fork started without its guard.
     fn is_found(&self) -> bool {
         self.0.lock().unwrap_or_else(PoisonError::into_inner).found
     }
 }
 
-/// A flag that threads wait for.
 #[derive(Debug, Default)]
 pub(crate) struct Signal {
     set: Mutex<bool>,
@@ -84,7 +67,6 @@ impl Signal {
         self.changed.notify_all();
     }
 
-    /// Waits at most `limit` for the flag; whether it was set.
     pub(crate) fn wait(&self, limit: Duration) -> bool {
         let deadline = Instant::now() + limit;
         let mut set = self.set.lock().unwrap_or_else(PoisonError::into_inner);
@@ -116,18 +98,14 @@ impl StreamTally {
         }
     }
 
-    /// What stops the fork when it started without its guard.
     pub(crate) fn unguarded(&self) -> Arc<Unguarded> {
         Arc::clone(&self.unguarded)
     }
 
-    /// Set once the answer to one of the fork's submits reached it, or once the fork ended:
-    /// its transcript then holds that answer.
     pub(crate) fn submit_answered(&self) -> Arc<Signal> {
         Arc::clone(&self.answered)
     }
 
-    /// The content blocks of `event`'s message.
     fn blocks(event: &Value) -> impl Iterator<Item = &Value> {
         event
             .pointer("/message/content")

@@ -41,7 +41,6 @@ fn an_agent_with_an_unknown_option_is_not_forked() {
 
 #[test]
 fn the_agent_s_settings_come_apart_from_the_arguments_a_fork_keeps() {
-    // As herdr-bowtie starts its agents.
     let kept = kept(&arguments(
         "--resume 9ff3 --model opus --effort high --settings /share/claude-settings.json \
          --mcp-config /share/mcp.json",
@@ -61,7 +60,6 @@ fn the_agent_s_settings_come_apart_from_the_arguments_a_fork_keeps() {
 
 #[test]
 fn what_follows_a_double_dash_is_the_prompt_even_when_it_looks_like_an_option() {
-    // As herdr-bowtie starts a worker with its kickoff.
     let kept = kept(&arguments(
         "--model opus --settings /share/s.json -n run-ahead -- herdr-bowtie kickoff --resume x",
     ))

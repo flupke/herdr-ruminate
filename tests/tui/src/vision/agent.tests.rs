@@ -1,6 +1,5 @@
 use super::*;
 
-/// An agent reading `turns` from a new directory.
 fn agent(turns: &[Value]) -> (tempfile::TempDir, ScriptedAgent) {
     let directory = tempfile::tempdir().unwrap();
     for turn in turns {
@@ -25,7 +24,6 @@ fn sent(turn: u64, kind: &str) -> Value {
 #[test]
 fn turns_are_returned_once_each_in_order() {
     let (_directory, mut agent) = agent(&[sent(1, "kickoff"), sent(2, "wakeup")]);
-    // No wait: the turns are there, or the call reports that none came.
     let wait = Duration::ZERO;
 
     assert_eq!(agent.next_turn(None, wait).unwrap()["turn"], 1);
@@ -48,8 +46,6 @@ fn a_later_turn_never_overtakes_one_still_being_written() {
 fn a_turn_written_while_waiting_ends_the_wait() {
     let (directory, mut agent) = agent(&[]);
     let turns = directory.path().to_owned();
-    // The turn is written once the wait watches and found none, so only the watcher's event
-    // can end the wait; the guard fires only if the test fails.
     let turn = agent.next_turn_watching(None, Duration::from_secs(30), move || {
         let partial = turns.join("turn-000001.json.partial");
         std::fs::write(&partial, serde_json::to_vec(&sent(1, "kickoff")).unwrap()).unwrap();

@@ -2,7 +2,6 @@ use serde_json::json;
 
 use super::*;
 
-/// Codex 0.162.1's request to approve the MCP tool `tool` of `server`.
 fn tool_approval(server: &str, tool: &str) -> Value {
     json!({
         "threadId": "fork-1",

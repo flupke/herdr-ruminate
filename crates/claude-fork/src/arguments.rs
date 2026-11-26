@@ -1,33 +1,20 @@
-//! The pane agent's arguments as a fork keeps them: without those that pick a session, an
-//! interactive mode or an output format, and without a prompt given on the command line. The
-//! agent's `--settings` comes apart, for the fork to merge with its own. An option this table
-//! does not know stops the fork: a fork starts with the agent's exact flags or not at all.
-
-/// How many values an option of `claude` takes.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Values {
     None,
     One,
-    /// One, when the next argument is not an option.
     Optional,
-    /// Every following argument that is not an option.
     Many,
 }
 
-/// What a fork does with an option of the pane agent's command line.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Fate {
-    /// The fork keeps it, with its values: it shapes the agent and its prompt cache.
     Kept,
-    /// The fork drops it: it picks a session, an output, an interactive mode or the model,
-    /// which the fork sets itself.
     Dropped,
-    /// The agent's own settings: the fork brings settings of its own, with its guard, and a
-    /// second `--settings` would replace the first, so the fork merges the two.
+    // Claude Code takes only the last `--settings` given.
     Settings,
 }
 
-/// Every option of `claude` (2.1), with its values and what a fork does with it.
+// The options of Claude Code 2.1's `claude`.
 const OPTIONS: &[(&[&str], Values, Fate)] = &[
     (&["--add-dir"], Values::Many, Fate::Kept),
     (&["--agent"], Values::One, Fate::Kept),
@@ -123,28 +110,20 @@ const OPTIONS: &[(&[&str], Values, Fate)] = &[
     (&["--worktree", "-w"], Values::Optional, Fate::Dropped),
 ];
 
-/// What a fork keeps of the pane agent's command line.
 #[derive(Debug, Default, Eq, PartialEq)]
 pub(crate) struct Kept {
-    /// The arguments the fork starts with, as the agent has them.
     pub(crate) arguments: Vec<String>,
-    /// The model they name, if any.
     pub(crate) model: Option<String>,
-    /// The value of the agent's `--settings`, a file or JSON, if it has one.
     pub(crate) settings: Option<String>,
 }
 
-/// What a fork keeps of the arguments of the pane agent's command line, after its program; or
-/// why the agent cannot be forked with its exact flags.
 pub(crate) fn kept(arguments: &[String]) -> Result<Kept, String> {
     let mut kept = Kept::default();
-    // What follows `--` is the prompt, as herdr-bowtie gives it.
     let mut rest = arguments
         .iter()
         .take_while(|argument| *argument != "--")
         .peekable();
     while let Some(argument) = rest.next() {
-        // A value outside an option is a prompt: the fork's prompt comes on its input.
         if !argument.starts_with('-') || argument == "-" {
             continue;
         }
@@ -168,13 +147,10 @@ pub(crate) fn kept(arguments: &[String]) -> Result<Kept, String> {
 }
 
 impl Kept {
-    /// Keeps what a fork needs of the agent's `option`, given as `argument` with the values
-    /// `taken` (its inline value, when it has one), whose fate is `fate`.
     fn take(&mut self, fate: Fate, option: &str, argument: &str, taken: Vec<String>) {
         match fate {
             Fate::Kept => {
                 self.arguments.push(argument.to_owned());
-                // An inline value is part of the argument.
                 if argument.len() == option.len() {
                     self.arguments.extend(taken);
                 }
@@ -186,7 +162,6 @@ impl Kept {
     }
 }
 
-/// The values of an option that takes `values`, taken from `rest`.
 fn option_values<'a>(
     values: Values,
     rest: &mut std::iter::Peekable<impl Iterator<Item = &'a String>>,

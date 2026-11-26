@@ -10,19 +10,13 @@ use serde_json::{Value, json};
 use super::*;
 use crate::test_screen::Screen;
 
-/// A stand-in for herdr-core's socket: each connection reads one request, hands it to the test,
-/// and gets the lines `answer` gives for it, then stays open until the client closes it. A
-/// connection that turns framed to watch a terminal gets [`EMPTY_LINE`] painted, and nothing
-/// printed after it; neither reaches the test.
 struct FakeCore {
     _directory: tempfile::TempDir,
     requests: Receiver<Value>,
 }
 
-/// Claude Code's empty input line, as herdr-core paints it.
 const EMPTY_LINE: &str = "────\r\n❯\u{a0}\r\n────\r\n";
 
-/// A fake core whose agent `t3` is an idle Claude Code, whose sends `answer` answers.
 fn fake_core_sending(
     answer: impl Fn(&Value) -> Vec<Value> + Send + Sync + 'static,
 ) -> (HcClient, FakeCore) {
@@ -32,7 +26,6 @@ fn fake_core_sending(
     })
 }
 
-/// Writes one frame of herdr-core's framed connections.
 fn write_frame(
     stream: &mut std::os::unix::net::UnixStream,
     channel: u32,
@@ -46,7 +39,6 @@ fn write_frame(
     let _ = stream.write_all(&frame);
 }
 
-/// Answers a watch of a terminal on a connection turned framed: the attach, then `paint`.
 fn watch_terminal(
     stream: &mut std::os::unix::net::UnixStream,
     reader: &mut impl Read,
@@ -134,7 +126,6 @@ fn event_of(terminal: &str, kind: &str, data: Value) -> Value {
     notification("event", params)
 }
 
-/// The agent `t3` of the tab `tb1`, with the OSC 7501 `state` its program reported.
 fn agent_terminal(state: &str) -> Value {
     json!({
         "address": "t3",
@@ -276,8 +267,6 @@ fn a_submitted_command_does_not_wait_for_the_agent_to_start() {
 
     client.submit_prompt(&pane(), "/resume s1").unwrap();
 
-    // Nothing asks whether the agent started once the send answered: the press of no key offered
-    // with the send may come on either side of it.
     let methods: Vec<Value> = core
         .requests
         .try_iter()
@@ -314,7 +303,6 @@ fn an_agent_that_exits_is_told_once_to_the_reviewer() {
                 json!({"seq": 1, "terminals": [agent_terminal("done")]}),
             ),
             notification("heartbeat", json!({})),
-            // herdr-app's layout changed: a document, of no terminal.
             notification(
                 "event",
                 json!({"type": "doc", "seq": 2, "data": {"name": "herdr-app", "version": 1}}),
@@ -324,7 +312,6 @@ fn an_agent_that_exits_is_told_once_to_the_reviewer() {
                 json!({"records": {}, "reported": true, "status": null}),
             ),
             event("finished", json!({"exit_code": 0, "reason": "exited"})),
-            // Another agent arrives after: the end of the first one's terminal told nothing.
             event_of("t4", "created", {
                 let mut terminal = agent_terminal("idle");
                 terminal["address"] = json!("t4");
@@ -344,7 +331,6 @@ fn an_agent_that_exits_is_told_once_to_the_reviewer() {
     assert_eq!(
         told,
         [
-            // The stream starts with the snapshot's agent.
             HerdrEvent::AgentSessionChanged(pane()),
             HerdrEvent::AgentDetected {
                 pane_id: pane(),
@@ -436,7 +422,6 @@ fn a_cancelled_stream_ends_without_an_error() {
     let canceller = EventCanceller::default();
     let stop = canceller.clone();
 
-    // The stream goes on reading once the canceller ended it, as when the pane closes.
     client
         .forward_events(&canceller, &mut |_| {
             stop.cancel();
@@ -499,7 +484,6 @@ fn a_reported_session_is_set_as_the_terminals_session_label() {
     );
 }
 
-/// A core whose agent `t3` has the session label `label`.
 fn core_with_session_label(label: &str) -> (HcClient, FakeCore) {
     let label = label.to_owned();
     fake_core(move |request| {
@@ -570,8 +554,6 @@ fn a_stream_starts_with_each_agent_whose_session_or_end_may_have_gone_unheard() 
     ));
 }
 
-/// herdr-app's layout: a tab whose panes `p3` and `p4` show the terminals `t3` and `t4`, and
-/// the pane `p5` the terminal `t5` when `with_t5`.
 fn layout_document(request: &Value, with_t5: bool) -> Value {
     let mut panes = vec![
         json!({"id": "p3", "type": "block", "content": {"terminal": "t3"}}),
@@ -698,7 +680,6 @@ fn a_layout_herdr_core_refuses_to_read_again_keeps_the_last_one() {
             vec![layout_document(request, false)]
         }
         Some("doc.get") => {
-            // The user focuses another terminal while the layout cannot be read.
             refused.focus("p4");
             vec![refusal_of(request, "unavailable")]
         }

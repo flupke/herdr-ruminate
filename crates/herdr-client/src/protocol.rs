@@ -1,5 +1,3 @@
-//! Herdr protocol boundaries used by the application and control processes.
-
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -8,72 +6,50 @@ use serde::{Deserialize, Serialize};
 use crate::Result;
 use crate::client::EventCanceller;
 
-/// Herdr socket methods used by the reviewer.
 pub mod method {
-    /// Read the current Herdr session.
     pub const SESSION_SNAPSHOT: &str = "session.snapshot";
-    /// List live agents.
     pub const AGENT_LIST: &str = "agent.list";
-    /// Resolve one live agent.
     pub const AGENT_GET: &str = "agent.get";
-    /// Read the visible contents of one live agent.
     pub const AGENT_READ: &str = "agent.read";
-    /// Focus one live agent.
     pub const AGENT_FOCUS: &str = "agent.focus";
-    /// Submit one prompt to a live agent.
     pub const AGENT_PROMPT: &str = "agent.prompt";
-    /// Resolve one live pane.
     pub const PANE_GET: &str = "pane.get";
-    /// Read the layout of the tab holding one pane.
     pub const PANE_LAYOUT: &str = "pane.layout";
-    /// Open one plugin-owned pane.
     pub const PLUGIN_PANE_OPEN: &str = "plugin.pane.open";
-    /// Focus one plugin-owned pane.
     pub const PLUGIN_PANE_FOCUS: &str = "plugin.pane.focus";
-    /// Close one plugin-owned pane.
     pub const PLUGIN_PANE_CLOSE: &str = "plugin.pane.close";
 }
 
-/// A Herdr terminal pane ID.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct PaneId(pub String);
 
-/// A Herdr tab ID.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct TabId(pub String);
 
-/// A Herdr workspace ID.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct WorkspaceId(pub String);
 
-/// A manifest pane entrypoint ID.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct EntrypointId(pub String);
 
-/// A pane placement that Herdr accepts when it opens a plugin pane.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PanePlacement {
-    /// Open the pane as a split.
     Split,
 }
 
-/// The side of its target pane where a split pane opens.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SplitDirection {
-    /// Beside the target, halving its width.
     Right,
-    /// Below the target, halving its height.
     Down,
 }
 
 impl SplitDirection {
-    /// The name Herdr's API and command line use.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Right => "right",
@@ -82,20 +58,14 @@ impl SplitDirection {
     }
 }
 
-/// A pane's size in terminal cells.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 pub struct PaneSize {
-    /// Columns.
     pub width: u16,
-    /// Rows.
     pub height: u16,
 }
 
 impl PaneSize {
-    /// Split across the side that looks longer on screen, so both halves
-    /// keep a usable shape. A cell is a little over twice as tall as it is
-    /// wide, and code reads better wide than tall, so a pane splits beside
-    /// only when it is at least two and a half times as wide as it is tall.
+    // A terminal cell is a little over twice as tall as it is wide.
     pub fn split_direction(self) -> SplitDirection {
         if 2 * u32::from(self.width) >= 5 * u32::from(self.height) {
             SplitDirection::Right
@@ -105,17 +75,10 @@ impl PaneSize {
     }
 }
 
-/// Why a prompt waits before the host types it in the agent's terminal: the host reads the
-/// agent's input line right before it types, and types nothing over text someone typed there,
-/// nor while it cannot tell what a key does there.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PromptWait {
-    /// The agent's input line shows text someone typed: the prompt goes once it is sent or
-    /// cleared.
     TypedText,
-    /// The agent's screen shows no input line, as while it shows a dialog or a menu.
     NoInputLine,
-    /// The host cannot read the input line of the agent, named as it reports itself.
     UnreadAgent(String),
 }
 
@@ -138,37 +101,19 @@ impl std::fmt::Display for PromptWait {
     }
 }
 
-/// The agent host that review delivery talks to: it resolves the target agent,
-/// reports agent and process identity, and submits prompts.
-///
-/// [`crate::client::HerdrClient`] is Herdr's adapter, and the `hc-client` crate's `HcClient`
-/// herdr-core's. The `memory` feature adds an in-memory adapter for tests that need no Herdr
-/// server.
 pub trait AgentPort: Send + Sync {
-    /// Get a session snapshot, used to seed target resolution from the current focus.
     fn session_snapshot(&self) -> Result<SessionSnapshot>;
 
-    /// List live agents.
     fn list_agents(&self) -> Result<Vec<Agent>>;
 
-    /// Resolve a live agent by pane ID.
     fn get_agent(&self, pane_id: &PaneId) -> Result<Option<Agent>>;
 
-    /// Inspect the processes currently owning a pane, without reading their environment.
     fn pane_process_info(&self, pane_id: &PaneId) -> Result<PaneProcessInfo>;
 
-    /// Submit one complete prompt through Herdr's agent-aware boundary.
     fn prompt_agent(&self, pane_id: &PaneId, text: &str) -> Result<()>;
 
-    /// Submit `text` as [`Self::prompt_agent`] does, without waiting for the agent to start
-    /// working: for a command of the agent's own, which starts no turn, or for a prompt whose
-    /// submission the agent's hooks confirm.
     fn submit_prompt(&self, pane_id: &PaneId, text: &str) -> Result<()>;
 
-    /// [`Self::prompt_agent`], telling `waits` why the prompt waits before the host types it,
-    /// each time that changes, and `None` once it no longer waits: a host that types it at once
-    /// never tells. Once `withdrawal` is cancelled, a prompt the host has not begun to type
-    /// waits no more and is never typed: [`crate::Error::Cancelled`].
     fn prompt_agent_telling_waits(
         &self,
         pane_id: &PaneId,
@@ -183,8 +128,6 @@ pub trait AgentPort: Send + Sync {
         self.prompt_agent(pane_id, text)
     }
 
-    /// [`Self::submit_prompt`], telling `waits` why the prompt waits, and withdrawn by
-    /// `withdrawal`, as [`Self::prompt_agent_telling_waits`] does.
     fn submit_prompt_telling_waits(
         &self,
         pane_id: &PaneId,
@@ -199,17 +142,13 @@ pub trait AgentPort: Send + Sync {
         self.submit_prompt(pane_id, text)
     }
 
-    /// Whether the host's events tell each change of an agent's session
-    /// ([`HerdrEvent::AgentSessionChanged`]): herdr-core's do, Herdr's do not, so a caller that
-    /// waits for a session asks Herdr again from time to time.
+    // herdr-core's events tell each change of an agent's session; Herdr's do not.
     fn announces_sessions(&self) -> bool {
         false
     }
 
-    /// Whether the host types a prompt whole: only once nobody typed in the agent's terminal
-    /// for a while, holding the keys pressed while it types, as herdr-core's `terminal.send`
-    /// does. A prompt submitted to the agent meanwhile without the prompt's text then holds
-    /// none of it. Herdr types at once, among the keys someone presses there.
+    // herdr-core's `terminal.send` types a prompt whole, once nobody typed for a while, holding
+    // the keys pressed meanwhile; Herdr types at once, among the keys someone presses.
     fn types_prompts_whole(&self) -> bool {
         false
     }
@@ -269,26 +208,13 @@ impl<T: AgentPort + ?Sized> AgentPort for Arc<T> {
     }
 }
 
-/// The host the review pane runs in, which runs its agents: Herdr, or herdr-core (`hc`) under
-/// herdr-app. Beside the agents [`AgentPort`] gives, it streams what the reviewer follows of them.
-///
-/// [`crate::client::HerdrClient`] is Herdr's adapter; the `hc-client` crate's `HcClient` is
-/// herdr-core's.
 pub trait AgentHost: AgentPort + std::fmt::Debug {
-    /// Hands each event the reviewer follows to `send`, until `send` returns false or
-    /// `canceller` ends the stream, which both return `Ok`; the host dropping the stream is an
-    /// error, after which the caller may follow it again.
     fn forward_events(
         &self,
         canceller: &EventCanceller,
         send: &mut dyn FnMut(HerdrEvent) -> bool,
     ) -> Result<()>;
 
-    /// Reports the status of the agent of `pane_id` to `send` when it has one, then each status
-    /// the host gives it, until `send` returns false or `canceller` ends the stream, which both
-    /// return `Ok`. No change is missed between the first report and the next. herdr-core also
-    /// ends it, with `Ok`, once the agent's program ends or ended already, or when it no longer
-    /// knows the terminal.
     fn forward_agent_status(
         &self,
         pane_id: &PaneId,
@@ -299,87 +225,60 @@ pub trait AgentHost: AgentPort + std::fmt::Debug {
     fn report_agent_session(&self, pane_id: &PaneId, report: &SessionReport<'_>) -> Result<()>;
 }
 
-/// Pane read operations needed by the reviewer.
 pub trait HerdrReader: Send + Sync {
-    /// Read the visible text in an agent pane.
     fn read_agent_screen(&self, pane_id: &PaneId) -> Result<String>;
 
-    /// List plugin-owned panes in one tab.
     fn list_plugin_panes(&self, tab_id: &TabId) -> Result<Vec<PluginPane>>;
 
-    /// Measure one pane.
     fn pane_size(&self, pane_id: &PaneId) -> Result<PaneSize>;
 }
 
-/// Write operations needed by the reviewer.
 pub trait HerdrWriter: Send + Sync {
-    /// Open a review pane.
     fn open_plugin_pane(&self, request: &OpenPluginPane) -> Result<PluginPane>;
 
-    /// Focus a plugin-owned pane.
     fn focus_plugin_pane(&self, pane_id: &PaneId) -> Result<()>;
 
-    /// Focus an agent pane.
     fn focus_agent(&self, pane_id: &PaneId) -> Result<()>;
 
-    /// Close a plugin-owned pane.
     fn close_plugin_pane(&self, pane_id: &PaneId) -> Result<()>;
 }
 
-/// The immutable action context supplied by Herdr.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PluginContext {
-    /// The workspace in which the action started.
     #[serde(default)]
     pub workspace_id: Option<WorkspaceId>,
-    /// The tab in which the action started.
     #[serde(default)]
     pub tab_id: Option<TabId>,
-    /// The focused pane when the action started.
     #[serde(default)]
     pub focused_pane_id: Option<PaneId>,
-    /// The focused pane directory when the action started.
     #[serde(default)]
     pub focused_pane_cwd: Option<PathBuf>,
 }
 
-/// The session fields needed for initial target selection.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
 pub struct SessionSnapshot {
-    /// The focused pane, if Herdr reports one.
     #[serde(default)]
     pub focused_pane_id: Option<PaneId>,
 }
 
-/// A live Herdr agent.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Agent {
-    /// The terminal pane that owns the agent.
     pub pane_id: PaneId,
-    /// The tab that owns the pane.
     pub tab_id: TabId,
-    /// The workspace that owns the pane.
     pub workspace_id: WorkspaceId,
-    /// The optional user-facing agent name.
     #[serde(default)]
     pub name: Option<String>,
-    /// The optional agent implementation name.
     #[serde(default)]
     pub display_agent: Option<String>,
-    /// The canonical agent implementation name.
     #[serde(default)]
     pub agent: Option<String>,
-    /// The current lifecycle state.
     pub agent_status: AgentStatus,
-    /// The native session identity, when Herdr reports it.
     #[serde(default)]
     pub agent_session: Option<AgentSession>,
-    /// The agent working directory.
     #[serde(default)]
     pub cwd: Option<PathBuf>,
 }
 
-/// A Herdr agent lifecycle state.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentStatus {
@@ -392,35 +291,24 @@ pub enum AgentStatus {
 }
 
 impl AgentStatus {
-    /// Whether an agent in this state waits for its next prompt.
     pub fn waits_for_prompt(self) -> bool {
         matches!(self, Self::Idle | Self::Done)
     }
 
-    /// Whether an agent in this state started on a prompt, as Herdr's wait in
-    /// [`AgentPort::prompt_agent`] judges it: working, or blocked on its user.
     pub fn started_on_prompt(self) -> bool {
         matches!(self, Self::Working | Self::Blocked)
     }
 }
 
-/// A session an agent started, as its Herdr hook reports it.
 #[derive(Clone, Copy, Debug)]
 pub struct SessionReport<'a> {
-    /// Who reports it, such as `herdr:codex` for Herdr's own Codex hook.
     pub source: &'a str,
-    /// The agent's name, such as `codex`.
     pub agent: &'a str,
-    /// Orders the reports of `source`: a report with an older one than Herdr holds is ignored.
-    /// Herdr's hooks give the time in nanoseconds since the epoch.
     pub seq: u64,
     pub session: &'a str,
-    /// Why the agent started the session, in its hook's words: `startup`, `resume`, `clear`,
-    /// `compact` or `fork`. Herdr replaces the session it knows for some of them only.
     pub start: &'a str,
 }
 
-/// A native agent session identity, as the host reports it.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentSession {
     pub source: String,
@@ -429,18 +317,15 @@ pub struct AgentSession {
     pub value: String,
 }
 
-/// Foreground process identities reported for a terminal pane.
 #[derive(Clone, Debug, Deserialize)]
 pub struct PaneProcessInfo {
     pub pane_id: PaneId,
-    /// The process group currently attached to the pane's terminal.
     #[serde(default)]
     pub foreground_process_group_id: Option<u32>,
     #[serde(default)]
     pub foreground_processes: Vec<PaneProcess>,
 }
 
-/// A process in a pane's foreground process group.
 #[derive(Clone, Debug, Deserialize)]
 pub struct PaneProcess {
     pub pid: u32,
@@ -448,12 +333,9 @@ pub struct PaneProcess {
     pub argv: Option<Vec<String>>,
 }
 
-/// One typed event from Herdr that is relevant to the reviewer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HerdrEvent {
-    /// The user focused a pane.
     PaneFocused(PaneId),
-    /// Herdr detected or released an agent process in a pane.
     AgentDetected {
         pane_id: PaneId,
         workspace_id: WorkspaceId,
@@ -461,43 +343,27 @@ pub enum HerdrEvent {
         released: bool,
         final_status: Option<AgentStatus>,
     },
-    /// The session the host reports for the agent of a pane changed, appeared or went.
     AgentSessionChanged(PaneId),
 }
 
-/// A pane owned by this plugin.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PluginPane {
-    /// The Herdr pane ID.
     pub pane_id: PaneId,
-    /// The owning tab ID.
     pub tab_id: TabId,
-    /// The owning workspace ID.
     pub workspace_id: WorkspaceId,
-    /// The manifest pane entrypoint.
     pub entrypoint_id: EntrypointId,
 }
 
-/// Parameters for `plugin.pane.open`.
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 pub struct OpenPluginPane {
-    /// The manifest pane entrypoint.
     pub entrypoint: EntrypointId,
-    /// The required split placement.
     pub placement: PanePlacement,
-    /// The pane beside which Herdr opens the review pane.
     pub target_pane_id: PaneId,
-    /// The side of the target where the pane opens; `None` lets Herdr choose.
     pub direction: Option<SplitDirection>,
-    /// The jj working directory.
     pub cwd: PathBuf,
-    /// Whether Herdr focuses the new pane.
     pub focus: bool,
 }
 
-/// The shared last-focused agent target for one review pane: only an agent in the pane's own
-/// tab can be the target, since an agent in another tab of the workspace works on something
-/// else, such as another change.
 #[derive(Clone, Debug)]
 pub struct AgentTarget {
     tab_id: TabId,
@@ -505,7 +371,6 @@ pub struct AgentTarget {
 }
 
 impl AgentTarget {
-    /// Create the target of the review pane in tab `tab_id`, from the pane that opened it.
     pub fn new(tab_id: TabId, focused_pane_id: Option<PaneId>) -> Self {
         Self {
             tab_id,
@@ -513,13 +378,10 @@ impl AgentTarget {
         }
     }
 
-    /// The tab of the review pane: only an agent there is the target.
     pub fn tab_id(&self) -> &TabId {
         &self.tab_id
     }
 
-    /// Seed the target from the current session focus. A focused pane outside the tab never
-    /// matches an agent of the tab, so it needs no filter here.
     fn initialize(&mut self, port: &(impl AgentPort + ?Sized)) -> Result<()> {
         if let Some(pane_id) = port.session_snapshot()?.focused_pane_id {
             self.observe_focus(&pane_id);
@@ -527,8 +389,6 @@ impl AgentTarget {
         Ok(())
     }
 
-    /// Record a pane focus for validation before selecting the active agent.
-    ///
     /// # Panics
     /// Panics if another thread poisoned the shared focus lock.
     pub fn observe_focus(&mut self, pane_id: &PaneId) {
@@ -537,7 +397,6 @@ impl AgentTarget {
         focused.push(pane_id.clone());
     }
 
-    /// Resolve the current same-tab implementation agent.
     pub fn resolve(&mut self, port: &(impl AgentPort + ?Sized)) -> Result<Option<Agent>> {
         let agents = port.list_agents()?;
         self.initialize(port)?;

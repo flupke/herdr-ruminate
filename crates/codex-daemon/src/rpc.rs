@@ -1,6 +1,3 @@
-//! [`Rpc`]: a client of the daemon that makes requests, hears notifications and answers the
-//! daemon's own requests, such as the approvals a turn of a session it started waits for.
-
 use std::collections::HashMap;
 use std::io;
 use std::net::Shutdown;
@@ -15,36 +12,30 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket};
 
-/// How long the connection waits for the daemon's answer to its handshake.
 const HANDSHAKE_LIMIT: Duration = Duration::from_secs(10);
 
-/// How long the connection's thread reads before it sends what waits to be sent.
 const READ_SLICE: Duration = Duration::from_millis(20);
 
-/// What the daemon says to a client, besides the answers to its requests.
 #[derive(Debug)]
 pub enum Incoming {
-    /// A notification, such as `turn/completed` of a session the client started or joined.
-    Notification { method: String, params: Value },
-    /// A request the client answers with [`Replier::reply`], such as the approval of a tool
-    /// call in a turn of a session it started.
+    Notification {
+        method: String,
+        params: Value,
+    },
     Request {
         id: Value,
         method: String,
         params: Value,
     },
-    /// The connection ended, in these words: nothing more comes.
     Lost(String),
 }
 
-/// Answers the daemon's requests.
 #[derive(Clone)]
 pub struct Replier {
     outgoing: Sender<String>,
 }
 
 impl Replier {
-    /// Answers the daemon's request `id` with `result`, or with the error `message`.
     pub fn reply(&self, id: &Value, result: Result<Value, String>) {
         let message = match result {
             Ok(result) => json!({"id": id, "result": result}),
@@ -54,8 +45,6 @@ impl Replier {
     }
 }
 
-/// A connection to the daemon, on a thread of its own that hands what the daemon says to the
-/// connection's handler. Dropping it closes the connection.
 pub struct Rpc {
     outgoing: Sender<String>,
     pending: Arc<Pending>,
@@ -71,12 +60,9 @@ impl std::fmt::Debug for Rpc {
     }
 }
 
-/// The requests of the client that wait for their answer, by ID.
 type Pending = Mutex<HashMap<u64, Sender<Result<Value, String>>>>;
 
 impl Rpc {
-    /// Connects to the daemon at `socket`, as a client that knows the experimental API, and
-    /// hands `handler` what the daemon says from then on, in order, on the connection's thread.
     pub(crate) fn connect(
         socket: &Path,
         handler: impl FnMut(Incoming, &Replier) + Send + 'static,
@@ -119,8 +105,6 @@ impl Rpc {
         })
     }
 
-    /// Makes the request `method` with `params`, and returns its result once the daemon
-    /// answers, or the daemon's error; gives up after `limit`.
     pub fn request(&self, method: &str, params: &Value, limit: Duration) -> Result<Value, String> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (answer, answered) = mpsc::channel();
@@ -157,7 +141,6 @@ fn lock(
     pending.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// `initialize`, its answer, then `initialized`, as the daemon expects of every client.
 fn handshake(websocket: &mut WebSocket<UnixStream>) -> Result<(), String> {
     websocket
         .send(Message::text(crate::wire::initialize()))
@@ -182,8 +165,6 @@ fn handshake(websocket: &mut WebSocket<UnixStream>) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-/// Reads what the daemon says and sends what waits to be sent, until the connection ends or
-/// the client stops; then tells `handler` and the requests that wait.
 fn run(
     mut websocket: WebSocket<UnixStream>,
     sent: &Receiver<String>,
@@ -213,8 +194,6 @@ fn run(
     }
 }
 
-/// What the daemon said within a read's slice of time, once the answer it may be went to the
-/// request that waits for it in `pending`; why the connection ended, when it did.
 fn read_once(
     websocket: &mut WebSocket<UnixStream>,
     pending: &Pending,
@@ -235,7 +214,6 @@ fn read_once(
     }
 }
 
-/// Sends every message that waits to be sent.
 fn send_waiting(
     websocket: &mut WebSocket<UnixStream>,
     sent: &Receiver<String>,
@@ -246,8 +224,6 @@ fn send_waiting(
     Ok(())
 }
 
-/// What the text frame `text` says, once the answer it may be went to the request that waits
-/// for it in `pending`.
 fn hear(text: &str, pending: &Pending) -> Option<Incoming> {
     let mut message: Value = serde_json::from_str(text).ok()?;
     let method = message

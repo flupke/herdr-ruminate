@@ -1,5 +1,3 @@
-//! Starting forks from one long-lived thread, and following each until it ends.
-
 use std::ffi::OsString;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -16,14 +14,11 @@ use crate::stamp::ProcessStamp;
 use crate::stop::{StopWaits, signal};
 use crate::wrapper::Wrapper;
 
-/// How much of a fork's standard error its [`Exit`] keeps.
 const STDERR_TAIL: usize = 4096;
-/// How long the end of a fork waits for its last output lines after the process ended: a
-/// process the fork started may hold its output open longer.
+// Unix: a process the fork started inherits its output pipes and may hold them open after
+// the fork ended.
 const OUTPUT_WAIT: Duration = Duration::from_secs(1);
 
-/// What a fork runs: its program, arguments, working directory and whole environment, of
-/// which it inherits nothing else from the reviewer.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ForkCommand {
     pub program: PathBuf,
@@ -32,30 +27,25 @@ pub struct ForkCommand {
     pub environment: Vec<(OsString, OsString)>,
 }
 
-/// The error of a spawn after the launcher's thread ended.
 fn stopped() -> io::Error {
     io::Error::other("the fork launcher stopped")
 }
 
-/// Starts forks from a thread of its own, which lives until the launcher is dropped. Dropping
-/// the launcher ends that thread, which sends every fork it started its parent-death signal.
+// Linux sends the parent-death signal when the thread that started the child ends, not its
+// whole process.
 pub struct Launcher {
     wrapper: Wrapper,
-    /// How long a stop of each fork waits for it to end after each signal.
     waits: StopWaits,
     requests: Option<mpsc::Sender<Spawn>>,
     thread: Option<JoinHandle<()>>,
 }
 
-/// One fork to start, and where the launcher's thread answers.
 struct Spawn {
     command: Command,
     reply: mpsc::Sender<io::Result<Child>>,
 }
 
 impl Launcher {
-    /// A launcher whose forks start through `wrapper`.
-    ///
     /// # Panics
     ///
     /// When the system cannot start the launcher's thread.
@@ -63,7 +53,6 @@ impl Launcher {
         Self::start_with(wrapper, StopWaits::default())
     }
 
-    /// A launcher whose forks start through `wrapper`, and whose stops wait as `waits` says.
     pub(crate) fn start_with(wrapper: Wrapper, waits: StopWaits) -> Self {
         let (requests, received) = mpsc::channel::<Spawn>();
         let thread = thread::Builder::new()
@@ -82,8 +71,6 @@ impl Launcher {
         }
     }
 
-    /// Starts `fork`, writes `input` to its standard input and closes it, and hands its
-    /// standard output and its end to `output`. The fork stays in this process's group.
     pub fn spawn(
         &self,
         fork: ForkCommand,
@@ -122,8 +109,6 @@ impl Drop for Launcher {
     }
 }
 
-/// A started fork, followed by threads of its own until it ends. Dropping it leaves the fork
-/// running: [`RunningFork::terminate`] stops it.
 #[derive(Debug)]
 pub struct RunningFork {
     stamp: ProcessStamp,
@@ -131,7 +116,6 @@ pub struct RunningFork {
     waits: StopWaits,
 }
 
-/// Set once the fork's process ended and was reaped.
 #[derive(Debug, Default)]
 struct ExitSignal {
     ended: Mutex<bool>,
@@ -148,7 +132,6 @@ impl ExitSignal {
         *self.ended.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Waits at most `limit` for the end; whether it came.
     fn wait(&self, limit: Duration) -> bool {
         let deadline = Instant::now() + limit;
         let mut ended = self.ended.lock().unwrap_or_else(PoisonError::into_inner);
@@ -248,18 +231,14 @@ impl RunningFork {
         Self { stamp, exit, waits }
     }
 
-    /// The fork's process, as a later reviewer can recognise it.
     pub fn stamp(&self) -> ProcessStamp {
         self.stamp
     }
 
-    /// Whether the fork's process ended.
     pub(crate) fn has_exited(&self) -> bool {
         self.exit.is_set()
     }
 
-    /// Stops the fork: SIGTERM, then SIGKILL when it still runs three seconds later. Returns
-    /// once it ended, or two seconds after the SIGKILL.
     pub fn terminate(&self) {
         if self.has_exited() {
             return;

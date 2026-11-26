@@ -1,5 +1,3 @@
-//! Stopping a fork: SIGTERM, then SIGKILL when it still runs three seconds later.
-
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -8,12 +6,9 @@ use nix::unistd::Pid;
 
 use crate::stamp::ProcessStamp;
 
-/// How long a stop waits for a fork to end after each signal.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct StopWaits {
-    /// How long a fork has to end after SIGTERM before it gets SIGKILL.
     pub(crate) term: Duration,
-    /// How long the stop waits for a fork to end after SIGKILL.
     pub(crate) kill: Duration,
 }
 
@@ -26,11 +21,8 @@ impl Default for StopWaits {
     }
 }
 
-/// How often a stop looks whether a process it did not start has ended, on a system that
-/// cannot tell it when that process ends.
 const RECORDED_POLL: Duration = Duration::from_millis(50);
 
-/// Sends `signal` to the process `stamp` names, unless that process no longer runs.
 pub(crate) fn signal(stamp: ProcessStamp, signal: Signal) {
     if !stamp.is_running() {
         return;
@@ -40,9 +32,6 @@ pub(crate) fn signal(stamp: ProcessStamp, signal: Signal) {
     }
 }
 
-/// Stops a fork that an earlier reviewer started and recorded as `stamp`, when that process
-/// still runs and its command line holds `needle` (the fork's session ID): SIGTERM, then
-/// SIGKILL three seconds later. Waits until it ended, at most five seconds; whether it ran.
 pub fn stop_recorded(stamp: ProcessStamp, needle: &str) -> bool {
     if !stamp.runs_with(needle) {
         return false;
@@ -56,9 +45,8 @@ pub fn stop_recorded(stamp: ProcessStamp, needle: &str) -> bool {
     true
 }
 
-/// Whether the process `stamp` names ends within `limit`. Its parent reaps it, not this
-/// process, so the stop waits on a process descriptor, which the kernel marks readable once
-/// the process ended; where there is none, it looks again every 50 ms.
+// Only a process's parent can wait for it; a Linux (5.3 on) pidfd turns readable once its
+// process ends.
 fn ended_within(stamp: ProcessStamp, limit: Duration) -> bool {
     #[cfg(target_os = "linux")]
     if let Some(ended) = descriptor::ended_within(stamp, limit) {
@@ -74,8 +62,6 @@ fn ended_within(stamp: ProcessStamp, limit: Duration) -> bool {
     true
 }
 
-/// Waiting on a process descriptor (`pidfd_open`, Linux 5.3) for the end of a process that
-/// this one did not start.
 #[cfg(target_os = "linux")]
 mod descriptor {
     use std::time::{Duration, Instant};
@@ -86,8 +72,6 @@ mod descriptor {
 
     use crate::stamp::ProcessStamp;
 
-    /// Whether the process `stamp` names ends within `limit`; `None` when the system gives no
-    /// descriptor for it.
     pub(super) fn ended_within(stamp: ProcessStamp, limit: Duration) -> Option<bool> {
         let pid = Pid::from_raw(i32::try_from(stamp.pid).ok()?)?;
         let process = match pidfd_open(pid, PidfdFlags::empty()) {
@@ -95,8 +79,8 @@ mod descriptor {
             Err(Errno::SRCH) => return Some(true),
             Err(_) => return None,
         };
-        // The ID may name a later process by now: the descriptor names the stamp's process
-        // only when that one still runs.
+        // Linux may have reused the PID: the pidfd names the stamped process only if that one
+        // still runs after pidfd_open.
         if !stamp.is_running() {
             return Some(true);
         }

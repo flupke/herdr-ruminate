@@ -1,6 +1,3 @@
-//! The tests of the plugin's hooks module (`plugin/hooks/register.test.ts`), which Claude Code's own
-//! test kit runs: `claude plugin test`, with the `claude` the user installed.
-
 use std::path::Path;
 use std::process::Command;
 

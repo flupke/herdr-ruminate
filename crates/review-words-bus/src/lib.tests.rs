@@ -20,8 +20,6 @@ fn comment(id: &str, to: Option<&str>) -> UserWords {
     }
 }
 
-/// Publishes `comments` on the bus file at `path`, and returns the failures reported, once the
-/// publisher is done.
 fn publish(path: &Path, comments: Vec<UserWords>) -> Vec<String> {
     let failures = Arc::new(Mutex::new(Vec::new()));
     let reported = failures.clone();
@@ -45,7 +43,6 @@ fn words_of(path: &Path) -> Vec<Stored> {
         .unwrap()
 }
 
-/// The format herdr-bowtie reads: a rename here breaks its routing of the mentions.
 #[test]
 fn a_comment_goes_on_the_words_output_as_herdr_words_with_its_pane_and_place() {
     let directory = tempfile::tempdir().unwrap();
@@ -78,8 +75,6 @@ fn a_comment_goes_on_the_words_output_as_herdr_words_with_its_pane_and_place() {
     );
 }
 
-/// The format herdr-bowtie reads for an Explore answer: the round, the question and the choice
-/// beside the text, and a failure that names the answer.
 #[test]
 fn an_answer_goes_on_the_words_output_with_its_round_question_and_choice() {
     let directory = tempfile::tempdir().unwrap();
@@ -148,7 +143,6 @@ fn an_answer_goes_on_the_words_output_with_its_round_question_and_choice() {
     );
 }
 
-/// The format herdr-bowtie reads for the list of Implement and the name given at Start.
 #[test]
 fn a_list_to_implement_and_a_name_go_with_their_place_and_round() {
     let directory = tempfile::tempdir().unwrap();
@@ -232,8 +226,6 @@ fn a_comment_that_wakes_no_agent_goes_to_no_one() {
     assert_eq!(data.get("round"), None);
 }
 
-/// The id stays the same across versions of the reviewer, so that a retry by a newer one still
-/// publishes the comment once: the expected id is Python's `uuid5` of the namespace and the ID.
 #[test]
 fn a_message_id_that_is_no_uuid_goes_as_a_stable_uuid_v5() {
     let directory = tempfile::tempdir().unwrap();
@@ -258,7 +250,6 @@ fn a_message_id_that_is_no_uuid_goes_as_a_stable_uuid_v5() {
 #[test]
 fn a_bus_that_cannot_be_written_reports_each_comment_it_missed() {
     let directory = tempfile::tempdir().unwrap();
-    // The bus file's folder is a plain file: neither the open nor any retry can create it.
     let blocker = directory.path().join("not-a-folder");
     std::fs::write(&blocker, "").unwrap();
 
@@ -270,7 +261,6 @@ fn a_bus_that_cannot_be_written_reports_each_comment_it_missed() {
         ],
     );
 
-    // The open at start, then one retry for each comment.
     assert_eq!(failures.len(), 3, "{failures:?}");
     assert!(
         failures

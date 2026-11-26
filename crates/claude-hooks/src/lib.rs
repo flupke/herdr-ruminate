@@ -1,6 +1,3 @@
-//! herdr-core keeps no agent session, so the hook names it in the terminal's session label.
-//! Claude Code reads its hooks when it starts: an agent started before the install runs without.
-
 use std::io::{Read, Write};
 use std::time::Duration;
 
@@ -10,18 +7,13 @@ use hc_client::HcClient;
 use herdr_client::protocol::PaneId;
 use serde::Deserialize;
 
-/// The subcommand of `reviewer-control` that each hook of the plugin runs.
 pub const SUBCOMMAND: &str = "agent-hook";
 
-/// How long a submitted prompt waits for the reviewers' answer before it goes on: Claude Code
-/// waits for the hook before it takes the prompt.
+// Claude Code waits for the hook before it takes the prompt.
 const ASK_LIMIT: Duration = Duration::from_millis(500);
 
-/// The agent's name, as the reviewer and its session label give it.
 const CLAUDE: &str = "claude";
 
-/// Runs the hook whose event Claude Code writes on standard input, for the pane this process
-/// runs in, if any, and prints the decision Claude Code reads, if one is made.
 pub fn run_hook() {
     let mut payload = Vec::new();
     // Read whole, so that Claude Code never writes to a closed pipe.
@@ -45,24 +37,19 @@ pub fn run_hook() {
     }
 }
 
-/// Where the hook reports: the agent's pane, the directory of the reviewers of its host, and,
-/// in a terminal of herdr-core, the terminal's session label.
 struct HookTarget<'a> {
     pane: &'a PaneId,
     directory: &'a HookDirectory,
     session_label: Option<&'a dyn SessionLabel>,
-    /// Whether the agent leads the foreground process group of its terminal. A `claude` that a
-    /// tool or an MCP server of the agent runs inherits the terminal's variables, but has no
-    /// terminal or leads no group: its session is not the terminal's.
+    // A `claude` that a tool or an MCP server of the agent runs inherits the terminal's
+    // variables, but has no terminal or leads no process group of it.
     leads_terminal: bool,
 }
 
-/// The session label of the agent's terminal of herdr-core.
+// herdr-core keeps no agent session: the hook names it in the terminal's session label.
 trait SessionLabel {
-    /// Names `session` as the agent's.
     fn report(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()>;
 
-    /// Removes the label if it names `session`, which ended.
     fn forget(&self, pane: &PaneId, session: &str) -> herdr_client::Result<()>;
 }
 
@@ -76,7 +63,6 @@ impl SessionLabel for HcClient {
     }
 }
 
-/// The events of Claude Code's hooks that the reviewer reads, with the fields it reads.
 #[derive(Deserialize)]
 #[serde(tag = "hook_event_name")]
 enum Payload {
@@ -84,16 +70,13 @@ enum Payload {
         session_id: String,
         #[serde(default)]
         source: SessionSource,
-        /// The subagent the session belongs to, if it belongs to one.
         #[serde(default)]
         agent_id: Option<String>,
     },
     SessionEnd {
         session_id: String,
-        /// Why the session ended, such as `prompt_input_exit`, `clear` or `resume`.
         #[serde(default)]
         reason: String,
-        /// The subagent the session belongs to, if it belongs to one.
         #[serde(default)]
         agent_id: Option<String>,
     },
@@ -102,17 +85,13 @@ enum Payload {
         #[serde(default)]
         session_id: Option<String>,
     },
-    /// An event the plugin does not register.
     #[serde(other)]
     Other,
 }
 
-/// Hands the event `payload` of the agent, the process `agent`, to `target`; returns the
-/// decision Claude Code reads, when a reviewer blocks a prompt.
 fn hook(target: &HookTarget<'_>, agent: u32, payload: &[u8]) -> Option<String> {
     let pane = target.pane;
     match serde_json::from_slice::<Payload>(payload).ok()? {
-        // A subagent's session is not the agent's.
         Payload::SessionStart {
             agent_id: Some(_), ..
         }
@@ -142,8 +121,6 @@ fn hook(target: &HookTarget<'_>, agent: u32, payload: &[u8]) -> Option<String> {
             });
             None
         }
-        // A cleared or resumed session's successor names itself at its start: removing the
-        // label after that start would leave the agent without one.
         Payload::SessionEnd {
             session_id, reason, ..
         } => {
@@ -168,12 +145,11 @@ fn hook(target: &HookTarget<'_>, agent: u32, payload: &[u8]) -> Option<String> {
     }
 }
 
-/// How Claude Code opens a long paste in the prompt it reports, before the paste's ID.
 const PASTE_OPEN: &str = "<pasted_content id=\"";
 
-/// `prompt` with each long paste in it as it was pasted. Claude Code (2.1.309) reports a long
-/// paste, such as a long prompt Herdr types, wrapped as `<pasted_content id="N">` and a line
-/// break, the text, then `</pasted_content id="N">` and a line break.
+// Claude Code 2.1.309 reports a long paste, such as a long prompt Herdr types, as
+// `<pasted_content id="N">` and a line break, the text, then `</pasted_content id="N">`
+// and a line break.
 pub fn unwrap_pastes(prompt: &str) -> String {
     let mut text = String::with_capacity(prompt.len());
     let mut rest = prompt;

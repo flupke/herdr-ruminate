@@ -81,8 +81,6 @@ fn a_pane_without_codex_has_no_daemon() {
 
 #[test]
 fn a_node_wrapper_s_arguments_are_codex_s_alone() {
-    // The npm package's wrapper, as Herdr lists it when the native binary is not listed. A
-    // Codex option before the script is Node's, not Codex's.
     let wrapper = |arguments: &[&str]| PaneProcess {
         pid: std::process::id(),
         name: "node".to_owned(),

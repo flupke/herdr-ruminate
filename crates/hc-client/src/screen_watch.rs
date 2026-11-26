@@ -1,14 +1,3 @@
-//! A watch on a terminal's screen: herdr-core's `terminal.attach` with `observe` on a framed connection,
-//! which neither types nor resizes. It gives the screen as the core paints it first, styles
-//! included, then tells each time the program prints.
-//!
-//! The connection turns framed after a `hello` with `framed: true`: each frame is its channel (u32,
-//! little-endian), its kind (u8) and its length (u32), then its payload. Channel 0 carries the
-//! JSON-RPC messages; the answer to the attach names the channel of the terminal's output, whose
-//! DATA frames the watcher credits back as it reads them. herdr-core sends a new watcher a whole
-//! paint at once, in frames of up to 16 KiB, then the bytes the program prints, each within a
-//! millisecond or so (hc 0.1.21: median 0.5 ms; an idle Claude Code prints none).
-
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
@@ -24,34 +13,23 @@ use serde_json::json;
 
 use super::{ApiError, Message, REQUEST_SEQUENCE, SOCKET_TIMEOUT, refusal, untyped};
 
-/// The kind of a frame of the terminal's output.
 const DATA: u8 = 0;
-/// The kind of a frame that hands herdr-core back the room the bytes read took.
 const CREDIT: u8 = 4;
-/// The JSON-RPC channel.
 const RPC: u32 = 0;
-/// The longest frame herdr-core may send.
 const FRAME_LIMIT: usize = 16 * 1024 * 1024;
-/// The payload of each frame of a paint but its last: herdr-core cuts a paint into frames of
-/// this size, and sends them back to back (hc 0.1.21: 185 KiB in 12 frames within a millisecond).
-/// A shorter frame ends the paint; what follows it the program printed.
+// herdr-core cuts a new watcher's first paint into frames of 16 KiB, sent back to back (hc 0.1.21:
+// 185 KiB in 12 frames within a millisecond); a shorter frame ends the paint.
 const PAINT_FRAME: usize = 16 * 1024;
-/// How long the watcher waits for more of a paint whose last frame was full, which a paint of an
-/// exact multiple of [`PAINT_FRAME`] ends with.
 const PAINT_GAP: Duration = Duration::from_millis(30);
-/// The size the watcher says it views: an observer never resizes the terminal, which herdr-core
-/// paints at its own size.
+// herdr-core paints at the terminal's own size, which an observer never resizes.
 const VIEW: (u16, u16) = (80, 24);
 
-/// A watch on the screen of one terminal, until it drops.
 pub(super) struct ScreenWatch {
     reader: BufReader<UnixStream>,
     socket_path: PathBuf,
-    /// The channel of the terminal's output.
     channel: u32,
 }
 
-/// Shuts a [`ScreenWatch`]'s connection down from another thread, which ends its wait.
 pub(super) struct WatchCloser(UnixStream);
 
 impl WatchCloser {
@@ -72,9 +50,6 @@ struct Attached {
 }
 
 impl ScreenWatch {
-    /// Watches the screen of `pane` on the core at `socket_path`; returns the screen as herdr-core
-    /// paints it first, with its escapes, and the watch. A refusal that typed nothing, as for a
-    /// terminal whose program ended, is [`Error::NotTyped`].
     pub(super) fn open(socket_path: &Path, pane: &PaneId) -> Result<(String, Self)> {
         const OPERATION: &str = "terminal.attach";
         let io = |source| Error::Io {
@@ -145,7 +120,6 @@ impl ScreenWatch {
         Ok((paint, watch))
     }
 
-    /// What closes the watch from another thread.
     pub(super) fn closer(&self) -> Result<WatchCloser> {
         self.reader
             .get_ref()
@@ -158,8 +132,6 @@ impl ScreenWatch {
             })
     }
 
-    /// Ties the watch to `canceller` until the tie drops, so that cancelling it ends the wait of
-    /// [`Self::printed`]; `None` when it was cancelled already.
     pub(super) fn tie(&self, canceller: &EventCanceller) -> Result<Option<Tie>> {
         canceller
             .tie(self.reader.get_ref())
@@ -170,8 +142,6 @@ impl ScreenWatch {
             })
     }
 
-    /// Waits until the program prints; an error once the stream ended, as with the program, or
-    /// once the watch was closed.
     pub(super) fn printed(&mut self) -> Result<()> {
         loop {
             let (channel, kind, _) = self.frame()?;
@@ -181,8 +151,6 @@ impl ScreenWatch {
         }
     }
 
-    /// The first paint: the DATA frames herdr-core sends a new watcher, up to the first that is
-    /// not full. A print that follows at once stays for [`Self::printed`] to tell.
     fn paint(&mut self) -> Result<String> {
         let mut paint = Vec::new();
         loop {
@@ -197,7 +165,6 @@ impl ScreenWatch {
         }
     }
 
-    /// Whether more bytes come within `gap`.
     fn more_within(&mut self, gap: Duration) -> bool {
         if !self.reader.buffer().is_empty() {
             return true;
@@ -214,8 +181,6 @@ impl ScreenWatch {
         more
     }
 
-    /// The next frame: its channel, its kind and its payload. A DATA frame of the terminal's
-    /// output is credited back at once.
     fn frame(&mut self) -> Result<(u32, u8, Vec<u8>)> {
         let path = self.socket_path.clone();
         let io = |source| Error::Io {
@@ -246,7 +211,6 @@ impl ScreenWatch {
     }
 }
 
-/// Writes one frame to `socket`.
 fn write_frame(socket: &mut UnixStream, channel: u32, kind: u8, payload: &[u8]) -> io::Result<()> {
     let length = u32::try_from(payload.len()).map_err(io::Error::other)?;
     let mut frame = Vec::with_capacity(9 + payload.len());
@@ -257,8 +221,6 @@ fn write_frame(socket: &mut UnixStream, channel: u32, kind: u8, payload: &[u8]) 
     socket.write_all(&frame)
 }
 
-/// The error for herdr-core's refusal to watch a terminal: one that `terminal.send` would refuse
-/// too typed nothing.
 fn refused(error: &ApiError) -> Error {
     match untyped(error) {
         Some(reason) => Error::NotTyped { reason },

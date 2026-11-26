@@ -42,7 +42,6 @@ fn a_session_runs_in_code_mode_as_its_last_repl_mode_entry_says() {
     let (_root, transcripts, directory) = project();
     let marked =
         |mode: bool| format!(r#"{{"type":"repl-mode","replMode":{mode},"sessionId":"s"}}"#);
-    // A message that quotes the entry holds it escaped, in a string.
     let quoted = serde_json::json!({
         "type": "user",
         "uuid": "u1",
@@ -66,7 +65,6 @@ fn a_session_runs_in_code_mode_as_its_last_repl_mode_entry_says() {
     assert!(!transcripts.code_mode("missing"));
 }
 
-/// A turn of Claude Code 2.1.318 up to a tool call, whose result is the last entry.
 const MID_TURN: &str = concat!(
     r#"{"type":"user","uuid":"u1","message":{"role":"user"}}"#,
     "\n",
@@ -76,7 +74,6 @@ const MID_TURN: &str = concat!(
     "\n",
 );
 
-/// The end of that turn, which Claude Code writes after it reports the turn ended.
 const TURN_END: &str = concat!(
     r#"{"type":"assistant","uuid":"a2","message":{"stop_reason":"tool_use"}}"#,
     "\n",
@@ -94,7 +91,6 @@ fn a_fork_point_waits_for_the_end_of_the_turn_written_after_the_agent_went_idle(
     let transcript = directory.join("s1.jsonl");
     fs::write(&transcript, MID_TURN).unwrap();
 
-    // A rendezvous: a change is taken only once the waiter read the transcript and waits.
     let (changes, heard) = mpsc::sync_channel(0);
     let waiting = std::thread::spawn({
         let transcripts = transcripts.clone();
@@ -107,7 +103,6 @@ fn a_fork_point_waits_for_the_end_of_the_turn_written_after_the_agent_went_idle(
         .expect("the waiter waits for a change, the turn not ended");
     let mut file = fs::File::options().append(true).open(&transcript).unwrap();
     std::io::Write::write_all(&mut file, TURN_END.as_bytes()).unwrap();
-    // The waiter may have read the end already, after the first change.
     let _ = changes.send(change());
     let last = waiting.join().unwrap().unwrap();
 

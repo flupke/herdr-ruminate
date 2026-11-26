@@ -1,5 +1,3 @@
-//! [`ClaudeForks`]: run-ahead's forks of a Claude Code agent in a Herdr pane.
-
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -23,22 +21,18 @@ use crate::stream::StreamTally;
 use crate::switch::{AgentPane, ForkProcess, LiveFork, Resume, Switch};
 use crate::transcripts::Transcripts;
 
-/// The programs forks need from the reviewer's installation: `reviewer-control`, whose
-/// `fork-exec` ties a fork's life to the reviewer's and whose `fork-guard` is the forks' hook.
 #[derive(Clone, Debug)]
 pub struct ForkTools {
     pub control: PathBuf,
 }
 
 impl ForkTools {
-    /// The `reviewer-control` installed beside the running program.
     pub fn beside_current_exe() -> std::io::Result<Self> {
         Ok(Self {
             control: std::env::current_exe()?.with_file_name("reviewer-control"),
         })
     }
 
-    /// What starts a process that must not outlive the reviewer: `fork-exec`.
     pub fn wrapper(&self) -> Wrapper {
         Wrapper {
             program: self.control.clone(),
@@ -46,34 +40,24 @@ impl ForkTools {
         }
     }
 
-    /// The settings of a fork of an agent with the settings `agent`: those, with the guard as
-    /// their hook.
     fn settings(&self, agent: &AgentSettings) -> String {
         let control = self.control.to_string_lossy().replace('\'', r"'\''");
         agent.with_guard(&format!("'{control}' fork-guard"))
     }
 }
 
-/// Forks of a Claude Code agent's session, started from the [`Launcher`]'s thread and followed
-/// until they end. Dropping it sends every fork still running its parent-death signal.
 pub struct ClaudeForks {
     host: Arc<dyn AgentHost>,
     tools: ForkTools,
     launcher: Launcher,
     log: RunAheadLog,
     waits: ForkWaits,
-    /// What the hooks of the agents say, when the reviewer listens to them.
     hooks: Option<Arc<AgentHooks>>,
-    /// The forks that run, by session.
     live: Arc<Mutex<HashMap<String, LiveFork>>>,
-    /// The discards under way, which stop a fork and delete its transcript.
     discards: Mutex<Vec<thread::JoinHandle<()>>>,
 }
 
 impl ClaudeForks {
-    /// Forks of the agents `herdr` reports, started through `tools`, logged to `log`, waiting
-    /// on Herdr and on the forks as `waits` say, and on what the agents' hooks tell the reviewer
-    /// through `hooks`, or else why the reviewer does not listen to them.
     pub fn new(
         host: Arc<dyn AgentHost>,
         tools: ForkTools,
@@ -107,12 +91,9 @@ impl ClaudeForks {
 }
 
 impl ClaudeForks {
-    /// The hooks the reviewer hears `agent` through, and its session, when run-ahead can fork
-    /// the agent if it runs them; otherwise why not.
     fn forkable<'a>(&'a self, agent: &'a Agent) -> Result<(&'a AgentHooks, &'a str), String> {
         if !cfg!(target_os = "linux") {
-            // Only Linux has the parent-death signal that keeps a fork from outliving the
-            // reviewer when the reviewer runs outside a terminal.
+            // The parent-death signal (prctl's PR_SET_PDEATHSIG) is Linux's.
             return Err("run-ahead forks only on Linux".into());
         }
         if !runs_claude(agent) {
@@ -137,7 +118,6 @@ impl ClaudeForks {
 }
 
 impl Drop for ClaudeForks {
-    /// Lets the discards under way finish, so no transcript of a discarded fork is left.
     fn drop(&mut self) {
         let discards =
             std::mem::take(&mut *self.discards.lock().unwrap_or_else(PoisonError::into_inner));
@@ -147,7 +127,6 @@ impl Drop for ClaudeForks {
     }
 }
 
-/// The Claude Code process of `pane`.
 fn pane_claude(host: &dyn AgentHost, pane: &PaneId) -> Result<PaneClaude, String> {
     let pid = host
         .pane_process_info(pane)
@@ -160,9 +139,6 @@ fn pane_claude(host: &dyn AgentHost, pane: &PaneId) -> Result<PaneClaude, String
     PaneClaude::read(pid)
 }
 
-/// Waits up to `wait` for the transcript of the Claude Code agent of `pane` to hold the end of
-/// its turn; returns at once for another agent, or one whose session, process or transcript
-/// cannot be read, which run-ahead does not fork.
 fn wait_for_turn_end(host: &dyn AgentHost, pane: &PaneId, wait: Duration) {
     let Some(session) = host
         .get_agent(pane)
@@ -178,9 +154,6 @@ fn wait_for_turn_end(host: &dyn AgentHost, pane: &PaneId, wait: Duration) {
     }
 }
 
-/// Why a fork of the session `session` of the agent `claude` cannot start, whatever run-ahead
-/// tries: a fork is `claude -p --resume`, which Claude Code refuses for a session started in
-/// Code Mode. `None` when it may start.
 fn unresumable(claude: &PaneClaude, session: &str) -> Option<String> {
     claude.transcripts().code_mode(session).then(|| {
         "the agent's session runs in Claude Code's Code Mode, which Claude Code resumes only in \
@@ -189,12 +162,10 @@ fn unresumable(claude: &PaneClaude, session: &str) -> Option<String> {
     })
 }
 
-/// Whether Herdr reports `agent` as Claude Code.
 fn runs_claude(agent: &Agent) -> bool {
     agent.agent.as_deref() == Some("claude")
 }
 
-/// Whether a process of the pane is Claude Code.
 fn is_claude(process: &PaneProcess) -> bool {
     process.name == "claude"
         || process
@@ -206,9 +177,8 @@ fn is_claude(process: &PaneProcess) -> bool {
 
 impl ForkHost for ClaudeForks {
     fn watch(&self, pane: &PaneId, report: StatusReport) -> PaneWatch {
-        // The agent is idle for run-ahead once its transcript holds the end of its turn, which
-        // Claude Code writes after it reports the turn ended to herdr-core: the watch's thread
-        // waits for it, so that no fork starts from an older entry.
+        // Claude Code writes the end of a turn to its transcript after it reports the turn ended
+        // to herdr-core.
         let (host, watched, wait) = (Arc::clone(&self.host), pane.clone(), self.waits.transcript);
         let report: StatusReport = Box::new(move |status| {
             if status.waits_for_prompt() {
@@ -227,8 +197,6 @@ impl ForkHost for ClaudeForks {
     }
 
     fn unhooked(&self, agent: &Agent) -> Option<String> {
-        // An agent run-ahead cannot fork for another reason has that reason, which `point`
-        // gives.
         self.forkable(agent)
             .is_ok_and(|(hooks, _)| hooks.hooked(&*self.host, agent).is_none())
             .then(|| "the agent runs without the reviewer's Claude Code plugin: restart it".into())
@@ -244,7 +212,6 @@ impl ForkHost for ClaudeForks {
             Ok((_, session)) => session,
             Err(why) => return Some(why),
         };
-        // An agent whose process cannot be read now gets its reason from `point`.
         let claude = pane_claude(&*self.host, &agent.pane_id).ok()?;
         unresumable(&claude, session)
     }
@@ -327,7 +294,6 @@ impl ForkHost for ClaudeForks {
             live.lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .remove(&session);
-            // The fork read its settings when it started; they go with it.
             drop(settings);
             ended(end);
         });

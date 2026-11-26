@@ -1,5 +1,3 @@
-//! Herdr newline-delimited JSON socket client.
-
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -23,40 +21,30 @@ use crate::{Error, Result};
 
 const RESPONSE_LIMIT: u64 = 16 * 1024 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long `agent.prompt` waits for the agent to start, unless the client says otherwise.
-/// Herdr gives an agent that is not working 5 seconds to show activity and then answers
-/// `agent_prompt_stalled`, so this bound is only reached when Herdr itself stalls.
+// Herdr answers `agent_prompt_stalled` once an agent shows no activity for 5 seconds.
 const PROMPT_START_TIMEOUT: Duration = Duration::from_secs(10);
 static EVENT_REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-/// What an event stream's errors name for Herdr's socket, which the stream does not keep.
 const HERDR_SOCKET: &str = "HERDR_SOCKET_PATH";
 
-/// A synchronous client for the local Herdr socket.
 #[derive(Clone, Debug)]
 pub struct HerdrClient {
     socket_path: PathBuf,
     plugin_id: String,
     state_dir: PathBuf,
-    /// How long `agent.prompt` waits for the agent to start.
     prompt_start_timeout: Duration,
 }
 
-/// Stops event streams, or withdraws a prompt the host waits to type, from another thread at
-/// once: it shuts down the sockets tied to it, which ends the reads they wait in, and refuses
-/// the subscriptions and the sends that follow.
 #[derive(Clone, Debug, Default)]
 pub struct EventCanceller(Arc<Mutex<Cancellation>>);
 
 #[derive(Debug, Default)]
 struct Cancellation {
     cancelled: bool,
-    /// The sockets of the streams tied to the canceller, by tie.
     sockets: Vec<(u64, UnixStream)>,
     next_tie: u64,
 }
 
 impl EventCanceller {
-    /// Ends the streams tied to this canceller, and every stream tied to it later.
     pub fn cancel(&self) {
         let mut cancellation = self.lock();
         cancellation.cancelled = true;
@@ -65,13 +53,10 @@ impl EventCanceller {
         }
     }
 
-    /// Whether [`Self::cancel`] ran.
     pub fn is_cancelled(&self) -> bool {
         self.lock().cancelled
     }
 
-    /// Ties `socket` to this canceller until the tie drops, so that [`Self::cancel`] shuts it
-    /// down; `None` when it was cancelled already.
     pub fn tie(&self, socket: &UnixStream) -> std::io::Result<Option<Tie>> {
         let mut cancellation = self.lock();
         if cancellation.cancelled {
@@ -91,7 +76,6 @@ impl EventCanceller {
     }
 }
 
-/// A socket tied to a canceller; dropping it lets go of the socket.
 #[derive(Debug)]
 pub struct Tie {
     canceller: EventCanceller,
@@ -99,7 +83,6 @@ pub struct Tie {
 }
 
 impl Tie {
-    /// Whether the canceller ended the socket: a read it ends is no error.
     pub fn is_cancelled(&self) -> bool {
         self.canceller.is_cancelled()
     }
@@ -114,18 +97,15 @@ impl Drop for Tie {
     }
 }
 
-/// The events the reviewer follows, from a subscription Herdr acknowledged.
 #[derive(Debug)]
 pub struct HerdrEvents(HerdrEventStream);
 
 impl HerdrEvents {
-    /// Hands each event to `send` until `send` returns false or the stream is cancelled.
     pub fn forward(mut self, send: impl FnMut(HerdrEvent) -> bool) -> Result<()> {
         self.0.forward_while(send)
     }
 }
 
-/// The status changes of one agent, from a subscription Herdr acknowledged.
 #[derive(Debug)]
 pub struct AgentStatuses {
     stream: HerdrEventStream,
@@ -134,9 +114,6 @@ pub struct AgentStatuses {
 }
 
 impl AgentStatuses {
-    /// Reports the status of the agent to `send`, then each status Herdr gives it, until `send`
-    /// returns false or the stream is cancelled. The subscription holds already, so no change
-    /// is missed between the first report and the next.
     pub fn forward(mut self, mut send: impl FnMut(AgentStatus) -> bool) -> Result<()> {
         if let Some(agent) = self.client.get_agent(&self.pane_id)?
             && !send(agent.agent_status)
@@ -167,12 +144,9 @@ struct ApiError {
     message: String,
 }
 
-/// One event of a Herdr subscription: its name and its data.
 #[derive(Debug, Deserialize)]
 pub struct EventEnvelope {
-    /// The event's name, such as `pane_updated`.
     pub event: String,
-    /// The event's data, as Herdr's API schema describes it.
     pub data: Value,
 }
 
@@ -230,16 +204,13 @@ struct PaneReadWire {
     text: String,
 }
 
-/// The events of one subscription, in the order Herdr sent them.
 #[derive(Debug)]
 pub struct HerdrEventStream {
     reader: BufReader<UnixStream>,
-    /// Ties the stream to what ends it: a read it ends is no error.
     tie: Tie,
 }
 
 impl HerdrEventStream {
-    /// The next event, waiting for it; `None` once the stream's canceller ended it.
     pub fn next_event(&mut self) -> Result<Option<EventEnvelope>> {
         self.read_envelope()
     }
@@ -255,12 +226,10 @@ impl HerdrEventStream {
         Ok(())
     }
 
-    /// The next status of a stream subscribed to one agent's status changes, skipping other
-    /// events; `None` once the stream is cancelled.
     fn next_status(&mut self) -> Result<Option<AgentStatus>> {
         while let Some(envelope) = self.read_envelope()? {
-            // Herdr names the event with a dot, as the subscription; its schema with an
-            // underscore.
+            // Herdr names this event with a dot, as its subscription does, and its API schema with
+            // an underscore.
             if matches!(
                 envelope.event.as_str(),
                 "pane.agent_status_changed" | "pane_agent_status_changed"
@@ -273,7 +242,6 @@ impl HerdrEventStream {
         Ok(None)
     }
 
-    /// The next event; `None` once the stream is cancelled.
     fn read_envelope(&mut self) -> Result<Option<EventEnvelope>> {
         let line = match read_line(
             &mut self.reader,
@@ -338,7 +306,6 @@ impl HerdrClient {
         Ok(read.text)
     }
 
-    /// Build a client for an explicitly configured Herdr connection.
     pub fn new(socket_path: PathBuf, plugin_id: String, state_dir: PathBuf) -> Self {
         Self {
             socket_path,
@@ -348,21 +315,16 @@ impl HerdrClient {
         }
     }
 
-    /// This client, whose `agent.prompt` waits `timeout` for the agent to start in place of
-    /// 10 seconds. Herdr answers `timeout` when the wait ends, which is
-    /// [`Error::AgentNotStarted`].
     #[must_use]
     pub fn with_prompt_start_timeout(mut self, timeout: Duration) -> Self {
         self.prompt_start_timeout = timeout;
         self
     }
 
-    /// The socket this client reaches Herdr through.
     pub fn socket_path(&self) -> &std::path::Path {
         &self.socket_path
     }
 
-    /// Build a client from the values injected into a plugin process.
     pub fn from_env() -> Result<Self> {
         Ok(Self::new(
             required_path("HERDR_SOCKET_PATH")?,
@@ -371,15 +333,11 @@ impl HerdrClient {
         ))
     }
 
-    /// Subscribes to the events the reviewer follows: focus and agent detection. The
-    /// subscription holds once this returns; `canceller` ends it.
     pub fn subscribe_events(&self, canceller: &EventCanceller) -> Result<HerdrEvents> {
         self.subscribe(&event_subscriptions(), canceller)
             .map(HerdrEvents)
     }
 
-    /// Subscribes to the status changes of the agent of `pane_id`. The subscription holds once
-    /// this returns; `canceller` ends it.
     pub fn subscribe_agent_status(
         &self,
         pane_id: &PaneId,
@@ -396,8 +354,6 @@ impl HerdrClient {
         })
     }
 
-    /// Subscribes to `subscriptions`, given as Herdr's API schema describes them. The
-    /// subscription holds once this returns; `canceller` ends it.
     pub fn subscribe(
         &self,
         subscriptions: &[Value],
@@ -455,8 +411,6 @@ impl HerdrClient {
         Ok(HerdrEventStream { reader, tie })
     }
 
-    /// Call the API method `operation` with `params`, and return its result; Herdr's refusal is
-    /// an error.
     pub fn request(&self, operation: &'static str, params: &Value) -> Result<Value> {
         match self.response(operation, params, SOCKET_TIMEOUT)? {
             Ok(result) => Ok(result),
@@ -518,7 +472,6 @@ impl HerdrClient {
         .map_err(|source| Error::Json { operation, source })
     }
 
-    /// One record per tab: each tab of a workspace has its own review pane.
     fn pane_path(&self, tab_id: &TabId) -> PathBuf {
         let mut key = String::with_capacity(tab_id.0.len() * 2);
         for byte in tab_id.0.bytes() {
@@ -590,8 +543,6 @@ impl HerdrClient {
             })
     }
 
-    /// The record of the review pane opened in `tab_id`. A record that earlier versions keyed
-    /// by workspace names its tab: it moves to the tab's key.
     fn tab_pane(&self, tab_id: &TabId) -> Result<Option<PluginPane>> {
         if let Some(pane) = self.load_pane(tab_id)? {
             return Ok(Some(pane));
@@ -617,8 +568,6 @@ impl HerdrClient {
         Ok(())
     }
 
-    /// Every readable pane record, with its file; a temporary file `save_pane` has not renamed
-    /// yet is no record.
     fn pane_records(&self) -> Result<Vec<(PathBuf, PluginPane)>> {
         let directory = self.state_dir.join("panes");
         let entries = match fs::read_dir(&directory) {
@@ -649,9 +598,8 @@ impl HerdrClient {
     }
 
     fn synchronize_pane_size(&self, pane_id: &PaneId) -> Result<()> {
-        // Herdr 0.9 can leave plugin panes at the parent PTY's dimensions.
-        // A zero-distance resize applies the visible geometry without moving
-        // the split or changing focus, including when retrying an earlier open.
+        // Herdr 0.9 can leave a plugin pane at its parent PTY's size: a zero-distance resize
+        // applies the visible size without moving the split or the focus.
         self.request(
             "pane.resize",
             &json!({"pane_id": pane_id.0, "direction": "left", "amount": 0.0}),
@@ -671,9 +619,8 @@ fn event_subscriptions() -> Vec<Value> {
     ]
 }
 
-/// Whether Herdr's error `code` for `agent.prompt` says that the agent showed no activity
-/// within the wait: `agent_prompt_stalled` after its 5 seconds, or `timeout` when the wait
-/// itself ran out.
+// Herdr's `agent.prompt` fails with `agent_prompt_stalled` after 5 seconds without agent
+// activity, and with `timeout` when the request's own wait runs out.
 fn is_not_started(code: &str) -> bool {
     matches!(code, "agent_prompt_stalled" | "timeout")
 }
@@ -738,8 +685,6 @@ impl AgentPort for HerdrClient {
         .map(|_| ())
     }
 
-    /// Herdr answers once the agent is working or blocked, which an agent working already
-    /// is at once; an agent that shows neither did not start on the prompt.
     fn prompt_agent(&self, pane_id: &PaneId, text: &str) -> Result<()> {
         let wait_ms = u64::try_from(self.prompt_start_timeout.as_millis()).unwrap_or(u64::MAX);
         let params = json!({
@@ -747,7 +692,6 @@ impl AgentPort for HerdrClient {
             "text": text,
             "wait": {"until": ["working", "blocked"], "timeout_ms": wait_ms},
         });
-        // Leave Herdr the time to answer after its own wait ends.
         match self.response(
             method::AGENT_PROMPT,
             &params,
@@ -784,8 +728,6 @@ impl AgentHost for HerdrClient {
             .forward(send)
     }
 
-    /// Herdr takes the report from any client, and orders the reports of one source by their
-    /// `seq`.
     fn report_agent_session(&self, pane_id: &PaneId, report: &SessionReport<'_>) -> Result<()> {
         self.request(
             "pane.report_agent_session",
@@ -821,8 +763,6 @@ impl HerdrReader for HerdrClient {
                 if current.tab == *tab_id {
                     Ok(vec![pane])
                 } else {
-                    // The pane moved to another tab, where an action of this tab must not
-                    // close it: it is that tab's review pane now, unless the tab has one.
                     let _ = fs::remove_file(self.pane_path(tab_id));
                     if self.load_pane(&current.tab)?.is_none() {
                         self.save_pane(&PluginPane {
@@ -911,7 +851,6 @@ fn required_string(name: &'static str) -> Result<String> {
     env::var(name).map_err(|_| Error::Environment { name })
 }
 
-/// Writes `value` to `socket`, the host's socket at `path`, as one line of JSON.
 pub fn write_json_line(
     socket: &mut UnixStream,
     value: &Value,
@@ -927,8 +866,6 @@ pub fn write_json_line(
     })
 }
 
-/// Reads one line from `reader`, a reader of the host's socket at `path`, with its newline;
-/// empty once the host closed the socket. A line over 16 MiB is an error.
 pub fn read_line<R: BufRead>(
     reader: &mut R,
     operation: &'static str,

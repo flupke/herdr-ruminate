@@ -6,11 +6,8 @@ use herdr_client::protocol::{Agent, PaneId};
 
 use super::*;
 
-/// How long a test waits for an event that a failing test never gets.
 const GUARD: Duration = Duration::from_secs(30);
 
-/// Codex's `UserPromptSubmit` event, as 0.162.1 writes it, of `prompt` on the session
-/// `session`.
 fn prompt_submit(session: &str, prompt: &str) -> String {
     serde_json::json!({
         "session_id": session,
@@ -25,7 +22,6 @@ fn prompt_submit(session: &str, prompt: &str) -> String {
     .to_string()
 }
 
-/// A reviewer of a Herdr server of the user, and the user's root of every server.
 fn reviewer() -> (tempfile::TempDir, HookRoot, AgentHooks) {
     let runtime = tempfile::tempdir().unwrap();
     let directory = HookDirectory::for_server(runtime.path(), Path::new("/run/herdr.sock"));
@@ -33,7 +29,6 @@ fn reviewer() -> (tempfile::TempDir, HookRoot, AgentHooks) {
     (runtime, directory.root(), hooks)
 }
 
-/// The Codex agent of the pane `w:p1`, as Herdr reports it.
 fn codex_agent() -> Agent {
     serde_json::from_value(serde_json::json!({
         "pane_id": "w:p1",
@@ -117,8 +112,6 @@ fn another_event_is_neither_reported_nor_recorded() {
     assert_eq!(hooks.hooked(&port, &codex_agent()), None);
 }
 
-/// Codex's `PreToolUse` event, as 0.162.1 writes it, of the tool `tool` called with `input` on
-/// the session `session`.
 fn tool_use(session: &str, tool: &str, input: &serde_json::Value) -> String {
     serde_json::json!({
         "session_id": session,

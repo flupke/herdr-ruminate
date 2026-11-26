@@ -70,7 +70,6 @@ fn a_submit_is_answered_once_its_tool_result_comes_or_the_fork_ends() {
     assert!(gone.wait(Duration::ZERO));
 }
 
-/// A tally whose fork's stop is counted in `stops`, fed `lines`.
 fn tally_of(lines: &[&str]) -> (Box<StreamTally>, mpsc::Receiver<()>) {
     let mut tally = Box::new(StreamTally::new(Box::new(|_| {})));
     let (stopped, stops) = mpsc::channel();
@@ -87,7 +86,6 @@ const INIT: &str = r#"{"type":"system","subtype":"init","session_id":"fork"}"#;
 
 #[test]
 fn a_fork_whose_settings_were_skipped_is_stopped_at_its_init() {
-    // Claude Code 2.1.318's stream, the agent's own hooks reporting, without the guard's mark.
     let other = r#"{"type":"system","subtype":"hook_response","hook_name":"SessionStart:fork","stderr":""}"#;
 
     let (tally, stops) = tally_of(&[other, INIT]);
@@ -115,6 +113,5 @@ fn a_fork_that_runs_its_guard_s_settings_goes_on() {
     let (tally, stops) = tally_of(&[mark, INIT]);
 
     drop(tally);
-    // Dropping the tally drops the stop: it ran only if the fork was stopped.
     assert!(stops.recv().is_err(), "a guarded fork is not stopped");
 }

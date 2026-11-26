@@ -1,6 +1,3 @@
-//! The vision MCP server, on standard input and output. Register it with an agent (the
-//! repository's `.mcp.json` does) and call its `start` tool.
-
 use anyhow::Result;
 use reviewer_tui_tests::vision::{Setup, serve};
 

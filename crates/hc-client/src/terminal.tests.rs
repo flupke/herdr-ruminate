@@ -6,7 +6,6 @@ use test_case::test_case;
 
 use super::*;
 
-/// Claude Code in a tab of herdr-app, as `hc get` gives it (herdr-core 0.1.17), trimmed.
 fn claude_code() -> Value {
     json!({
         "address": "t2q",
@@ -49,14 +48,12 @@ fn claude_code_in_a_tab_is_an_agent_of_that_tab_by_herdrs_name() {
     assert_eq!(agent.agent.as_deref(), Some("claude"));
     assert_eq!(agent.agent_status, AgentStatus::Working);
     assert_eq!(agent.agent_session, None);
-    // Where the agent works now, not where its terminal started.
     assert_eq!(
         agent.cwd,
         Some(PathBuf::from("/home/user/src/project/crates"))
     );
 }
 
-/// `claude_code()` with its session label set to `value`.
 fn labelled(value: &str) -> Terminal {
     let mut labelled = claude_code();
     labelled["labels"]["herdr-reviewer.session"] = value.into();

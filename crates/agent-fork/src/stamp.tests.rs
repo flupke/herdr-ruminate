@@ -39,8 +39,7 @@ fn a_process_runs_with_an_argument_only_when_its_command_line_holds_it_whole() {
     use std::io::BufRead;
     use std::process::{Command, Stdio};
 
-    // The start may return before the kernel shows the new command line; the shell prints once
-    // it runs its script.
+    // spawn may return before Linux shows the child's new command line in /proc.
     let mut child = Command::new("sh")
         .args(["-c", "echo ready; read line", "30"])
         .stdin(Stdio::piped())
@@ -57,7 +56,6 @@ fn a_process_runs_with_an_argument_only_when_its_command_line_holds_it_whole() {
     assert!(stamp.runs_with("30"));
     assert!(!stamp.runs_with("3"));
     child.kill().unwrap();
-    // Wait until it ended, but leave it unreaped: a zombie no longer runs.
     waitid(
         Id::Pid(nix::unistd::Pid::from_raw(
             i32::try_from(child.id()).unwrap(),

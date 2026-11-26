@@ -1,5 +1,3 @@
-//! [`Daemon`]: where the app-server daemon of a pane's Codex agent listens.
-
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::ffi::OsStringExt;
@@ -11,14 +9,11 @@ use herdr_client::protocol::PaneProcess;
 use crate::follow::{Follow, SessionEvent};
 use crate::rpc::{Incoming, Replier, Rpc};
 
-/// The control socket of a Codex app-server daemon, which carries its JSON-RPC in WebSocket
-/// text frames.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Daemon {
     socket: PathBuf,
 }
 
-/// Why the agent of a pane has no daemon the reviewer can join.
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum NoDaemon {
     #[error("no Codex process runs in the agent's pane")]
@@ -34,13 +29,11 @@ pub enum NoDaemon {
     Unreadable(&'static str),
 }
 
-/// Where a Codex home keeps its daemon's control socket, a link to the socket itself.
 const CONTROL_SOCKET: &str = "app-server-control/app-server-control.sock";
 
 impl Daemon {
-    /// The daemon of the Codex agent among `processes`, the foreground processes of its pane.
     pub fn of_pane(processes: &[PaneProcess]) -> Result<Self, NoDaemon> {
-        // The npm package runs the native binary under a Node wrapper of the same name.
+        // Codex's npm package runs the native binary under a Node wrapper of the same name.
         let codex = processes
             .iter()
             .find(|process| process.name == "codex")
@@ -70,8 +63,6 @@ impl Daemon {
         Self::of_command(arguments, &directory, |name| variable(&environ, name))
     }
 
-    /// The daemon of a Codex TUI that runs with `arguments` in `directory`, with the
-    /// environment variables `variable` gives.
     fn of_command(
         arguments: &[String],
         directory: &Path,
@@ -107,18 +98,14 @@ impl Daemon {
         })
     }
 
-    /// The daemon whose control socket is `socket`.
     pub fn at(socket: PathBuf) -> Self {
         Self { socket }
     }
 
-    /// Where the daemon's control socket is.
     pub fn socket(&self) -> &Path {
         &self.socket
     }
 
-    /// Connects to the daemon, and hands `handler` what the daemon says from then on, on a
-    /// thread of the connection's own, until the returned connection is dropped.
     pub fn connect(
         &self,
         handler: impl FnMut(Incoming, &Replier) + Send + 'static,
@@ -126,9 +113,6 @@ impl Daemon {
         Rpc::connect(&self.socket, handler)
     }
 
-    /// Joins the session `session` on a thread of its own, and hands `report` what it hears
-    /// of it, in order, until the returned follow is dropped. When the daemon goes away, it
-    /// tries to connect again every `retry`, and joins the session again once it can.
     pub fn follow(
         &self,
         session: &str,
@@ -139,14 +123,12 @@ impl Daemon {
     }
 }
 
-/// Whether `argument` runs Codex: its program, or the script a wrapper runs.
 fn is_codex(argument: &str) -> bool {
     Path::new(argument)
         .file_name()
         .is_some_and(|name| name == "codex")
 }
 
-/// The variable `name` of a process environment, as `/proc/<pid>/environ` holds it.
 fn variable(environ: &[u8], name: &str) -> Option<OsString> {
     environ.split(|byte| *byte == 0).find_map(|entry| {
         entry

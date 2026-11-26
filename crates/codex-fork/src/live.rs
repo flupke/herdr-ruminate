@@ -1,6 +1,3 @@
-//! [`LiveFork`]: a fork the host started, over a connection of its own to the daemon, which
-//! follows the fork's turn and its tokens, and answers what the turn asks.
-
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -10,13 +7,11 @@ use serde_json::Value;
 
 use crate::approvals;
 
-/// A fork the host started: its connection, which is its session's only client, and its turn.
 pub(crate) struct LiveFork {
     pub(crate) rpc: Rpc,
     pub(crate) turn: Arc<TurnWatch>,
 }
 
-/// Where a fork's turn stands, as its connection hears it.
 #[derive(Default)]
 pub(crate) struct TurnWatch {
     state: Mutex<TurnState>,
@@ -25,13 +20,9 @@ pub(crate) struct TurnWatch {
 
 #[derive(Default)]
 struct TurnState {
-    /// The fork's session, once the daemon named it.
     session: Option<String>,
-    /// The turn, once `turn/start` named it.
     id: Option<String>,
-    /// Where the turn's end goes, until it ended.
     ended: Option<Box<dyn FnOnce(ForkEnd) + Send>>,
-    /// Whether the turn ended, or the connection did.
     over: bool,
     usage: TokenUsage,
 }
@@ -41,28 +32,22 @@ impl TurnWatch {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The daemon named the fork's session `session`: what it says of that session is the
-    /// fork's.
     pub(crate) fn forked(&self, session: &str) {
         self.lock().session = Some(session.to_owned());
     }
 
-    /// The fork's turn starts: `ended` gets how it ended.
     pub(crate) fn starting(&self, ended: Box<dyn FnOnce(ForkEnd) + Send>) {
         self.lock().ended = Some(ended);
     }
 
-    /// `turn/start` named the fork's turn `id`.
     pub(crate) fn started(&self, id: &str) {
         self.lock().id = Some(id.to_owned());
     }
 
-    /// The fork's turn, once it started.
     pub(crate) fn id(&self) -> Option<String> {
         self.lock().id.clone()
     }
 
-    /// Waits, at most `limit`, until the turn ended; returns whether it did.
     pub(crate) fn wait_over(&self, limit: Duration) -> bool {
         let deadline = Instant::now() + limit;
         let mut state = self.lock();
@@ -80,8 +65,6 @@ impl TurnWatch {
         true
     }
 
-    /// What the fork's connection does with what the daemon says: it follows the fork's turn,
-    /// and answers what the turn asks, logging what it declines to `log`.
     pub(crate) fn handler(
         self: &Arc<Self>,
         log: RunAheadLog,
@@ -106,7 +89,6 @@ impl TurnWatch {
         }
     }
 
-    /// The notification `method`, with `params`, of the fork's session.
     fn hear(&self, method: &str, params: &Value) {
         match method {
             "thread/tokenUsage/updated" => {
@@ -144,7 +126,6 @@ impl TurnWatch {
         }
     }
 
-    /// The fork's turn is over, as `exit` says, by itself when `finished`.
     fn end(&self, exit: String, finished: bool) {
         let mut state = self.lock();
         state.over = true;
@@ -162,8 +143,8 @@ impl TurnWatch {
     }
 }
 
-/// The tokens of one request, `last` of `thread/tokenUsage/updated`. Codex's input tokens hold
-/// those read from the prompt cache (`cachedInputTokens`) and those written to it.
+// Codex's input tokens include those read from the prompt cache (`cachedInputTokens`) and
+// those written to it.
 fn usage(last: &Value) -> TokenUsage {
     let count = |name: &str| last.get(name).and_then(Value::as_u64).unwrap_or(0);
     let (cache_read, cache_creation) = (count("cachedInputTokens"), count("cacheWriteInputTokens"));

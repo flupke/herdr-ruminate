@@ -1,8 +1,3 @@
-//! The hc backend against a real herdr-core, on a private core of its own
-//! ([`hc_test_support::PrivateCore`]), never the user's core. Opt-in, since each test starts a
-//! core of its own: `cargo nextest run -p hc-client --run-ignored only`, with the dev shell's
-//! pinned `hc` (`TEST_HC_BIN_PATH`), or else `hc` on the `PATH`.
-
 use std::collections::BTreeMap;
 use std::sync::mpsc;
 use std::thread;
@@ -18,14 +13,10 @@ use herdr_client::protocol::{
     AgentHost, AgentPort, AgentStatus, HerdrEvent, PaneId, PromptWait, TabId,
 };
 
-/// How fast the person types.
 const PACE: Duration = Duration::from_millis(300);
 
-/// The outcome of a send on a thread of its own, with each wait it told.
 type Telling = thread::JoinHandle<(herdr_client::Result<()>, Vec<Option<PromptWait>>)>;
 
-/// Sends `text` to `agent` on a thread of its own: its outcome, and the waits it tells as they
-/// come.
 fn send_telling_waits(
     client: &HcClient,
     agent: &PaneId,
@@ -34,7 +25,6 @@ fn send_telling_waits(
     send_withdrawn_by(client, agent, text, EventCanceller::default())
 }
 
-/// [`send_telling_waits`], for a prompt that `withdrawal` withdraws once cancelled.
 fn send_withdrawn_by(
     client: &HcClient,
     agent: &PaneId,
@@ -59,7 +49,6 @@ fn send_withdrawn_by(
     (sender, waits)
 }
 
-/// Waits until the agent of `pane` reports `status`, and returns the statuses until then.
 fn wait_for(client: &HcClient, pane: &PaneId, status: AgentStatus) -> Vec<AgentStatus> {
     let mut seen = Vec::new();
     client
@@ -129,7 +118,6 @@ fn a_prompt_reaches_the_agent_as_typed_and_the_agent_starts_on_it() {
         .prompt_agent(&agent, "Review crates/hc-client")
         .unwrap();
 
-    // The agent wrote the prompt before it went working, which the send waited for.
     assert_eq!(
         std::fs::read_to_string(folder.path().join("prompt")).unwrap(),
         "Review crates/hc-client"
@@ -148,7 +136,6 @@ fn an_agent_that_never_starts_on_a_prompt_is_told() {
     );
     wait_for(&client, &agent, AgentStatus::Idle);
 
-    // herdr-core's own window of a few seconds after the send tells that `cat` never worked.
     assert!(matches!(
         client.prompt_agent(&agent, "Review crates/hc-client"),
         Err(herdr_client::Error::AgentNotStarted { .. })
@@ -178,7 +165,6 @@ fn a_prompt_to_an_agent_that_waits_on_its_user_types_nothing() {
         matches!(&refused, Err(herdr_client::Error::NotTyped { reason }) if reason.contains("waits on its user")),
         "{refused:?}"
     );
-    // A key pressed after the refusal is the first the agent reads.
     core.hc(&["keys", &agent.0, "m", "enter"]);
     wait_for(&client, &agent, AgentStatus::Done);
     assert_eq!(
@@ -190,12 +176,9 @@ fn a_prompt_to_an_agent_that_waits_on_its_user_types_nothing() {
 #[test]
 #[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
 fn a_prompt_to_an_agent_that_blocked_while_the_person_typed_types_nothing() {
-    // The send waits only for the quiet pause after the person's last key, not for their unsent
-    // typing, `cd`, which they never send.
     let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    // The agent works until the person types `!`, then waits on them.
     let agent = core.run(
         folder.path(),
         &format!(
@@ -226,7 +209,6 @@ fn a_prompt_to_an_agent_that_blocked_while_the_person_typed_types_nothing() {
         matches!(&refused, Err(herdr_client::Error::NotTyped { reason }) if reason.contains("waits on its user")),
         "{refused:?}"
     );
-    // A refusal before the send waited for the person to stop would have come at once.
     assert!(
         at >= typed + Duration::from_secs(2),
         "herdr-core refused before it waited"
@@ -267,7 +249,6 @@ fn a_prompt_waits_until_the_person_typing_in_the_agent_s_terminal_stops() {
     person.presses_enter();
     sender.join().unwrap().unwrap();
 
-    // herdr-core typed nothing among the person's keys: their line went first, whole.
     assert_eq!(
         std::fs::read_to_string(folder.path().join("lines")).unwrap(),
         "my own words\nReview crates/hc-client\n"
@@ -309,7 +290,6 @@ fn an_agents_statuses_follow_its_turns_and_end_with_its_program() {
     assert_eq!(seen.recv().unwrap(), AgentStatus::Done);
     client.submit_prompt(&agent, "exit").unwrap();
 
-    // The program exits: its status clears, and the stream ends.
     watcher.join().unwrap();
     assert_eq!(seen.try_iter().collect::<Vec<_>>(), [AgentStatus::Unknown]);
 }
@@ -356,7 +336,6 @@ fn an_agent_that_exits_leaves_and_labels_reach_its_terminal() {
             herdr_client::protocol::TabId("tb1".into())
         ))
     );
-    // The stream starts with the agents it holds: the subscription holds.
     assert_eq!(
         told.recv().unwrap(),
         HerdrEvent::AgentSessionChanged(agent.clone())
@@ -395,7 +374,6 @@ fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_i
             })
         });
     }
-    // The stream starts with the agents it holds: the subscription holds.
     assert_eq!(
         told.recv().unwrap(),
         HerdrEvent::AgentSessionChanged(agent.clone())
@@ -415,7 +393,6 @@ fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_i
     };
     assert_eq!(session(&client).as_deref(), Some("s1"));
 
-    // A later session's label stays when an earlier one ends; the session that ends removes it.
     client.report_session(&agent, "claude", "s2").unwrap();
     assert_eq!(
         told.recv().unwrap(),
@@ -431,7 +408,6 @@ fn the_session_an_agents_hook_names_in_its_label_is_the_agents_and_each_change_i
     assert_eq!(session(&client), None);
 }
 
-/// The prompt the behaviour tests send.
 const PROMPT: &str = "Review crates/hc-client";
 
 #[test]
@@ -443,7 +419,7 @@ fn an_empty_input_line_gets_the_prompt_at_once() {
     let agent = core.run(folder.path(), &line_agent(""));
     wait_for(&client, &agent, AgentStatus::Idle);
     // herdr-core types in a terminal that just started only once its output settled, a second
-    // later (hc 0.1.21): an agent the reviewer wakes ran for longer.
+    // later (hc 0.1.21).
     thread::sleep(Duration::from_secs(3));
 
     let start = std::time::SystemTime::now();
@@ -511,7 +487,6 @@ fn a_prompt_withdrawn_while_text_in_the_line_holds_it_stops_waiting_and_is_never
     withdrawal.cancel();
     let (sent, told) = sender.join().unwrap();
 
-    // At once: the agent printed nothing since the line was read.
     assert!(
         withdrawn.elapsed() < Duration::from_secs(1),
         "the send ended {:?} after its withdrawal",
@@ -538,15 +513,13 @@ fn a_prompt_withdrawn_while_herdr_core_waits_out_its_pause_is_never_typed() {
     wait_for(&client, &agent, AgentStatus::Idle);
     thread::sleep(Duration::from_secs(3));
     let mut person = core.person_at(&agent);
-    // A key, erased: the line reads empty, and herdr-core waits out its quiet pause before it
-    // types the send it is offered.
+    // herdr-core waits out its quiet pause after a key, even one erased, before it types a send.
     person.types("x", Duration::ZERO);
     person.presses_backspace();
     wait_until_read(folder.path(), '\u{7f}');
     let withdrawal = EventCanceller::default();
 
     let (sender, _) = send_withdrawn_by(&client, &agent, PROMPT, withdrawal.clone());
-    // The client offered the send, which herdr-core holds for its pause.
     thread::sleep(Duration::from_millis(500));
     withdrawal.cancel();
     let (sent, told) = sender.join().unwrap();
@@ -556,7 +529,6 @@ fn a_prompt_withdrawn_while_herdr_core_waits_out_its_pause_is_never_typed() {
         "{sent:?}"
     );
     assert_eq!(told, []);
-    // Past herdr-core's pause: the send it held would have been typed by now.
     thread::sleep(Duration::from_secs(5));
     assert_eq!(written(folder.path(), "lines"), "");
 }
@@ -567,14 +539,11 @@ fn a_prompt_withdrawn_once_herdr_core_typed_it_reports_it_sent() {
     let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    // Without a turn to report, herdr-core answers the send only seconds after it typed it; the
-    // prompt stays in the agent's line meanwhile.
     let agent = core.run(folder.path(), &line_agent_keeping_its_line(""));
     wait_for(&client, &agent, AgentStatus::Idle);
     // herdr-core types in a terminal that just started only once its output settled.
     thread::sleep(Duration::from_secs(3));
     let typed = {
-        // The whole prompt: the agent draws it a key at a time.
         let waiting = core.command(&["wait", &agent.0, "--output", PROMPT, "--json"]);
         thread::spawn(move || {
             let mut waiting = waiting;
@@ -599,7 +568,6 @@ fn a_screen_with_no_input_line_holds_the_prompt() {
     let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    // A dialog, with no input line, until a key answers it.
     let agent = core.run(
         folder.path(),
         &line_agent(&format!(
@@ -630,25 +598,22 @@ fn a_prompt_herdr_core_does_not_type_at_once_is_withdrawn_and_typed_once_on_an_e
     let agent = core.run(folder.path(), &line_agent(""));
     wait_for(&client, &agent, AgentStatus::Idle);
     let mut person = core.person_at(&agent);
-    // A key, erased: the line reads empty, and herdr-core waits out its quiet pause before it
-    // types the send it is offered.
+    // herdr-core waits out its quiet pause after a key, even one erased, before it types a send.
     person.types("x", Duration::ZERO);
     person.presses_backspace();
     wait_until_read(folder.path(), '\u{7f}');
 
     let (sender, waits) = send_telling_waits(&client, &agent, PROMPT);
     thread::sleep(Duration::from_millis(500));
-    // "Re", as the prompt starts: herdr-core's pause, not the text, tells it from the prompt.
     person.types("Re", Duration::from_millis(50));
     assert_eq!(waits.recv().unwrap(), Some(PromptWait::TypedText));
-    // herdr-core would have typed the send 3 s after "Re", after it: the client hung up.
+    // herdr-core types a held send about 3 s after the last key.
     thread::sleep(Duration::from_secs(6));
     assert_eq!(written(folder.path(), "lines"), "");
     person.erases_line();
     let (sent, told) = sender.join().unwrap();
 
     sent.unwrap();
-    // Once, alone: the person's "Re" went with the Ctrl+U they pressed.
     assert_eq!(written(folder.path(), "lines"), format!("{PROMPT}\n"));
     assert_eq!(told, [Some(PromptWait::TypedText), None]);
 }
@@ -684,7 +649,6 @@ fn a_key_pressed_after_herdr_core_typed_the_prompt_never_sends_it_again() {
     let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
     let folder = tempfile::tempdir().unwrap();
     let client = core.client();
-    // Without a turn to report, herdr-core answers the send only seconds after it typed it.
     let agent = core.run(folder.path(), &line_agent_without_turns(""));
     wait_for(&client, &agent, AgentStatus::Idle);
     // herdr-core types in a terminal that just started only once its output settled.
@@ -700,7 +664,6 @@ fn a_key_pressed_after_herdr_core_typed_the_prompt_never_sends_it_again() {
 
     let (sender, _) = send_telling_waits(&client, &agent, PROMPT);
     typed.join().unwrap();
-    // The person starts on their next message while herdr-core has not answered yet.
     person.types("next", Duration::from_millis(50));
     let (sent, told) = sender.join().unwrap();
 
@@ -723,19 +686,15 @@ fn a_dialog_opened_while_herdr_core_waits_out_its_pause_withdraws_the_prompt() {
     wait_for(&client, &agent, AgentStatus::Idle);
     thread::sleep(Duration::from_secs(3));
     let mut person = core.person_at(&agent);
-    // A key, erased: the line reads empty, and herdr-core waits out its quiet pause before it
-    // types the send it is offered.
+    // herdr-core waits out its quiet pause after a key, even one erased, before it types a send.
     person.types("x", Duration::ZERO);
     person.presses_backspace();
     wait_until_read(folder.path(), '\u{7f}');
 
     let (sender, waits) = send_telling_waits(&client, &agent, PROMPT);
-    // The client offered the send, which herdr-core holds for its pause: Ctrl+R then opens the
-    // dialog within that pause.
     thread::sleep(Duration::from_millis(500));
     person.types("\u{12}", Duration::ZERO);
     assert_eq!(waits.recv().unwrap(), Some(PromptWait::NoInputLine));
-    // Past herdr-core's pause after Ctrl+R: the send it held would have gone into the dialog.
     thread::sleep(Duration::from_secs(5));
     assert_eq!(written(folder.path(), "dialog"), "");
     person.presses_esc();
@@ -747,7 +706,6 @@ fn a_dialog_opened_while_herdr_core_waits_out_its_pause_withdraws_the_prompt() {
     assert_eq!(told, [Some(PromptWait::NoInputLine), None]);
 }
 
-/// The variable that makes [`send_from_this_terminal`] send, to the terminal it names.
 const SEND_TO: &str = "PRIVATE_CORE_SEND_TO";
 
 #[test]
@@ -767,8 +725,6 @@ fn a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged() {
     );
     wait_for(&client, &agent, AgentStatus::Idle);
 
-    // The review pane sends from a terminal of the core, which herdr-core could name as the
-    // caller, and tag what it sends.
     let this_test = std::env::current_exe().unwrap();
     let sender = core.start_in(
         folder.path(),
@@ -782,7 +738,6 @@ fn a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged() {
         ],
     );
 
-    // The sender's stream ends with its program.
     client
         .forward_agent_status(&sender, &EventCanceller::default(), &mut |_| true)
         .unwrap();
@@ -799,9 +754,6 @@ fn a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged() {
     );
 }
 
-/// What [`a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged`] runs in a
-/// terminal of the core: it sends a prompt there as the review pane does. Without its variable,
-/// it does nothing.
 #[test]
 #[ignore = "run by a_prompt_sent_from_a_terminal_of_the_core_reaches_the_agent_untagged"]
 fn send_from_this_terminal() {

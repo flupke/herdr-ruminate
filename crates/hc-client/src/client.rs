@@ -1,5 +1,3 @@
-//! herdr-core's JSON-RPC socket, one message per line.
-
 use std::collections::BTreeMap;
 use std::io::BufReader;
 use std::net::Shutdown;
@@ -28,24 +26,17 @@ use crate::focus::Focus;
 use crate::terminal::{SESSION_LABEL, Terminal, place_of, session_label};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long `terminal.send` may take once the client offered it on an empty input line: it
-/// waits until nobody typed in the terminal for about 3 seconds, however long someone types
-/// there, and, under a `draft_wait` that is not 0, while their typing there is unsent, up to 60 s
-/// past their last key, then a few seconds more to tell whether the program went working.
-/// herdr-core 0.1.20 and later cancel a send whose client gave up on it: so the bound is one
-/// that nobody types up to without a pause.
+// herdr-core's `terminal.send` waits until nobody typed in the terminal for about 3 s, however
+// long that takes, and herdr-core 0.1.20 and later cancel a send whose client gave up on it.
 const SEND_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-/// herdr-core keeps no focus and no agent session.
 #[derive(Clone, Debug)]
 pub struct HcClient {
     socket_path: PathBuf,
-    /// The home of the herdr-app screen whose focus the client follows.
     focus_home: Option<AppHome>,
 }
 
-/// A refusal of herdr-core: `{code, message, data: {kind, hint}}`.
 #[derive(Debug, Deserialize)]
 struct ApiError {
     message: String,
@@ -55,7 +46,6 @@ struct ApiError {
 
 #[derive(Debug, Deserialize)]
 struct ErrorData {
-    /// Such as `not_found`, `blocked` or `finished`.
     #[serde(default)]
     kind: Option<String>,
 }
@@ -69,7 +59,6 @@ impl ApiError {
     }
 }
 
-/// One line from herdr-core: the answer to a request, or a notification.
 #[derive(Debug, Deserialize)]
 struct Message {
     #[serde(default)]
@@ -84,14 +73,10 @@ struct Message {
     params: Option<Value>,
 }
 
-/// What `terminal.send` answers (`SendResult` in `hc schema`).
 #[derive(Debug, Deserialize)]
 struct Sent {
-    /// Whether the program went working within a few seconds; `None` when it reports no
-    /// status.
     #[serde(default)]
     started: Option<bool>,
-    /// The program's status when the text went in.
     #[serde(default)]
     status: Option<String>,
 }
@@ -101,36 +86,28 @@ struct Listed {
     terminals: Vec<Terminal>,
 }
 
-/// What `doc.get` answers for herdr-app's layout: `null` before herdr-app saved one.
 #[derive(Debug, Deserialize)]
 struct Document {
     #[serde(default)]
     value: Option<Layout>,
 }
 
-/// The snapshot `events.subscribe` answers, before the events that follow it.
 #[derive(Debug, Deserialize)]
 struct Snapshot {
     terminals: Vec<Terminal>,
 }
 
-/// The events of one subscription, in the order herdr-core sent them.
 struct Subscription {
     reader: BufReader<UnixStream>,
-    /// Ties the stream to what ends it: a read it ends is no error.
     tie: Tie,
     socket_path: PathBuf,
 }
 
-/// What [`HcClient::forward_events`] waits for: herdr-core's next event, read on a thread of its
-/// own, or herdr-app writing its view.
 enum Input {
-    /// The next event; `None` once the stream's canceller ended it.
     Event(Result<Option<Event>>),
     ViewWritten,
 }
 
-/// Ends the reads of a subscription's thread when it drops, by shutting its socket down.
 struct Reader(UnixStream);
 
 impl Drop for Reader {
@@ -139,9 +116,6 @@ impl Drop for Reader {
     }
 }
 
-/// Tells `inputs` each time herdr-app writes the view of the screen whose home is `home`, until
-/// the watch drops. A home that cannot be watched leaves the focus as first read: agent
-/// delivery does without the focus, as with only one agent in the tab, not without the events.
 fn watch_view(home: &AppHome, inputs: mpsc::Sender<Input>) -> Option<ViewWatch> {
     home.watch_view(move || {
         let _ = inputs.send(Input::ViewWritten);
@@ -150,7 +124,6 @@ fn watch_view(home: &AppHome, inputs: mpsc::Sender<Input>) -> Option<ViewWatch> 
 }
 
 impl HcClient {
-    /// A client of the core whose socket is `socket_path`.
     pub fn new(socket_path: PathBuf) -> Self {
         Self {
             socket_path,
@@ -158,9 +131,6 @@ impl HcClient {
         }
     }
 
-    /// The client, following the focus of the herdr-app screen whose home is `home`: its
-    /// session snapshot gives the focused terminal, and its events each terminal the user
-    /// focuses, as Herdr's `pane.focused` tells.
     #[must_use]
     pub fn following_focus(self, home: AppHome) -> Self {
         Self {
@@ -169,8 +139,6 @@ impl HcClient {
         }
     }
 
-    /// A client of the core of the terminal this process runs in: herdr-core gives each of its
-    /// terminals its socket in `HC_TERMINAL_SOCKET`.
     pub fn from_env() -> Result<Self> {
         std::env::var_os("HC_TERMINAL_SOCKET")
             .filter(|path| !path.is_empty())
@@ -180,7 +148,6 @@ impl HcClient {
             })
     }
 
-    /// The labels of `terminal`.
     pub fn labels(&self, terminal: &PaneId) -> Result<BTreeMap<String, String>> {
         let terminal = self.terminal(terminal)?.ok_or_else(|| Error::Herdr {
             operation: "terminal.get",
@@ -189,14 +156,10 @@ impl HcClient {
         Ok(terminal.labels)
     }
 
-    /// The space and the tab of herdr-app that `terminal` shows in, by its `herdr.space` and
-    /// `herdr.tab` labels; `None` for a terminal herdr-app does not show.
     pub fn place(&self, terminal: &PaneId) -> Result<Option<(WorkspaceId, TabId)>> {
         Ok(place_of(&self.labels(terminal)?))
     }
 
-    /// Sets `labels` on `terminal`; a label set to an empty value is removed. herdr-core tells
-    /// each subscriber of the terminal's events.
     pub fn set_labels(&self, terminal: &PaneId, labels: &BTreeMap<String, String>) -> Result<()> {
         self.call::<Value>(
             "terminal.label",
@@ -205,8 +168,6 @@ impl HcClient {
         .map(|_| ())
     }
 
-    /// Names `session` as the session that the agent `agent` of `terminal` runs, in the
-    /// terminal's session label, which herdr-core tells each subscriber of the terminal's events.
     pub fn report_session(&self, terminal: &PaneId, agent: &str, session: &str) -> Result<()> {
         self.set_labels(
             terminal,
@@ -214,8 +175,7 @@ impl HcClient {
         )
     }
 
-    /// Removes the session label of `terminal` if it still names `session` of the agent
-    /// `agent`, which ended: one a later session of the terminal set stays.
+    // herdr-core removes a label set to an empty value.
     pub fn forget_session(&self, terminal: &PaneId, agent: &str, session: &str) -> Result<()> {
         let labels = self.labels(terminal)?;
         if labels.get(SESSION_LABEL) != Some(&session_label(agent, session)) {
@@ -227,8 +187,6 @@ impl HcClient {
         )
     }
 
-    /// What `input` tells the reviewer: the arrival or departure of an agent, or the terminal
-    /// the user focuses when it changed, if any; `Break` once the stream ended.
     fn tell(
         &self,
         input: Input,
@@ -249,7 +207,6 @@ impl HcClient {
         match focus {
             Some(focus) if event.saved_document() == Some(LAYOUT_DOCUMENT) => {
                 Ok(ControlFlow::Continue(
-                    // A layout that cannot be read keeps the last one read.
                     self.layout()
                         .ok()
                         .and_then(|layout| focus.layout_changed(layout))
@@ -260,19 +217,15 @@ impl HcClient {
         }
     }
 
-    /// herdr-app's layout, which herdr-core keeps for it; empty before herdr-app saved one.
     fn layout(&self) -> Result<Layout> {
         let document: Document = self.call("doc.get", &json!({"name": LAYOUT_DOCUMENT}))?;
         Ok(document.value.unwrap_or_default())
     }
 
-    /// herdr-app's layout, or none when it cannot be read: the agents and their prompts do
-    /// without the focus, which then falls on no terminal.
     fn layout_or_none(&self) -> Layout {
         self.layout().unwrap_or_default()
     }
 
-    /// The terminal at `address`, live or finished; `None` when herdr-core has none there.
     fn terminal(&self, address: &PaneId) -> Result<Option<Terminal>> {
         match self.response(
             "terminal.get",
@@ -285,12 +238,6 @@ impl HcClient {
         }
     }
 
-    /// Pastes `text` into the terminal of `pane_id` and presses Enter, once the agent's input
-    /// line there reads empty, telling `waits` why it waits until then, unless `withdrawal` is
-    /// cancelled before herdr-core types it ([`line_wait`]). Sent
-    /// without a caller, so herdr-core types the text as it is, without the `<hc from="...">`
-    /// tags it puts around what one of its terminals sends another. The refusals `hc schema`
-    /// lists typed nothing ([`untyped`]).
     fn send(
         &self,
         pane_id: &PaneId,
@@ -301,7 +248,6 @@ impl HcClient {
         self.send_on_empty_line(pane_id, text, waits, withdrawal)
     }
 
-    /// Calls `method` with `params`, and parses its result; herdr-core's refusal is an error.
     fn call<T: DeserializeOwned>(&self, method: &'static str, params: &Value) -> Result<T> {
         match self.response(method, params, SOCKET_TIMEOUT)? {
             Ok(result) => parse(result, method),
@@ -318,7 +264,6 @@ impl HcClient {
         self.request_on(self.connect(Some(timeout))?, method, params)
     }
 
-    /// Calls `method` with `params` on `socket`, a connection of its own, and returns its answer.
     fn request_on(
         &self,
         mut socket: UnixStream,
@@ -364,9 +309,6 @@ impl HcClient {
         Ok(socket)
     }
 
-    /// Subscribes to the events of the terminals `params` match, and returns the snapshot of
-    /// those terminals with the events that follow it; `None` when `params` name a terminal
-    /// herdr-core does not know. `canceller` ends the subscription.
     fn subscribe(
         &self,
         params: &Value,
@@ -416,8 +358,6 @@ impl HcClient {
 }
 
 impl Subscription {
-    /// Reads the subscription's events on a thread of its own, which hands each to `inputs`
-    /// until the stream ends, the receiver drops, or the [`Reader`] it returns drops.
     fn forward_to(mut self, inputs: mpsc::Sender<Input>) -> Result<Reader> {
         let socket = self
             .reader
@@ -440,8 +380,6 @@ impl Subscription {
         Ok(Reader(socket))
     }
 
-    /// The next event; `None` once the stream's canceller ended it. A subscriber that fell
-    /// behind is an error: it subscribes again for a fresh snapshot.
     fn next_event(&mut self) -> Result<Option<Event>> {
         const OPERATION: &str = "read herdr-core events";
         while let Some(message) = self.next_message(OPERATION)? {
@@ -467,7 +405,6 @@ impl Subscription {
         Ok(None)
     }
 
-    /// The next line herdr-core sends; `None` once the canceller ended the stream.
     fn next_message(&mut self, operation: &'static str) -> Result<Option<Message>> {
         let line = match read_line(&mut self.reader, operation, &self.socket_path) {
             Ok(line) => line,
@@ -489,7 +426,6 @@ impl Subscription {
     }
 }
 
-/// The result of an answer, or herdr-core's refusal.
 fn answer<T: DeserializeOwned>(
     message: Message,
     method: &'static str,
@@ -511,11 +447,9 @@ fn parse<T: DeserializeOwned>(value: Value, method: &'static str) -> Result<T> {
     })
 }
 
-/// Why herdr-core typed nothing, for a refusal of `terminal.send` that `hc schema` lists; `None`
-/// for any other, which may come after it typed. The opt-in tests show `blocked` comes before
-/// it types, also for a program that blocked while the send waited for the person typing there,
-/// since herdr-core checks the status again when it types; `unavailable` says "nothing was
-/// typed"; the others check the request or the terminal before.
+// herdr-core refuses these before it types: it checks `blocked` again as it types, its
+// `unavailable` says nothing was typed, and it checks the others on the request or the terminal
+// first. Any other refusal may come after it typed.
 fn untyped(error: &ApiError) -> Option<String> {
     let kind = error.data.as_ref()?.kind.as_deref()?;
     Some(match kind {
@@ -537,8 +471,7 @@ fn refusal(method: &'static str, error: ApiError) -> Error {
 }
 
 impl AgentPort for HcClient {
-    /// herdr-core keeps no focus: herdr-app keeps it on each screen, and gives it only to a
-    /// client that follows the screen's.
+    // herdr-core keeps no focus: herdr-app keeps it, on each of its screens.
     fn session_snapshot(&self) -> Result<SessionSnapshot> {
         let focused_pane_id = match &self.focus_home {
             Some(home) => home.focused_terminal(&self.layout_or_none()).map(PaneId),
@@ -573,8 +506,8 @@ impl AgentPort for HcClient {
         self.submit_prompt_telling_waits(pane_id, text, &mut |_| {}, &EventCanceller::default())
     }
 
-    /// herdr-core tells whether the agent went working within a few seconds; an agent that
-    /// blocked on its user at once started too, as Herdr's wait judges it.
+    // herdr-core's `started` tells whether the agent went working within a few seconds; Herdr also
+    // counts an agent that blocked on its user at once as started.
     fn prompt_agent_telling_waits(
         &self,
         pane_id: &PaneId,
@@ -610,21 +543,19 @@ impl AgentPort for HcClient {
         self.send(pane_id, text, waits, withdrawal).map(|_| ())
     }
 
-    /// herdr-core tells each change of a terminal's labels, the session label's included.
+    // herdr-core sends an event for each change of a terminal's labels.
     fn announces_sessions(&self) -> bool {
         true
     }
 
-    /// `terminal.send` types only once nobody typed for about 3 s, and holds the keys pressed
-    /// while it types; the client offers it only on an empty input line.
+    // herdr-core's `terminal.send` types only once nobody typed for about 3 s, and holds the keys
+    // pressed while it types.
     fn types_prompts_whole(&self) -> bool {
         true
     }
 }
 
 impl AgentHost for HcClient {
-    /// The agents' arrivals and departures, and, for a client that follows a screen's focus,
-    /// each terminal the user focuses there, the one focused at first included.
     fn forward_events(
         &self,
         canceller: &EventCanceller,
@@ -637,9 +568,6 @@ impl AgentHost for HcClient {
             });
         };
         let mut roster = Roster::new(snapshot);
-        // A session reported, or an agent gone, while no subscription held, as when this one
-        // follows a stream that dropped, reaches no one otherwise: whoever waits on an agent
-        // looks again.
         for agent in roster.agents().collect::<Vec<_>>() {
             if !send(HerdrEvent::AgentSessionChanged(agent)) {
                 return Ok(());
@@ -647,7 +575,6 @@ impl AgentHost for HcClient {
         }
         let (inputs, received) = mpsc::channel();
         let _reader = events.forward_to(inputs.clone())?;
-        // The watch ends when it drops, with the stream.
         let (mut focus, _view_watch) = match &self.focus_home {
             Some(home) => (
                 Some(Focus::new(home.clone(), self.layout_or_none())),
@@ -659,7 +586,6 @@ impl AgentHost for HcClient {
         if focused.is_some_and(|terminal| !send(HerdrEvent::PaneFocused(terminal))) {
             return Ok(());
         }
-        // The reader's last input, the end of its stream or an error, ends the loop.
         while let Ok(input) = received.recv() {
             let ControlFlow::Continue(told) = self.tell(input, &mut roster, focus.as_mut())? else {
                 break;
@@ -671,8 +597,6 @@ impl AgentHost for HcClient {
         Ok(())
     }
 
-    /// The stream ends with the agent's program, at once when it ended already or when
-    /// herdr-core no longer knows its terminal.
     fn forward_agent_status(
         &self,
         pane_id: &PaneId,
@@ -685,8 +609,7 @@ impl AgentHost for HcClient {
             return Ok(());
         };
         let Some(terminal) = snapshot.iter().find(|terminal| terminal.is_live()) else {
-            // Its program ended already: herdr-core would tell nothing more until it removes
-            // the terminal.
+            // herdr-core sends nothing more on a finished terminal until it removes it.
             return Ok(());
         };
         if let Some(status) = &terminal.status
@@ -705,7 +628,6 @@ impl AgentHost for HcClient {
         Ok(())
     }
 
-    /// Sets the terminal's session label, as the agent's hook does under herdr-core.
     fn report_agent_session(&self, pane_id: &PaneId, report: &SessionReport<'_>) -> Result<()> {
         self.report_session(pane_id, report.agent, report.session)
     }

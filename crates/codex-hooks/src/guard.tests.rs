@@ -16,8 +16,6 @@ fn a_fork_reads_and_submits_and_does_nothing_else() {
         "create_goal",
         "collaborationspawn_agent",
         "read_mcp_resource",
-        // A tool Codex runs without asking: the user approved it, or its server marks it
-        // read-only.
         "mcp__slack__send_message",
         "mcp__herdr_reviewer__reply",
     ] {

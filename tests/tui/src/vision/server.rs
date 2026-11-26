@@ -1,8 +1,3 @@
-//! The vision MCP server: an agent's eyes and hands on the reviewer, running in herdr-common's
-//! app sandbox. herdr-common's vision core gives the tools that see and act on the app (screen,
-//! screenshot, key, type, click, drag, `wait_for`); this server adds the reviewer's own: its
-//! session, its fake agent and the agent's forks, Jev's stand-in, and the Explore page.
-
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -25,10 +20,8 @@ use vision_mcp::{Screen, Vision, VisionTools};
 use super::scratch::Seed;
 use super::session::{Session, StartOptions, from_eyre};
 
-/// The longest a `turn` or `forks` may wait.
 const MAX_WAIT_MS: u64 = 60_000;
 
-/// What the server's own tools are; the vision core's instructions follow.
 const INSTRUCTIONS: &str = "Eyes and hands on the reviewer's terminal pane. `start` builds the reviewer from this checkout and runs it in herdr-common's app sandbox, a private herdr-app on a headless display that never shows on the user's screen nor takes their focus, on a scratch repository, beside the fake agent, which plays the implementation agent and which run-ahead can fork. The reviewer's pane has the focus: key and type act on it; click and drag take the window's pixels, which screenshot shows. The reviewer speaks vision-signal, so every action returns once it has read the input and painted its reaction; the reviewer's own tools (jev, reply, fork_submit, fork_end, agent_prompt) return its screen once it painted what they did. For asynchronous work, call wait_for with the text the finished screen shows. With run-ahead on (key z in the Explore tab), forks lists the forks of the question that waits; fork_submit, fork_end (no turn, or a crash) or nothing (still working) scripts each fork, switch_unheard makes the next switch to a fork fail, and agent_working, agent_prompt and start's agent_hooks make the agent busy, move its conversation on, or run it without the reviewer's plugin hooks. Use note to record what you checked and found in the session's actions.jsonl. Call stop when done: it stops the sandbox and removes the scratch repository.";
 
 /// The repository a session reviews.
@@ -231,17 +224,13 @@ struct NoteInput {
 #[serde(deny_unknown_fields)]
 struct NoInput {}
 
-/// Where a session's reviewer comes from, and where its files go.
 #[derive(Clone)]
 pub struct Setup {
-    /// The checkout whose reviewer `start` builds.
     pub checkout: PathBuf,
-    /// The directory under which each session gets a new directory.
     pub sessions: PathBuf,
 }
 
 impl Setup {
-    /// This checkout, and `tests/tui/target/vision`.
     pub fn from_env() -> Self {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         Self {
@@ -254,14 +243,11 @@ impl Setup {
 #[derive(Clone)]
 pub(crate) struct Server {
     setup: Setup,
-    /// The reviewer's side of the running session.
     session: Arc<Mutex<Option<Session>>>,
-    /// The vision core's tools, on the session's app sandbox.
     vision: VisionTools,
     router: ToolRouter<Self>,
 }
 
-/// What a tool returns: a summary, and the reviewer's screen.
 struct Outcome {
     summary: Value,
     screen: Option<Screen>,
@@ -305,7 +291,6 @@ impl Outcome {
     }
 }
 
-/// The running session: the reviewer's side, and the vision core on its sandbox.
 struct Running<'a> {
     session: &'a mut Session,
     vision: &'a mut Vision,
@@ -321,8 +306,6 @@ impl Server {
         }
     }
 
-    /// Run `action` on the session off the async runtime, record it in the session's
-    /// transcript, and turn an error into an error result the agent reads.
     async fn run(
         &self,
         tool: &'static str,
@@ -335,7 +318,6 @@ impl Server {
         let session = Arc::clone(&self.session);
         let vision = Arc::clone(self.vision.session());
         tokio::task::spawn_blocking(move || {
-            // The reviewer's side first, then the core's, which the core's tools lock alone.
             let mut session = session.lock().unwrap_or_else(PoisonError::into_inner);
             let mut vision = vision.lock().unwrap_or_else(PoisonError::into_inner);
             let outcome = action(&setup, &mut session, &mut vision);
@@ -351,7 +333,6 @@ impl Server {
         .map_err(|error| ErrorData::internal_error(error.to_string(), None))
     }
 
-    /// Run `action` on the running session.
     async fn on_session(
         &self,
         tool: &'static str,
@@ -670,7 +651,6 @@ fn wait_guard(timeout_ms: Option<u64>, default: u64) -> Result<Duration> {
     Ok(Duration::from_millis(timeout))
 }
 
-/// Append one tool call to the session's `actions.jsonl`.
 fn record(session: &Session, tool: &str, arguments: &Value, outcome: &Result<Outcome>) {
     append(
         &session.directory().join("actions.jsonl"),
@@ -703,9 +683,6 @@ fn append(
     }
 }
 
-/// Build the reviewer of `checkout`, as the session runs it, and return its path; and the
-/// fake agent in this workspace, beside the server, which the session installs. The builds
-/// run in the checkout's dev shell, as `make` does, since the server runs outside it.
 fn build_reviewer(checkout: &std::path::Path) -> Result<PathBuf> {
     let build = |arguments: &[&str]| -> Result<()> {
         let output = std::process::Command::new(checkout.join("scripts/dev-shell"))
@@ -743,8 +720,6 @@ fn build_reviewer(checkout: &std::path::Path) -> Result<PathBuf> {
     Ok(target.join("debug/reviewer"))
 }
 
-/// Serve the vision tools on standard input and output until the client leaves or a signal
-/// stops the server; a running session stops then.
 pub fn serve(setup: Setup) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

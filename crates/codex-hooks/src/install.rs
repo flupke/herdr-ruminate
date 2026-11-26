@@ -1,6 +1,3 @@
-//! Installs the plugin in the user's Codex home, and removes it, as `make install` and
-//! `make uninstall` do.
-
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -14,20 +11,14 @@ use serde_json::{Map, Value, json};
 
 use crate::app_server::AppServer;
 
-/// The program of Codex's CLI.
 const CODEX: &str = "codex";
 
-/// The marketplace that lists the plugin.
 const MARKETPLACE: &str = "herdr-progressive-reviewer";
 
-/// The plugin, as Codex names it.
 pub const PLUGIN: &str = "progressive-reviewer@herdr-progressive-reviewer";
 
-/// The command of the plugin's hook in `plugin/hooks/hooks.json`, which the installation
-/// replaces with one that names the checkout's `reviewer-control`.
 const COMMAND: &str = "reviewer-control codex-hook";
 
-/// The files of the marketplace and of its plugin, by their paths in the marketplace.
 const FILES: [(&str, &str); 3] = [
     (
         ".agents/plugins/marketplace.json",
@@ -43,13 +34,10 @@ const FILES: [(&str, &str); 3] = [
     ),
 ];
 
-/// Whether the `codex` program is on `PATH`, where the installation runs it: without it,
-/// `make install` skips the plugin and Codex's MCP registration.
 pub fn codex_on_path() -> bool {
     std::env::var_os("PATH").is_some_and(|path| finds(&path, CODEX))
 }
 
-/// Whether a directory of `path`, a `PATH` value, holds an executable file named `program`.
 fn finds(path: &OsStr, program: &str) -> bool {
     std::env::split_paths(path).any(|directory| {
         fs::metadata(directory.join(program))
@@ -57,11 +45,6 @@ fn finds(path: &OsStr, program: &str) -> bool {
     })
 }
 
-/// Installs the plugin, whose hook runs `control`, in the Codex home of `codex`'s environment
-/// (`CODEX_HOME`, or `~/.codex`), and trusts its hook. The marketplace is written beside
-/// `control`, where Codex finds it again. Run again, from another checkout too, it installs the
-/// plugin of `control` in place of the earlier one. Without `codex` on `PATH`, it says so and
-/// installs nothing; a `codex` that fails is an error.
 pub fn install(control: &Path) -> eyre::Result<()> {
     if !codex_on_path() {
         eprintln!("Codex: no `{CODEX}` on PATH, skipped the plugin {PLUGIN}");
@@ -71,8 +54,7 @@ pub fn install(control: &Path) -> eyre::Result<()> {
     let marketplace = marketplace_of(control);
     write_marketplace(&marketplace, control)?;
     let source = marketplace.to_string_lossy();
-    // Codex refuses a marketplace of the same name from another source, such as an earlier
-    // checkout's.
+    // Codex refuses a marketplace of the same name from another source.
     if !succeeds(&["plugin", "marketplace", "add", &source]) {
         codex(&["plugin", "marketplace", "remove", MARKETPLACE])?;
         codex(&["plugin", "marketplace", "add", &source])?;
@@ -83,9 +65,6 @@ pub fn install(control: &Path) -> eyre::Result<()> {
     Ok(())
 }
 
-/// Removes the trust of the plugin's hooks, the plugin and its marketplace from the Codex home
-/// of `codex`'s environment, and the marketplace written beside `control`. Without `codex` on
-/// `PATH`, it removes that marketplace alone, and leaves Codex's home as it is.
 pub fn uninstall(control: &Path) -> eyre::Result<()> {
     let _turn = lock_marketplace(control)?;
     if codex_on_path() {
@@ -102,9 +81,6 @@ pub fn uninstall(control: &Path) -> eyre::Result<()> {
     }
 }
 
-/// An exclusive lock on the marketplace beside `control`, held until the file is dropped:
-/// installs and uninstalls that run at once, such as tests in processes of their own, take
-/// turns, or one removes the folder another writes or hands to Codex.
 fn lock_marketplace(control: &Path) -> eyre::Result<fs::File> {
     let path = control.with_file_name("codex-plugin.lock");
     let file =
@@ -114,12 +90,10 @@ fn lock_marketplace(control: &Path) -> eyre::Result<fs::File> {
     Ok(file)
 }
 
-/// Where the marketplace of the plugin whose hook runs `control` is written.
 fn marketplace_of(control: &Path) -> std::path::PathBuf {
     control.with_file_name("codex-plugin")
 }
 
-/// Writes the marketplace in `directory`, with the plugin whose hook runs `control`.
 fn write_marketplace(directory: &Path, control: &Path) -> eyre::Result<()> {
     match fs::remove_dir_all(directory) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
@@ -135,14 +109,12 @@ fn write_marketplace(directory: &Path, control: &Path) -> eyre::Result<()> {
     Ok(())
 }
 
-/// The command of the hook that runs `control`: Codex runs it with the user's shell, as
-/// `$SHELL -lc <command>`.
+// Codex runs a hook's command with the user's shell, as `$SHELL -lc <command>`.
 fn hook_command(control: &Path) -> String {
     let control = control.to_string_lossy().replace('\'', r"'\''");
     format!("'{control}' {}", crate::SUBCOMMAND)
 }
 
-/// Runs `codex` with `arguments`, its output the user's.
 fn codex(arguments: &[&str]) -> eyre::Result<()> {
     let status = Command::new(CODEX)
         .args(arguments)
@@ -156,7 +128,6 @@ fn codex(arguments: &[&str]) -> eyre::Result<()> {
     Ok(())
 }
 
-/// Whether `codex` with `arguments` succeeds; its output is shown only then.
 fn succeeds(arguments: &[&str]) -> bool {
     Command::new(CODEX)
         .args(arguments)
@@ -169,7 +140,6 @@ fn succeeds(arguments: &[&str]) -> bool {
         })
 }
 
-/// The answer to `hooks/list`.
 #[derive(Deserialize)]
 struct HooksList {
     data: Vec<HooksOfDirectory>,
@@ -188,8 +158,8 @@ struct ListedHook {
     plugin_id: Option<String>,
 }
 
-/// Trusts each hook of the plugin, as Codex's `/hooks` does: Codex runs a hook whose hash its
-/// configuration's `hooks.state` holds. Returns how many it trusted.
+// Codex runs a hook only once its configuration's `hooks.state` holds its hash, as Codex's
+// `/hooks` records it.
 fn trust() -> eyre::Result<usize> {
     let mut server = AppServer::start(CODEX)?;
     let listed: HooksList = server.request("hooks/list", &json!({}))?;
@@ -208,7 +178,6 @@ fn trust() -> eyre::Result<usize> {
     Ok(state.len())
 }
 
-/// The answer to `config/read` with its layers.
 #[derive(Deserialize)]
 struct ConfigRead {
     layers: Vec<ConfigLayer>,
@@ -231,9 +200,7 @@ struct LayerName {
     profile: Option<String>,
 }
 
-/// Removes the trust of each hook of the plugin from the user's configuration: Codex has no
-/// edit that removes a key, so the user's `hooks.state` is written again without them. Returns
-/// how many it removed.
+// Codex's configuration edits cannot remove a key.
 fn untrust() -> eyre::Result<usize> {
     let mut server = AppServer::start(CODEX)?;
     let read: ConfigRead = server.request("config/read", &json!({"includeLayers": true}))?;
@@ -264,8 +231,7 @@ fn untrust() -> eyre::Result<usize> {
     Ok(removed)
 }
 
-/// `state`, a configuration's `hooks.state`, without the entries of the plugin's hooks, and how
-/// many those were. A hook's key starts with the plugin's ID.
+// Codex's key of a plugin's hook in `hooks.state` starts with the plugin's ID.
 fn without_plugin(state: Map<String, Value>) -> (usize, Map<String, Value>) {
     let prefix = format!("{PLUGIN}:");
     let before = state.len();

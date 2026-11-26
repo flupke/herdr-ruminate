@@ -1,8 +1,3 @@
-//! A herdr-core (`hc`) of a test's own, never the user's: its own `HC_SESSION` and scratch
-//! `XDG_*` folders, stopped with the test. The tests that use it are opt-in, since each starts a
-//! core of its own: they take the dev shell's pinned `hc` (`TEST_HC_BIN_PATH`), or else `hc` on
-//! the `PATH`.
-
 #![allow(
     clippy::missing_panics_doc,
     reason = "test fixture methods fail fast by design"
@@ -23,23 +18,14 @@ use serde_json::{Value, json};
 
 const SESSION: &str = "t";
 
-/// A shell line that reports `state` as Claude Code does, with OSC 7501.
 pub fn report(state: &str) -> String {
     format!(r"printf '\033]7501;app=claude-code:state={state}\007';")
 }
 
-/// A shell line that draws Claude Code's empty input line between its two rules, and echoes no
-/// key typed in the terminal: the client sends to the agent only on an empty line.
 pub fn input_line() -> &'static str {
     r"stty -echo; printf '\n──── worker ─\n❯ \n────────────\n';"
 }
 
-/// A shell script that plays Claude Code's input line: it draws what is typed in it between two
-/// rules, takes Backspace and Ctrl+U as Claude Code does, and writes each line submitted with
-/// Enter to `lines`, and when, in nanoseconds since the epoch, to `submitted`, going working then
-/// idle; it writes each key it reads to `keys`. Ctrl+R opens a dialog in place of the input line,
-/// as Claude Code's rewind does, which writes each key it gets to `dialog` until Esc closes it.
-/// `before` runs first.
 pub fn line_agent(before: &str) -> String {
     agent_of_line(
         before,
@@ -47,20 +33,14 @@ pub fn line_agent(before: &str) -> String {
     )
 }
 
-/// [`line_agent`], but for an agent that reports no turn on what is submitted, as for a command
-/// of its own: herdr-core answers a send to it only a few seconds after it typed it.
 pub fn line_agent_without_turns(before: &str) -> String {
     agent_of_line(before, "")
 }
 
-/// [`line_agent_without_turns`], but for an agent that shows the line it took in its input line
-/// once submitted, as an agent shows that it took a prompt: a look at its screen tells that
-/// herdr-core typed the prompt, which it answers only seconds later.
 pub fn line_agent_keeping_its_line(before: &str) -> String {
     agent_of_line(before, r#"typed="$(tail -n 1 lines)""#)
 }
 
-/// The script of [`line_agent`], which runs `on_enter` once a line is submitted.
 fn agent_of_line(before: &str, on_enter: &str) -> String {
     format!(
         r#"{before} stty -echo -icanon; typed=''; mode=line
@@ -85,22 +65,18 @@ done"#,
     )
 }
 
-/// What the agent in `folder` wrote to its file `name`; empty before it wrote any.
 pub fn written(folder: &std::path::Path, name: &str) -> String {
     std::fs::read_to_string(folder.join(name)).unwrap_or_default()
 }
 
-/// Waits until the agent in `folder` read `key`: it tells no one, but writes each key it reads
-/// to its `keys` file.
 pub fn wait_until_read(folder: &std::path::Path, key: char) {
     while !written(folder, "keys").contains(key) {
         thread::sleep(Duration::from_millis(10));
     }
 }
 
-/// A herdr-core started for one test, and stopped with it.
 pub struct PrivateCore {
-    /// Short, under `/tmp`: the socket's path must fit in 107 bytes.
+    // Linux limits a Unix socket's path to 107 bytes.
     runtime: tempfile::TempDir,
     home: tempfile::TempDir,
 }
@@ -110,13 +86,11 @@ impl PrivateCore {
         Self::start_with(&[])
     }
 
-    /// A core that holds a send behind a person's unsent typing in a terminal for up to `hold`
-    /// after their last key, in place of its 60 s (`HC_DRAFT_MS`, hc 0.1.20 and later).
+    // herdr-core 0.1.20 and later hold a send behind unsent typing for `HC_DRAFT_MS` (60 s).
     pub fn holding_unsent_typing_for(hold: Duration) -> Self {
         Self::start_with(&[("HC_DRAFT_MS", hold.as_millis().to_string())])
     }
 
-    /// A core started with the variables `settings` beside its own.
     fn start_with(settings: &[(&str, String)]) -> Self {
         let core = Self {
             runtime: tempfile::Builder::new()
@@ -134,23 +108,16 @@ impl PrivateCore {
         core
     }
 
-    /// The runtime folder of the core, the `XDG_RUNTIME_DIR` of its terminals.
     pub fn runtime(&self) -> &Path {
         self.runtime.path()
     }
 
-    /// Runs `hc` with `arguments` on this core, and returns what it printed; fails the test
-    /// when it fails.
     pub fn hc(&self, arguments: &[&str]) -> String {
         let output = self.command(arguments).output().unwrap();
         assert!(output.status.success(), "hc {arguments:?}: {output:?}");
         String::from_utf8(output.stdout).unwrap()
     }
 
-    /// `hc` with `arguments` on this core, in this process's environment but for the hosts'
-    /// variables, this core's alone. A terminal takes the environment of the core, which
-    /// [`Self::start`] started with that of the test, not that of the `hc run` that starts
-    /// it: start the program through `env` to change it.
     pub fn command(&self, arguments: &[&str]) -> Command {
         let mut command = Command::new(hc_binary());
         command.args(arguments);
@@ -158,8 +125,7 @@ impl PrivateCore {
         command
     }
 
-    /// Gives `command` this core's variables in place of those of the hosts this process runs
-    /// under, a Herdr or another herdr-core.
+    // A Herdr or a herdr-core this process runs under sets these, which `hc` would follow.
     fn isolate(&self, command: &mut Command) {
         for name in [
             "HC_TERMINAL_ID",
@@ -173,7 +139,6 @@ impl PrivateCore {
         command.envs(self.environment());
     }
 
-    /// The variables that make `hc` talk to this core.
     fn environment(&self) -> Vec<(&'static str, OsString)> {
         let folder = |name: &str| self.home.path().join(name).into_os_string();
         vec![
@@ -183,7 +148,6 @@ impl PrivateCore {
             ("XDG_CONFIG_HOME", folder("config")),
             ("XDG_DATA_HOME", folder("data")),
             ("XDG_CACHE_HOME", folder("cache")),
-            // Over a bus file the test's own environment names: the user's, maybe.
             ("HERDR_BUS_DB", folder("bus.db")),
         ]
     }
@@ -199,8 +163,6 @@ impl PrivateCore {
         HcClient::new(self.socket())
     }
 
-    /// Writes `value` as herdr-core's document `name`, never written before, as herdr-app writes
-    /// its layout in the `herdr-app` document.
     pub fn set_document(&self, name: &str, value: &Value) {
         let mut socket = UnixStream::connect(self.socket()).unwrap();
         let request = json!({
@@ -216,12 +178,10 @@ impl PrivateCore {
         assert!(answer["error"].is_null(), "doc.set {name}: {answer}");
     }
 
-    /// Runs `script` in a new terminal of the tab `tb1`, in `folder`; returns its address.
     pub fn run(&self, folder: &Path, script: &str) -> PaneId {
         self.start_in(folder, &["bash", "-c", script])
     }
 
-    /// Runs `argv` in a new terminal of the tab `tb1`, in `folder`; returns its address.
     pub fn start_in(&self, folder: &Path, argv: &[&str]) -> PaneId {
         let folder = folder.to_str().unwrap();
         let output = self
@@ -241,7 +201,6 @@ impl PrivateCore {
         PaneId(started["address"].as_str().unwrap().to_owned())
     }
 
-    /// What `terminal` shows, and its history; read as a test fails, so it never panics.
     pub fn screen(&self, terminal: &PaneId) -> String {
         self.command(&["read", &terminal.0]).output().map_or_else(
             |error| format!("(unread: {error})"),
@@ -249,8 +208,7 @@ impl PrivateCore {
         )
     }
 
-    /// Waits until herdr-core names the foreground process of `terminal`, which it tells only
-    /// in its raw events.
+    // herdr-core tells a terminal's foreground process only in its raw events.
     pub fn wait_for_foreground(&self, terminal: &PaneId) {
         let mut socket = UnixStream::connect(self.socket()).unwrap();
         let request = json!({
@@ -271,8 +229,6 @@ impl PrivateCore {
         panic!("herdr-core closed the stream before it named the foreground process");
     }
 
-    /// A person at a window attached to `terminal`, whose keys herdr-core tells from those a
-    /// program sends: `terminal.send` waits until they stop typing.
     pub fn person_at(&self, terminal: &PaneId) -> Person {
         // `hc attach` wants a terminal: `script` gives it one, and passes it what it is piped.
         let attach = format!("{} attach {}", quoted(&hc_binary()), terminal.0);
@@ -287,7 +243,7 @@ impl PrivateCore {
             .unwrap();
         let keys = window.stdin.take().unwrap();
         let mut screen = window.stdout.take().unwrap();
-        // The window takes keys once it drew the terminal, which herdr-core tells no other way.
+        // `hc attach` takes keys only once it drew the terminal, which herdr-core tells nowhere.
         let (drawn, drawing) = mpsc::channel();
         thread::spawn(move || {
             let mut chunk = [0; 4096];
@@ -311,15 +267,12 @@ impl Drop for PrivateCore {
     }
 }
 
-/// A person who types in a terminal of a [`PrivateCore`], through a window attached to it.
 pub struct Person {
     window: Child,
-    /// `None` once the window detached.
     keys: Option<ChildStdin>,
 }
 
 impl Person {
-    /// Types `text` one key every `pace`, as a person does.
     pub fn types(&mut self, text: &str, pace: Duration) {
         for key in text.chars() {
             let mut bytes = [0; 4];
@@ -328,22 +281,18 @@ impl Person {
         }
     }
 
-    /// Presses Enter.
     pub fn presses_enter(&mut self) {
         self.press(b"\r");
     }
 
-    /// Presses Backspace.
     pub fn presses_backspace(&mut self) {
         self.press(b"\x7f");
     }
 
-    /// Presses Esc.
     pub fn presses_esc(&mut self) {
         self.press(b"\x1b");
     }
 
-    /// Presses Ctrl+U, which empties the line.
     pub fn erases_line(&mut self) {
         self.press(b"\x15");
     }
@@ -356,8 +305,6 @@ impl Person {
 }
 
 impl Drop for Person {
-    /// Detaches the window, after the keys pressed before, and waits until it closed: `script`
-    /// closes it at the end of its input, should Ctrl+\ no longer detach.
     fn drop(&mut self) {
         if let Some(mut keys) = self.keys.take() {
             // Ctrl+\ detaches an `hc attach`.
@@ -369,7 +316,6 @@ impl Drop for Person {
     }
 }
 
-/// `path` quoted for a shell.
 fn quoted(path: &OsStr) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"))
 }

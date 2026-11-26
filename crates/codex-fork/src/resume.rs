@@ -1,11 +1,3 @@
-//! Moving the Codex agent of a Herdr pane to another session: the reviewer types Codex's own
-//! `/resume <session>`, the daemon tells that a client joined the session and that it is idle,
-//! then the host names the session as the pane's and reports it to Herdr.
-//!
-//! Text left in Codex's input box would join the typed `/resume` into one prompt, which the
-//! agent would take a turn on, on the session it runs: while the agent moves, the reviewer's
-//! Codex plugin blocks every prompt of that session, and the move fails.
-
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -14,42 +6,30 @@ use codex_daemon::{Daemon, SessionEvent, SessionStatus};
 use herdr_client::protocol::{Agent, AgentHost, PaneId, SessionReport};
 use review_run_ahead::{RunAheadLog, SwitchFailure, resume_block};
 
-/// How long the daemon's client waits to join the session, a request of the daemon's.
 const JOIN_LIMIT: Duration = Duration::from_secs(10);
 
-/// The source of Herdr's own Codex hook, whose reports the host's report takes the place of
-/// until that hook reports the session itself, at the agent's next turn.
 const HERDR_CODEX: &str = "herdr:codex";
 
-/// The move of the Codex agent of `pane` to the session `session` of `daemon`.
 pub(crate) struct Resume<'a> {
     pub(crate) host: &'a dyn AgentHost,
     pub(crate) pane: &'a PaneId,
     pub(crate) hooks: Option<&'a AgentHooks>,
     pub(crate) daemon: Daemon,
     pub(crate) session: &'a str,
-    /// Another session the agent may run, besides the one the reviewer knows it on: a fork's,
-    /// when the agent moves back from it after a switch that failed once `/resume` was typed.
     pub(crate) maybe_on: Option<&'a str>,
-    /// How long it waits once the agent was told to resume the session.
     pub(crate) limit: Duration,
-    /// How often it looks at what the plugin's hook and the daemon said meanwhile.
     pub(crate) poll: Duration,
-    /// How long the daemon's client waits before it connects again after it lost the daemon.
     pub(crate) retry: Duration,
     pub(crate) log: &'a RunAheadLog,
 }
 
-/// What the daemon said of the session the agent moves to, as far as the move needs it.
 #[derive(Default)]
 struct Joined {
-    /// Another client joined the session: the agent's TUI.
     resumed: bool,
     status: Option<SessionStatus>,
 }
 
 impl Joined {
-    /// Takes what the daemon said since, from `events`.
     fn hear(&mut self, events: &Receiver<SessionEvent>) {
         for event in events.try_iter() {
             match event {
@@ -64,9 +44,6 @@ impl Joined {
 }
 
 impl Resume<'_> {
-    /// Has the agent, idle, resume the session, and waits until the daemon tells that it did
-    /// and that the session is idle: the agent as Herdr then reports it, or why not. A prompt
-    /// submitted meanwhile on the session the agent ran is blocked, and fails the move.
     pub(crate) fn run(self) -> Result<Agent, SwitchFailure> {
         let hooks = self.hooks.ok_or_else(|| {
             SwitchFailure::untyped("the reviewer does not listen to the agent's hooks")
@@ -88,11 +65,11 @@ impl Resume<'_> {
         let _follow = self.daemon.follow(self.session, self.retry, move |event| {
             let _ = heard.send(event);
         });
-        // The client joins the session first, so that it hears the TUI join it next.
         let joined = self.join(&events, Instant::now() + JOIN_LIMIT)?;
         let command = format!("/resume {}", self.session);
         let block = resume_block(&command);
-        // The prompt the text and the command make runs on the session the agent is on.
+        // Codex joins text left in its input box and the typed `/resume` into one prompt, which
+        // runs on the session the agent is on.
         let expectations: Vec<Expectation> = std::iter::once(hooked)
             .chain(self.maybe_on.map(|session| HookedAgent::Codex {
                 session: session.to_owned(),
@@ -117,8 +94,6 @@ impl Resume<'_> {
             .unwrap_or(agent))
     }
 
-    /// Waits, until `deadline`, for the daemon's client to join the session, as `events` tell;
-    /// returns the session's status then.
     fn join(
         &self,
         events: &Receiver<SessionEvent>,
@@ -149,9 +124,6 @@ impl Resume<'_> {
         }
     }
 
-    /// Waits, until `deadline`, for the daemon to tell, through `events`, that another client
-    /// joined the session and that it is idle, once the agent was told `command`; a prompt the
-    /// plugin's hook blocked meanwhile, as `expectations` hear, fails the move.
     fn wait_until_moved(
         &self,
         expectations: &[Expectation],
@@ -160,9 +132,7 @@ impl Resume<'_> {
         command: &str,
         deadline: Instant,
     ) -> Result<(), SwitchFailure> {
-        // The plugin's hook and the daemon wake no common waiter: the wait alternates.
         let slice = self.poll / u32::try_from(expectations.len()).unwrap_or(1).max(1);
-        // What the hook blocked, waiting at most `limit` on each expectation.
         let blocked = |limit: Duration| {
             expectations
                 .iter()
@@ -197,8 +167,7 @@ impl Resume<'_> {
         }
     }
 
-    /// Herdr's own Codex hook reports the session only at the agent's next turn. Under
-    /// herdr-core, nothing names a Codex agent's session, so this never runs.
+    // Herdr's own Codex hook reports a resumed session only at the agent's next turn.
     fn report_to_host(&self) {
         let seq = SystemTime::now()
             .duration_since(UNIX_EPOCH)

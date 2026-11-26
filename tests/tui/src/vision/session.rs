@@ -1,9 +1,3 @@
-//! One vision session: the reviewer in herdr-common's app sandbox, a private herdr-app on a
-//! headless display, on a scratch repository, beside a fake agent that run-ahead can fork.
-//! The vision core (`vision_mcp::Vision`) sees and drives the app; this session holds what is the
-//! reviewer's own: its scratch repository, its terminals, and the fake agent and its forks,
-//! which report on the session's event socket.
-
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -22,33 +16,24 @@ use super::agent::ScriptedAgent;
 use super::forks;
 use super::scratch::{Scratch, Seed};
 
-/// How long the reviewer may take to read an input and paint its reaction, or to paint its first
-/// frame, and the fake agent to answer. It fires only when something went wrong.
 const REACTION_GUARD: Duration = Duration::from_secs(30);
 
-/// The app's window: wide enough for the reviewer beside its agent.
 const DISPLAY_SIZE: (u16, u16) = (1600, 1000);
 
-/// The fake agent's name on the event socket.
 pub(crate) const AGENT: &str = "agent";
 
-/// The event socket the fake agent and its forks report on, in the sandbox's directory: its
-/// path there is short, as a socket's must be, and both sides reach it.
+// Linux limits a Unix socket's path to 107 bytes.
 const EVENTS_SOCKET: &str = "fake-agent.sock";
 
-/// The prefix of the reviewer's MCP tools, as Claude Code names them in a fork's output.
+// Claude Code names an MCP tool `mcp__<server>__<tool>`.
 const MCP_TOOL_PREFIX: &str = "mcp__herdr_reviewer__";
 
-/// What a session starts on.
 pub(crate) struct StartOptions {
     pub(crate) repository: RepoType,
     pub(crate) seed: Seed,
-    /// Whether the fake agent runs the hooks of the reviewer's Claude Code plugin, which
-    /// run-ahead needs.
     pub(crate) agent_hooks: bool,
 }
 
-/// The session's terminals in the app, by their hc addresses (`t2`), and their panes.
 struct Terminals {
     agent: String,
     agent_pane: String,
@@ -57,22 +42,16 @@ struct Terminals {
 }
 
 pub(crate) struct Session {
-    /// The "reviewer vision" space, where the reviewer runs.
     space: String,
     terminals: Terminals,
-    /// What the fake agent and its forks report.
     events: Events,
     scratch: Scratch,
     reviewer_program: PathBuf,
-    /// Whether the fake agent runs the hooks of the reviewer's Claude Code plugin.
     agent_hooks: bool,
     agent: ScriptedAgent,
 }
 
 impl Session {
-    /// Start an app sandbox on a new scratch repository, with the reviewer `reviewer` beside its
-    /// fake agent in a "reviewer vision" space, and wait for the reviewer's first frame.
-    /// Returns the session, the vision core on the sandbox, and the reviewer's first screen.
     pub(crate) fn start(
         reviewer: PathBuf,
         options: &StartOptions,
@@ -89,8 +68,6 @@ impl Session {
             },
         )
         .map_err(from_eyre)?;
-        // The server calls the reviewer's MCP endpoint as the agent and its forks, and the
-        // Explore page's network listener is for a browser on the host.
         for port in [scratch.mcp_port(), scratch.page_port()] {
             sandbox.forward(port).map_err(from_eyre)?;
         }
@@ -105,7 +82,7 @@ impl Session {
             ])
             .map_err(from_eyre)?;
         let terminals = open_terminals(&vision, &scratch, &reviewer, options.agent_hooks, &events)?;
-        // The space's own first tab, a shell, once the session's tab took the focus.
+        // herdr-app opens a new space with a shell in its first tab.
         do_command(&vision, "tab.close", &json!({"id": string(&space["tab"])?}))?;
         let agent = ScriptedAgent::new(scratch.turns(), scratch.mcp_port());
         let session = Self {
@@ -121,13 +98,10 @@ impl Session {
         Ok((session, vision, screen))
     }
 
-    /// The reviewer's first screen, once the app also knows the fake agent: Explore prompts
-    /// it from the start.
     fn first_screen(&self, vision: &Vision) -> Result<Screen> {
         wait_app(vision, "the app to see the fake agent's status", |listed| {
             terminal_entry(listed, &self.terminals.agent).is_some_and(|t| !t["status"].is_null())
         })?;
-        // Each frame shows the reviewer's tabs.
         vision
             .wait_for(
                 "Explore",
@@ -138,7 +112,6 @@ impl Session {
             .map_err(|error| anyhow!("the reviewer did not start: {error:#}"))
     }
 
-    /// What `start` and `reopen` report besides the screen.
     pub(crate) fn describe(&self, vision: &Vision) -> Value {
         json!({
             "space": self.space,
@@ -159,10 +132,7 @@ impl Session {
         self.scratch.directory()
     }
 
-    /// Ask the reviewer for an acknowledgement, with no input, and return the screen of the
-    /// frame that names it: the reviewer's reaction to what reached it meanwhile, such as an
-    /// agent's tool call. The reviewer takes the focus first: the request goes to the focused
-    /// terminal.
+    // herdr-common's vision core sends the acknowledgement request to the focused terminal.
     pub(crate) fn settle(&self, vision: &mut Vision) -> Result<Screen> {
         self.focus_reviewer(vision)?;
         let (_, screen) = vision.settle().map_err(from_eyre)?;
@@ -182,8 +152,6 @@ impl Session {
         Ok(())
     }
 
-    /// Classify as insignificant the hunks of `path` that hold `lines`, as Jev would, press
-    /// `rf`, and return the screen once Jev's classification has finished, or `rf` refused.
     pub(crate) fn jev(&self, vision: &mut Vision, path: &str, lines: &[u32]) -> Result<Screen> {
         fs::write(
             self.scratch.jev_script(),
@@ -211,8 +179,6 @@ impl Session {
         self.agent.next_turn(after, guard)
     }
 
-    /// Answer turn `turn` with `tool`, and return the tool's result with the screen once the
-    /// reviewer has shown it.
     pub(crate) fn reply(
         &mut self,
         vision: &mut Vision,
@@ -224,8 +190,6 @@ impl Session {
         Ok((result, self.settle(vision)?))
     }
 
-    /// The forks run-ahead started, once `count` did when it is given, waiting up to `guard`;
-    /// the agent's sessions; and run-ahead's log.
     pub(crate) fn forks(&self, count: Option<usize>, guard: Duration) -> Result<Value> {
         if let Some(count) = count {
             self.events
@@ -234,7 +198,6 @@ impl Session {
                 })
                 .map_err(|error| anyhow!(error))?;
         }
-        // A wait whose condition held at once took in none of the events that came since.
         let received = self.received()?;
         Ok(json!({
             "forks": forks::forks(&received),
@@ -243,10 +206,6 @@ impl Session {
         }))
     }
 
-    /// Submit the turn of the fork `session` with `tool`, as that fork: the reviewer's tool on
-    /// its real endpoint, with the identity of the fork's prompt where `arguments` leave it out;
-    /// then the fork's output shows the call and its result. Returns the tool's result once the
-    /// fork showed them, with the screen once the reviewer has shown it.
     pub(crate) fn fork_submit(
         &mut self,
         vision: &mut Vision,
@@ -268,8 +227,6 @@ impl Session {
         Ok((result, self.settle(vision)?))
     }
 
-    /// End the turn of the fork `session` without a submit, or make it crash when `crash`: it
-    /// exits with a failure and no result. Returns the screen once the fork's process ended.
     pub(crate) fn fork_end(
         &mut self,
         vision: &mut Vision,
@@ -306,9 +263,6 @@ impl Session {
             .with_context(|| format!("no fork has the session {session}"))
     }
 
-    /// Make the agent's next `/resume` one that the reviewer's hooks never hear of, as when
-    /// Claude Code's session hooks fail, or hear of only `heard_after` later: the next switch to
-    /// a fork waits for them, in vain or that long.
     pub(crate) fn switch_unheard(&self, heard_after: Option<Duration>) -> Result<()> {
         let agent = self.scratch.agent_directory();
         fs::create_dir_all(agent.path())?;
@@ -317,8 +271,6 @@ impl Session {
         Ok(())
     }
 
-    /// Submit `text` in the fake agent's terminal, as its user would, and return once the
-    /// agent read it: a prompt moves its conversation on.
     pub(crate) fn agent_prompt(&self, vision: &mut Vision, text: &str) -> Result<Screen> {
         ensure!(
             !text.trim().is_empty(),
@@ -326,7 +278,7 @@ impl Session {
         );
         let from = self.received()?.len();
         let agent = Role::agent(AGENT);
-        // herdr-core pastes it and presses Enter, without moving the focus.
+        // `hc send` pastes the text and presses Enter without moving the focus.
         vision
             .sandbox()
             .hc(&["send", "--force", &self.terminals.agent, text])
@@ -347,8 +299,6 @@ impl Session {
         self.settle(vision)
     }
 
-    /// Run the Herdr action that opens the Explore page in the sandbox, and return the address
-    /// it opened, which the host reaches once its port is forwarded.
     pub(crate) fn explore_page(&self, vision: &Vision) -> Result<String> {
         let sandbox = vision.sandbox();
         let action = sandbox.command(&self.reviewer_program.with_file_name("reviewer-control"));
@@ -360,17 +310,12 @@ impl Session {
         Ok(page)
     }
 
-    /// Start the reviewer and its fake agent again, in a new tab, on the same repository
-    /// and state; the agent runs the plugin's hooks as `agent_hooks` says, or as before. With
-    /// `workspace`, both run in that workspace of the repository from now on (see
-    /// [`Scratch::enter_workspace`]).
     pub(crate) fn reopen(
         &mut self,
         vision: &mut Vision,
         agent_hooks: Option<bool>,
         workspace: Option<&str>,
     ) -> Result<Screen> {
-        // The reviewer first: the next one binds the same MCP port.
         close_terminal(
             vision,
             &self.terminals.reviewer,
@@ -387,8 +332,7 @@ impl Session {
             self.agent_hooks,
             &self.events,
         )?;
-        // The old agent once the new one holds the space: the app refuses to close a space's
-        // last pane without a confirmation.
+        // herdr-app refuses to close a space's last pane without a confirmation.
         close_terminal(vision, &self.terminals.agent, &self.terminals.agent_pane)?;
         self.terminals = open_reviewer(
             vision,
@@ -400,12 +344,9 @@ impl Session {
         self.first_screen(vision)
     }
 
-    /// Show the fake agent working without a turn, as an agent at work on what no prompt
-    /// started, or idle again, and return the reviewer's screen once the app shows it so.
     pub(crate) fn agent_working(&self, vision: &mut Vision, working: bool) -> Result<Screen> {
         self.obey(&Role::agent(AGENT), &Command::ShowWorking { working })?;
-        // Once its work ends, the app shows the agent `done` until its pane is seen, which the
-        // reviewer takes as idle.
+        // herdr-app shows an agent `done` once its work ends, until its pane is seen.
         let shown = |status: &str| {
             if working {
                 status == "working"
@@ -447,7 +388,6 @@ impl Session {
     }
 }
 
-/// Open the fake agent in a new tab of the focused space, then the reviewer right of it.
 fn open_terminals(
     vision: &Vision,
     scratch: &Scratch,
@@ -459,8 +399,6 @@ fn open_terminals(
     open_reviewer(vision, scratch, reviewer, agent, agent_pane)
 }
 
-/// Open the fake agent in a new tab of the focused space, and return its terminal and its
-/// pane once it connected to `events`.
 fn open_agent(
     vision: &Vision,
     scratch: &Scratch,
@@ -484,8 +422,6 @@ fn open_agent(
             "name": "fake agent",
         }),
     )?;
-    // The agent that connects from now on is the new one: one a reopen replaced keeps its
-    // connection until its process ends.
     let role = Role::agent(AGENT);
     events
         .try_wait_until("the fake agent", REACTION_GUARD, |received| {
@@ -495,7 +431,7 @@ fn open_agent(
         })
         .map_err(|error| anyhow!(error))?;
     let terminal = string(&agent["terminal"])?;
-    // A terminal opened in a new tab comes without its pane: the app lists it.
+    // herdr-app answers a terminal opened in a new tab without its pane: `herdr-app ls` lists it.
     let listed = vision.sandbox().herdr_app(&["ls"]).map_err(from_eyre)?;
     let pane = terminal_entry(&listed, &terminal)
         .map(|entry| string(&entry["pane"]))
@@ -504,8 +440,6 @@ fn open_agent(
     Ok((terminal, pane))
 }
 
-/// Open the reviewer right of the focused pane, following the agent's terminal `agent`
-/// (`--focused-terminal`) and the app's focus, as the launcher mod opens it.
 fn open_reviewer(
     vision: &Vision,
     scratch: &Scratch,
@@ -537,7 +471,6 @@ fn open_reviewer(
     })
 }
 
-/// Close `pane`, and wait until the core reports its terminal `terminal` ended.
 fn close_terminal(vision: &Vision, terminal: &str, pane: &str) -> Result<()> {
     do_command(vision, "pane.close", &json!({"pane": pane}))?;
     // `hc ls` lists live terminals only.
@@ -550,7 +483,6 @@ fn close_terminal(vision: &Vision, terminal: &str, pane: &str) -> Result<()> {
     })
 }
 
-/// `herdr-app do <command> <arguments>` in the session's app.
 fn do_command(vision: &Vision, command: &str, arguments: &Value) -> Result<Value> {
     vision
         .sandbox()
@@ -558,7 +490,6 @@ fn do_command(vision: &Vision, command: &str, arguments: &Value) -> Result<Value
         .map_err(from_eyre)
 }
 
-/// The tabs of every space in `herdr-app ls`.
 fn listed_tabs(listed: &Value) -> impl Iterator<Item = &Value> {
     listed["spaces"]
         .as_array()
@@ -568,31 +499,26 @@ fn listed_tabs(listed: &Value) -> impl Iterator<Item = &Value> {
         .flatten()
 }
 
-/// The terminals that `tab`, an entry of `herdr-app ls`, shows.
 fn tab_terminals(tab: &Value) -> impl Iterator<Item = &Value> {
     tab["terminals"].as_array().into_iter().flatten()
 }
 
-/// The entry of the terminal `address` in `herdr-app ls`.
 fn terminal_entry<'a>(listed: &'a Value, address: &str) -> Option<&'a Value> {
     listed_tabs(listed)
         .flat_map(tab_terminals)
         .find(|terminal| terminal["terminal"] == address)
 }
 
-/// The ID of the tab that shows the terminal `address` in `herdr-app ls`.
 fn tab_of<'a>(listed: &'a Value, address: &str) -> Option<&'a str> {
     listed_tabs(listed)
         .find(|tab| tab_terminals(tab).any(|terminal| terminal["terminal"] == address))?["id"]
         .as_str()
 }
 
-/// Wait until `herdr-app ls` satisfies `holds`.
 fn wait_app(vision: &Vision, what: &str, holds: impl FnMut(&Value) -> bool) -> Result<()> {
     wait_listed(vision, || vision.sandbox().herdr_app(&["ls"]), what, holds)
 }
 
-/// Wait until `hc ls` satisfies `holds`.
 fn wait_core(vision: &Vision, what: &str, holds: impl FnMut(&Value) -> bool) -> Result<()> {
     wait_listed(
         vision,
@@ -602,8 +528,6 @@ fn wait_core(vision: &Vision, what: &str, holds: impl FnMut(&Value) -> bool) -> 
     )
 }
 
-/// Wait until what `list` lists satisfies `holds`: checked at once, then after each event of
-/// the sandbox's core, which reports the terminals' statuses and ends.
 fn wait_listed(
     vision: &Vision,
     mut list: impl FnMut() -> eyre::Result<Value>,
@@ -611,7 +535,6 @@ fn wait_listed(
     mut holds: impl FnMut(&Value) -> bool,
 ) -> Result<()> {
     let sandbox = vision.sandbox();
-    // Subscribed before the first look: an event that comes between them still wakes the wait.
     let mut events = sandbox
         .command(&sandbox.programs().hc)
         .args(["events", "--json"])
@@ -648,8 +571,6 @@ fn wait_listed(
     waited
 }
 
-/// The port of `address`, a page's address on the loopback interface
-/// (`http://127.0.0.1:<port>/…`).
 fn loopback_port(address: &str) -> Result<u16> {
     let port = address
         .strip_prefix("http://127.0.0.1:")
@@ -666,7 +587,6 @@ fn string(value: &Value) -> Result<String> {
         .with_context(|| format!("expected a string, got {value}"))
 }
 
-/// herdr-common's crates report with eyre: its report, chain included, as an anyhow error.
 pub(crate) fn from_eyre(error: eyre::Report) -> anyhow::Error {
     anyhow::Error::from_boxed(error.into())
 }

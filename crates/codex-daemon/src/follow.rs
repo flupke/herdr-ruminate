@@ -1,5 +1,3 @@
-//! [`Follow`]: a client that joined a session of the daemon, and what it hears of it.
-
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -11,50 +9,26 @@ use tungstenite::{Message, WebSocket};
 
 use crate::wire::{self, Incoming, Notice};
 
-/// What a [`Follow`] hears of its session, in the order the daemon said it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SessionEvent {
-    /// The client joined the session, first or again once the daemon came back, and the
-    /// session's status then, when the daemon gave one the client reads.
     Joined(Option<SessionStatus>),
-    /// The daemon refused the first join, in its words, such as a session with no rollout yet,
-    /// which had no prompt: the follow ends. A refused join again, once the daemon came back, is
-    /// [`SessionEvent::Lost`] instead, and the client tries again.
     Refused(String),
-    /// The client lost the daemon, could not reach it, or was refused a join again: it tries
-    /// again until it joins.
     Lost(String),
-    TurnStarted {
-        turn: String,
-    },
-    /// The prompt `text` the turn `turn` started on, as the session took it.
-    Prompt {
-        turn: String,
-        text: String,
-    },
-    TurnEnded {
-        turn: String,
-        end: TurnEnd,
-    },
+    TurnStarted { turn: String },
+    Prompt { turn: String, text: String },
+    TurnEnded { turn: String, end: TurnEnd },
     Status(SessionStatus),
-    /// Another client joined the session: the agent's TUI resumed it with `/resume`, or once it
-    /// reconnected to a restarted daemon after the client connected again. The client's own
-    /// joins are not reported.
     Resumed,
 }
 
-/// A session's status, as the daemon reports it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SessionStatus {
-    /// The daemon holds the session no more.
     NotLoaded,
     Idle,
-    /// A turn runs, or waits for an approval.
     Active,
     SystemError,
 }
 
-/// How a turn ended.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TurnEnd {
     Completed,
@@ -62,8 +36,6 @@ pub enum TurnEnd {
     Failed,
 }
 
-/// Follows a session of the daemon on a thread of its own: dropping it stops the thread, and
-/// waits for it, so its `report` must not drop it.
 #[must_use = "dropping the follow stops it"]
 pub struct Follow {
     stop: Arc<Stop>,
@@ -76,8 +48,6 @@ impl std::fmt::Debug for Follow {
     }
 }
 
-/// Stops a follow's thread: wakes it while it waits to connect again, and shuts the socket it
-/// reads down.
 #[derive(Default)]
 struct Stop {
     state: Mutex<StopState>,
@@ -133,8 +103,6 @@ impl Stop {
         self.lock().stopped
     }
 
-    /// Keeps a handle of `stream`, which the thread reads now, to shut it down on a stop; fails
-    /// once stopped.
     fn reading(&self, stream: &UnixStream) -> Result<(), ()> {
         let mut state = self.lock();
         if state.stopped {
@@ -144,7 +112,6 @@ impl Stop {
         Ok(())
     }
 
-    /// Waits `retry`, unless stopped first: returns whether the thread goes on.
     fn wait(&self, retry: Duration) -> bool {
         let state = self.lock();
         let (state, _) = self
@@ -155,27 +122,20 @@ impl Stop {
     }
 }
 
-/// Why a connection to the daemon ended.
 enum Ended {
     Refused(String),
     Lost(String),
 }
 
-/// Where a follow stands across its connections to the daemon.
 #[derive(Default)]
 struct Progress {
-    /// The client joined the session once.
     joined: bool,
-    /// The client reported the loss of the daemon and has not joined since.
     lost: bool,
 }
 
-/// What a follow does once a connection ended.
 #[derive(Debug, Eq, PartialEq)]
 enum Next {
-    /// Reports the event, if any, and connects again after the retry delay.
     Retry(Option<SessionEvent>),
-    /// Reports the event and stops.
     Stop(SessionEvent),
 }
 
@@ -187,9 +147,6 @@ impl Progress {
         };
     }
 
-    /// What follows the end `ended` of a connection: a refusal of the first join ends the
-    /// follow, and any other end is a loss of the daemon, reported once until the client joins
-    /// again.
     fn ended(&mut self, ended: Ended) -> Next {
         match ended {
             Ended::Refused(error) if !self.joined => Next::Stop(SessionEvent::Refused(error)),
@@ -205,9 +162,6 @@ impl Progress {
     }
 }
 
-/// Follows `session` until stopped, or refused on the first join: joins it over each
-/// connection to the daemon at `socket`, every `retry` while it cannot, and reports a loss of
-/// the daemon once until it joins again.
 fn run(
     socket: &Path,
     session: &str,
@@ -236,8 +190,6 @@ fn run(
     }
 }
 
-/// Joins `session` over `stream` and reports what the daemon says of it, until the connection
-/// ends.
 fn follow(
     stream: UnixStream,
     session: &str,
@@ -269,8 +221,6 @@ fn follow(
     }
 }
 
-/// Sends what the daemon's answer `incoming` calls for: the join, once the daemon took the
-/// client.
 fn answer(
     socket: &mut WebSocket<UnixStream>,
     session: &str,
@@ -294,7 +244,6 @@ fn lose(error: &dyn std::fmt::Display) -> Ended {
     Ended::Lost(format!("lost the Codex daemon: {error}"))
 }
 
-/// The next text frame of `socket`, after the pings it answers.
 fn next_text(socket: &mut WebSocket<UnixStream>) -> Result<String, tungstenite::Error> {
     loop {
         match socket.read()? {
@@ -305,15 +254,12 @@ fn next_text(socket: &mut WebSocket<UnixStream>) -> Result<String, tungstenite::
     }
 }
 
-/// What the client makes of what the daemon says once it asked to join a session.
 struct Hearing<'a> {
     session: &'a str,
-    /// The goal snapshots still to come that the client's own join causes.
     own_snapshots: usize,
 }
 
 impl<'a> Hearing<'a> {
-    /// A session the client asked to join.
     fn joining(session: &'a str) -> Self {
         Self {
             session,
@@ -321,7 +267,6 @@ impl<'a> Hearing<'a> {
         }
     }
 
-    /// What `incoming` says of the session, if anything.
     fn hear(&mut self, incoming: Incoming) -> Option<SessionEvent> {
         match incoming {
             Incoming::Answer {

@@ -1,37 +1,3 @@
-//! A prompt typed only while the agent's input line reads empty.
-//!
-//! herdr-core types a `terminal.send` once nobody pressed a key in the terminal for about 3 s,
-//! whatever its line holds: with its hold behind unsent typing off (`draft_wait = 0`), a person who
-//! pauses mid-sentence gets the prompt typed after their words (measured on hc 0.1.21: 3.1 s after
-//! their last key). So the client reads the agent's input line right before it offers the send,
-//! from the screen herdr-core paints to a watcher that attaches ([`ScreenWatch`]), styles included,
-//! which tell a placeholder or a suggested prompt from typed text (crate `agent-input-line`). An
-//! empty line gets the send. Text in the line, a screen with no input line, or an agent whose line
-//! the client cannot read holds it, with no time limit: the client tells why, and reads the line
-//! again each time the program prints, which the watch tells within a millisecond or so.
-//!
-//! The send it offers may still wait inside herdr-core, for the quiet pause after a key that
-//! showed nothing, as one that emptied the line. So the client offers it with a press of no key,
-//! which herdr-core answers when that same pause ends. While that press is unanswered, the watch
-//! goes on: text in the line that is not the prompt herdr-core pasted, or no input line, still
-//! there a moment later, means someone pressed a key within the pause, which herdr-core then still
-//! waits out, and the client hangs up.
-//! herdr-core cancels a waiting send whose client hung up (hc 0.1.20 and later): nothing was
-//! typed, and the client reads the line again and offers the send again once it is empty. Once the
-//! press is answered (herdr-core holds it while it types), the line shows the pasted prompt, or
-//! the agent went working, herdr-core is typing the prompt, or typed it: the
-//! client waits for its answer, which comes once the agent went working, and hangs up no more, so
-//! that a key pressed after the prompt went never makes it go again. A send herdr-core answers was
-//! typed, once. All this holds while herdr-core's hold behind unsent typing is off
-//! (`draft_wait = 0`): with it on, the press of no key, which does not wait for that hold, could
-//! be answered while herdr-core still holds the send.
-//!
-//! The owner of the prompt may withdraw it while it waits ([`EventCanceller`]): a withdrawal
-//! closes the watch the client waits on, and hangs up a send herdr-core waits out its pause for,
-//! as a key pressed then does, so the prompt is not typed. Before it hangs up, it reads the
-//! screen, as for a key: once herdr-core may be typing the prompt, the client hangs up no more,
-//! and the prompt goes. herdr-core may begin to type it between that read and the hang-up.
-
 use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc;
@@ -47,87 +13,53 @@ use serde_json::json;
 use super::screen_watch::{ScreenWatch, WatchCloser};
 use super::{HcClient, SEND_TIMEOUT, Sent, parse, refusal, untyped};
 
-/// The least time between two reads of a waiting prompt's line: a program that prints all the
-/// time, as a working agent's spinner, is read at most this often.
 const READ_GAP: Duration = Duration::from_millis(100);
 
-/// What became of a send the client offered.
 enum Offered {
-    /// herdr-core answered: it typed the prompt, or refused it.
     Answered(Result<Sent>),
-    /// Someone typed, or opened a dialog, while herdr-core waited to type it: the client hung
-    /// up, and herdr-core typed nothing. The prompt waits for that.
     Withdrawn(PromptWait),
-    /// Its owner withdrew it while herdr-core waited to type it: the client hung up, and
-    /// herdr-core typed nothing.
     Cancelled,
 }
 
-/// How the client reads the input line of an agent: by the agent it is, or not at all for an
-/// agent the reader knows nothing of, named as it reports itself.
 enum Reader {
     Reads(InputAgent),
     Unread(String),
 }
 
-/// A send the client offered.
 struct Offer<'a> {
     pane: &'a PaneId,
     text: &'a str,
     agent: &'a Reader,
-    /// Whether the agent reported itself working when the client offered it.
     working: bool,
 }
 
-/// How long the client waits for a sign that herdr-core's pause ended before it takes a screen
-/// that holds a send for one that does: far short of the pause of about 3 s that the key which
-/// held it began.
 const CONFIRM_HELD: Duration = Duration::from_millis(150);
 
-/// What a print tells of a send the client offered.
 enum AfterPrint {
-    /// herdr-core answered the send.
     Answered(Result<Sent>),
-    /// Someone pressed a key within herdr-core's pause: the client hangs up, and the prompt waits
-    /// for this.
     Held(PromptWait),
-    /// herdr-core may be typing the prompt: the client hangs up no more.
     Typing,
-    /// Its owner withdrew the send.
     Withdrawn,
-    /// The send waits on.
     Waits,
 }
 
-/// What the screen of an agent shows while a send to it waits.
 enum WhileOffered {
-    /// herdr-core is typing the prompt, or typed it: the line shows it pasted, or the agent went
-    /// working.
     Typing,
-    /// Someone typed in the line, or a dialog shows: the send must wait for that.
     Held(PromptWait),
-    /// The line reads empty.
     Empty,
 }
 
-/// What the client hears while a send it offered waits.
 enum Heard {
     Answer(Result<Sent>),
-    /// herdr-core answered a press of no key, offered with the send: nobody typed in the
-    /// terminal for its quiet pause, which also releases the send.
     Quiet,
-    /// The program printed.
     Printed,
-    /// The watch ended: only the answer may come.
     WatchEnded,
-    /// The owner of the prompt withdrew it.
     Withdrawn,
 }
 
 impl HcClient {
-    /// Sends `text` to `pane` once its agent's input line reads empty, telling `waits` why it
-    /// waits until then, as the module says; [`Error::Cancelled`] once `withdrawal` is
-    /// cancelled before herdr-core may be typing it.
+    // herdr-core types a `terminal.send` once nobody pressed a key for about 3 s, whatever the
+    // input line holds (hc 0.1.21): a person's pause mid-sentence gets the prompt typed after it.
     pub(super) fn send_on_empty_line(
         &self,
         pane: &PaneId,
@@ -157,8 +89,6 @@ impl HcClient {
                 let Some(_tie) = watch.tie(withdrawal)? else {
                     return Err(Error::Cancelled);
                 };
-                // A stream that ended, as with the agent's program or a withdrawal, leaves the
-                // next look to tell why.
                 let _ = watch.printed();
                 if withdrawal.is_cancelled() {
                     return Err(Error::Cancelled);
@@ -173,7 +103,6 @@ impl HcClient {
         }
     }
 
-    /// The agent whose input line `pane` shows, by the name it reports.
     fn input_agent(&self, pane: &PaneId) -> Result<Reader> {
         let agent = self.get_agent(pane)?.and_then(|agent| agent.agent);
         Ok(match agent.as_deref() {
@@ -184,9 +113,6 @@ impl HcClient {
         })
     }
 
-    /// Offers the send of `text` to `pane`, whose terminal painted `screen` as the client read its line
-    /// empty, and hangs up once `watch` shows someone typed or opened a dialog while herdr-core
-    /// waits to type it, or once `withdrawal` is cancelled then.
     fn offer(
         &self,
         pane: &PaneId,
@@ -202,8 +128,6 @@ impl HcClient {
             path: self.socket_path.clone(),
             source,
         })?;
-        // A withdrawal shuts `withdrawn` down, which ends the read of its other end: tied before
-        // the send goes.
         let io = |operation, source| Error::Io {
             operation,
             path: self.socket_path.clone(),
@@ -238,8 +162,8 @@ impl HcClient {
             });
             let quiet = heard.clone();
             scope.spawn(move || {
-                // Any answer ends the pause the client may hang up in: a refusal too, which
-                // tells nothing of it.
+                // herdr-core answers a press of no key once the quiet pause that also holds a send
+                // ends, but it does not wait for its hold behind unsent typing (`draft_wait`).
                 let _ = self.request_on(
                     probe,
                     "terminal.keys",
@@ -249,7 +173,6 @@ impl HcClient {
             });
             let withdrawals = heard.clone();
             scope.spawn(move || {
-                // Nothing is written there: the read ends once the socket is shut down.
                 let _ = (&told).read(&mut [0]);
                 let _ = withdrawals.send(Heard::Withdrawn);
             });
@@ -275,13 +198,8 @@ impl HcClient {
         })
     }
 
-    /// Hears what comes while the send of `offer` waits, until its answer. The client hangs up
-    /// only while herdr-core waits out its quiet pause, which the press of no key offered with the
-    /// send tells: herdr-core types the send once that pause ends, and answers it only once the
-    /// agent went working, or a few seconds after it typed, so a hang-up then would lose the
-    /// answer of a prompt typed already, which the client would offer again. A screen that shows
-    /// the prompt in the line, or the agent gone working, ends that time too, and so the time a
-    /// withdrawal hangs up in.
+    // herdr-core types a send once its quiet pause ends, but answers it only once the agent went
+    // working or a few seconds after it typed: a hang-up then loses the answer of a typed prompt.
     fn hear(
         &self,
         offer: &Offer<'_>,
@@ -298,7 +216,6 @@ impl HcClient {
             let sign = match heard {
                 Heard::Answer(answer) => return Ok(Offered::Answered(answer)),
                 Heard::Quiet => AfterPrint::Typing,
-                // herdr-core may be typing the prompt: nothing makes the client hang up now.
                 _ if typing => continue,
                 Heard::Withdrawn => AfterPrint::Withdrawn,
                 Heard::Printed => self.after_print(offer, hearing, &mut last_read),
@@ -310,8 +227,6 @@ impl HcClient {
         }
     }
 
-    /// What the client does on `sign` of the send of `offer`: what became of the send, once
-    /// it has an outcome; it sets `typing` once herdr-core may be typing it.
     fn act_on(
         &self,
         sign: AfterPrint,
@@ -332,9 +247,6 @@ impl HcClient {
         }
     }
 
-    /// What a print tells of the send of `offer`, read at most every [`READ_GAP`] (`last_read`):
-    /// one read for the prints that came meanwhile, unless an answer or the end of herdr-core's
-    /// pause came among them.
     fn after_print(
         &self,
         offer: &Offer<'_>,
@@ -355,10 +267,8 @@ impl HcClient {
         }
     }
 
-    /// Whether the screen of the agent `offer` sends to still holds the send after
-    /// [`CONFIRM_HELD`], with no sign meanwhile that herdr-core's pause ended: herdr-core ends it
-    /// for the send and for the press of no key at once, but the screen the program draws as the
-    /// prompt comes may reach the client first, read half drawn.
+    // herdr-core ends its pause for a send and for a press of no key at once, but the screen the
+    // agent draws as the prompt comes may reach the watch first, half drawn.
     fn confirm_held(&self, offer: &Offer<'_>, hearing: &mpsc::Receiver<Heard>) -> AfterPrint {
         let until = Instant::now() + CONFIRM_HELD;
         while let Some(left) = until.checked_duration_since(Instant::now()) {
@@ -377,16 +287,10 @@ impl HcClient {
         }
     }
 
-    /// Whether herdr-core may be typing the send of `offer` already, as the screen shows the
-    /// prompt in the line or the agent gone working: a withdrawal lets it go then, and hangs it
-    /// up otherwise. An agent that goes on showing an empty line once it got the prompt, as for
-    /// a command that starts no turn, cannot tell.
     fn may_be_typing(&self, offer: &Offer<'_>) -> bool {
         matches!(self.while_offered(offer), WhileOffered::Typing)
     }
 
-    /// What the screen of the agent `offer` sends to shows now. A screen that cannot be read
-    /// tells nothing.
     fn while_offered(&self, offer: &Offer<'_>) -> WhileOffered {
         let Reader::Reads(agent) = offer.agent else {
             return WhileOffered::Empty;
@@ -405,8 +309,7 @@ impl HcClient {
         }
     }
 
-    /// Sends `text` to `pane` on `socket`: herdr-core types it once nobody typed there for its
-    /// quiet pause. The refusals `hc schema` lists typed nothing ([`untyped`]).
+    // Without a `caller`, herdr-core types the text as it is, with no `<hc from="...">` tags.
     fn send_on(&self, socket: UnixStream, pane: &PaneId, text: &str) -> Result<Sent> {
         match self.request_on(
             socket,
@@ -422,8 +325,6 @@ impl HcClient {
     }
 }
 
-/// What the signs among `heard` tell of a send, if any: an answer, or the end of herdr-core's
-/// pause, before a withdrawal.
 fn sign_among(heard: impl IntoIterator<Item = Heard>) -> Option<AfterPrint> {
     let mut withdrawn = false;
     for heard in heard {
@@ -437,7 +338,6 @@ fn sign_among(heard: impl IntoIterator<Item = Heard>) -> Option<AfterPrint> {
     withdrawn.then_some(AfterPrint::Withdrawn)
 }
 
-/// The first answer among `heard`, if any.
 fn answer_among(heard: impl IntoIterator<Item = Heard>) -> Option<Result<Sent>> {
     heard.into_iter().find_map(|heard| match heard {
         Heard::Answer(answer) => Some(answer),
@@ -445,9 +345,7 @@ fn answer_among(heard: impl IntoIterator<Item = Heard>) -> Option<Result<Sent>> 
     })
 }
 
-/// Hangs the send up on `hang_up`, which herdr-core takes for a withdrawal of a send it has not
-/// typed, and waits for its outcome: an answer that came first stands, as herdr-core typed the
-/// prompt then. The prompt waits for `wait` otherwise.
+// herdr-core 0.1.20 and later cancel a send whose client hangs up before it typed it.
 fn withdraw(hearing: &mpsc::Receiver<Heard>, hang_up: &UnixStream, wait: PromptWait) -> Offered {
     let _ = hang_up.shutdown(std::net::Shutdown::Both);
     match answer_among(hearing.iter()) {
@@ -456,8 +354,6 @@ fn withdraw(hearing: &mpsc::Receiver<Heard>, hang_up: &UnixStream, wait: PromptW
     }
 }
 
-/// Hangs the send up on `hang_up` for its owner, who withdrew it: an answer that came first stands,
-/// as herdr-core typed the prompt then.
 fn cancel(hearing: &mpsc::Receiver<Heard>, hang_up: &UnixStream) -> Offered {
     let _ = hang_up.shutdown(std::net::Shutdown::Both);
     match answer_among(hearing.iter()) {
@@ -466,16 +362,11 @@ fn cancel(hearing: &mpsc::Receiver<Heard>, hang_up: &UnixStream) -> Offered {
     }
 }
 
-/// The least characters of a prompt, blanks aside, that an input line shows once herdr-core
-/// pasted it: herdr-core pastes the whole prompt at once, and a person who types its first
-/// characters, as every wakeup starts with the same words, types a few before a look sees them.
+// herdr-core pastes a whole prompt at once.
 const PASTED: usize = 16;
 
-/// Whether `shown`, the text an input line shows, is the prompt `text` herdr-core pasted: its
-/// start, of [`PASTED`] characters at least or whole, or the agent's stand-in for a long paste,
-/// Claude Code's `[Pasted text #1 +12 lines]` or Codex's `[Pasted Content 1200 chars]`. Both may
-/// wrap the text otherwise than it was written, within a word too: only the characters that are
-/// not blank are compared. A few characters that start the prompt may be a person's.
+// Claude Code shows a long paste as `[Pasted text #1 +12 lines]`, Codex as `[Pasted Content 1200
+// chars]`, and both may wrap the text otherwise than it was written, within a word too.
 fn is_pasted(shown: &str, text: &str) -> bool {
     let visible = |text: &str| text.split_whitespace().collect::<String>();
     let (shown, text) = (visible(shown), visible(text));
@@ -484,8 +375,7 @@ fn is_pasted(shown: &str, text: &str) -> bool {
             && (shown.chars().count() >= PASTED || shown.len() == text.len()))
 }
 
-/// Whether the agent reports itself working on `screen`, by the last OSC 7501 state herdr-core
-/// paints with it.
+// herdr-core paints the program's OSC 7501 reports with the screen it gives a watcher.
 fn reports_working(screen: &str) -> bool {
     let Some((_, report)) = screen.rsplit_once("]7501;") else {
         return false;
@@ -494,8 +384,6 @@ fn reports_working(screen: &str) -> bool {
     report.split(':').any(|field| field == "state=working")
 }
 
-/// Why a prompt to `agent`, whose terminal paints `screen`, waits; `None` when its input line
-/// reads empty.
 fn wait_for(agent: &Reader, screen: &str) -> Option<PromptWait> {
     let agent = match agent {
         Reader::Reads(agent) => *agent,
