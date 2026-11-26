@@ -9,8 +9,7 @@ attention ([CONTEXT.md](../../CONTEXT.md)). It is a model of TypeSafe AI.
 
 - Jev is enabled when the reviewer process has a nonempty `TYPESAFE_API_KEY`, else a
   nonempty `typesafe_api_key` in the reviewer's `config.toml`, read at start. A missing or
-  whitespace-only key disables it. Under herdr-app the pane takes the agent's environment
-  ([herdr-app](herdr-app.md#the-reviewers-hc-backend)).
+  whitespace-only key disables it. Under herdr-app the pane takes the agent's environment.
 - It runs on the reviewer's "mark insignificant" command in Files (`rf`) and at the start of
   each Explore round, before the kickoff, with the same classification policy. The Explore
   agent sees only what is left, and the Explore prompts do not mention Jev.
@@ -19,7 +18,7 @@ attention ([CONTEXT.md](../../CONTEXT.md)). It is a model of TypeSafe AI.
 - The reviewer sends bounded before/after code snippets and repository-relative paths to
   TypeSafe AI.
 - A `make vision` session never reaches the paid classifier: its `jev` tool stands in
-  for it ([visual testing](visual-testing.md)).
+  for it (the `visual-testing` skill).
 
 ## Production settings
 
