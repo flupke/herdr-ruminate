@@ -8,18 +8,11 @@ features behave, unless the task asks for a new behaviour or it fixes a bug.
 
 Give yourself eyes and hands on what you build: run it, look at it, act on it as its user
 would, and fix what you see. Tests prove what you thought of; eyes show what you did not.
-The vision MCP server runs the review pane in herdr-common's app sandbox, a private herdr-app
-on a headless display that never shows on the user's screen: use its tools, whose server
-`.mcp.json` registers and `scripts/vision-mcp` builds when an agent session connects
-(`.agents/wiki/visual-testing.md`); `make explore-page` and `make explore-gallery` show the
-Explore page, and `make explore-script` acts on it with a throwaway script
-(`.agents/wiki/explore-page-standalone.md`); herdr-common's `app-sandbox` command keeps a
-private herdr-app running across shell commands, where the launcher mod opens the pane and
-`app-sandbox shot` shows the render (`.agents/wiki/herdr-app.md`, A private herdr-app);
-`make install` runs in a scratch home, with or without Codex (`.agents/wiki/install.md`); what
-real Claude Code runs a round and its Implement on shows in its transcript, which a real round in
-a private herdr-app checks (`.agents/wiki/explore-models.md`, Checking a change to it).
-When a part of the product has no such tool, build one before you rely on tests alone.
+The `visual-testing` skill runs the review pane in a private herdr-app that never shows on the
+user's screen, and shows it; `explore-page-tools` shows the Explore page and acts on it;
+`install-check` runs `make install` in a scratch home; `real-agent-checks` runs a real round
+with real Claude Code. When a part of the product has no such tool, build one before you rely
+on tests alone.
 
 # Standards
 
@@ -40,16 +33,16 @@ When a part of the product has no such tool, build one before you rely on tests 
   not make an item `pub` when private or `pub(crate)` visibility is sufficient.
 - Make every unit test go red on a plausible bug in the code it calls; a test
   that cannot is tautological. Before writing or code-reviewing a unit test,
-  read `.agents/wiki/unit-tests.md`: the kinds of tautological test, and what
-  to assert in a prompt test.
+  load the `unit-tests` skill: the kinds of tautological test, and what to
+  assert in a prompt test.
 - Refresh filesystem-driven views through filesystem events (inotify on Linux),
   not periodic polling. Reuse the repository watcher and event pipeline so idle
   views do not spend CPU checking for file changes.
 - With the current `eyre` version, use `Err(eyre::eyre!(...))` in
   expression-position match arms, or put `eyre::bail!(...);` in a statement
   block, to avoid the trailing-semicolon macro warning.
-- Before writing an Explore page e2e test, read
-  `.agents/wiki/explore-page-e2e.md` and use the `e2e` skill.
+- Before writing an Explore page e2e test, load the `explore-page-tools` and
+  `e2e` skills.
 
 # Change workflow
 
@@ -111,7 +104,7 @@ Build what the user asks for yourself, in the current workspace, so the
 user sees each change live. Supervise subagents in separate jj workspaces only
 for a large feature planned as a graph of tickets, or for many independent
 changes at once. When you work in a jj workspace, supervise agents there, or run
-gates in parallel, read `.agents/wiki/parallel-workspaces.md`: how to enter
+gates in parallel, load the `checks` skill: how to enter
 the dev shell, keep work visible, and run several gates at once.
 
 # Reports
@@ -134,7 +127,7 @@ The vision MCP server and herdr-common's `app-sandbox` run herdr-app in a sandbo
 on a headless display, with their own core and environment, and act on nothing of the user's
 Herdr or herdr-app. The vision server's sandbox runs in bubblewrap, where its processes reach
 none of the user's Herdr, herdr-app or hc sockets, nor those of their runtime directory
-(`.agents/wiki/visual-testing.md`); the rest of the host's files show at their own paths.
+(the `visual-testing` skill); the rest of the host's files show at their own paths.
 
 The Codex Linux sandbox blocks Unix-domain socket bind and connect operations.
 Run tests in the normal sandbox first. If an E2E test fails with `EPERM` while
@@ -158,4 +151,4 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 
 ### Domain docs
 
-Single-context: root `CONTEXT.md` plus `.agents/adr/`. See `.agents/settings/domain.md`.
+Single-context: root `CONTEXT.md`. See `.agents/settings/domain.md`.

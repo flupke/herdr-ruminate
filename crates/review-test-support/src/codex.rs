@@ -1,8 +1,3 @@
-//! A real Codex TUI in a private Herdr server, on an unmanaged app server of its own with a
-//! scratch Codex home and a local model fixture (`codex_provider.py`): it calls no model API,
-//! and never touches the user's `~/.codex`. `.agents/wiki/codex-daemon.md` says what it works
-//! around.
-
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufRead, BufReader, Write as _};

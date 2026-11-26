@@ -1,6 +1,3 @@
-// The Explore page's client: it opens the page's socket, draws each view the review tool sends,
-// and sends the reviewer's actions back (.agents/wiki/explore-page-client.md).
-
 /** @import { Seq, StateParams } from "./types.ts" */
 
 import { Actions } from './actions.js';

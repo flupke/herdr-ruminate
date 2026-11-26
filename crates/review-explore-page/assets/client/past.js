@@ -125,7 +125,6 @@ export class PastList {
   update(view) {
     const changes = view.past_rounds;
     if (changes === null) {
-      // The page on the network lists none (ADR 0003, ADR 0004).
       this.column.close(false);
       this.rounds.clear();
       if (this.asked) this.leaveAsked();

@@ -153,7 +153,7 @@ fn restore_steps(state_root: &Path, backup: &Path, first: bool) -> String {
     let scope = if first {
         "This backup holds every review state that each jj workspace or Git worktree kept for \
          itself, as it was before the reviewer first merged them into the state that the \
-         workspaces of a repository share (ADR 0013)."
+         workspaces of a repository share."
     } else {
         "This backup holds the per-workspace review states that changed after the first backup, \
          which a reviewer of an earlier build can do, and the shared state they were merged \

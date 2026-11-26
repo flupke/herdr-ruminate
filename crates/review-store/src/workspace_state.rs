@@ -1,10 +1,3 @@
-//! The review state that each jj workspace or Git worktree kept for itself before the
-//! workspaces of a repository shared one (ADR 0013), and its merge into the shared state.
-//!
-//! Such a state is a folder at the root of the state directory, named by the SHA-256 of the
-//! workspace's canonical root. The merge reads it and never writes it; once merged, the folder
-//! moves to `merged-workspaces/`.
-
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -37,11 +37,7 @@ const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 const SEND_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-/// A synchronous client of herdr-core, the core of herdr-app that runs its terminals and
-/// agents. herdr-core keeps no focus and no agent session: the reviewer keeps the agent's
-/// session in its terminal's session label, which the agent's hook and
-/// [`AgentHost::report_agent_session`] set (ADR 0016), and the client reads the focus of a
-/// screen of herdr-app when it follows one.
+/// herdr-core keeps no focus and no agent session.
 #[derive(Clone, Debug)]
 pub struct HcClient {
     socket_path: PathBuf,

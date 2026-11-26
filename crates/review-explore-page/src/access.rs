@@ -152,13 +152,8 @@ impl Hosts {
     }
 }
 
-/// Browsers keep cookies by host name and ignore the port, so pages on one address (two
-/// reviewers, or the reviewer and the standalone server) would overwrite each other's token.
-/// The page names its cookies after its own port, so each keeps its own. This prevents
-/// collisions only: the browser still sends this page's cookies to every port of its address,
-/// so another server there that the browser visits receives this page's token, and can set a
-/// cookie under this page's names (ADR 0003). The page's handlers use the plain names; the
-/// scope renames the cookies of each request and response at the edge of the page.
+/// Browsers keep cookies by host name and ignore the port, and send a page's cookies to every
+/// port of its address.
 pub(crate) struct CookieScope {
     suffix: String,
 }

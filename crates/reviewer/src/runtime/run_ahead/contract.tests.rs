@@ -550,7 +550,7 @@ fn rehearse_continuing_as_the_fork_of_a_bare_answer() {
 }
 
 #[test]
-#[ignore = "the run-ahead contract check: real Claude Code turns on the token's account; see .agents/wiki/run-ahead.md"]
+#[ignore = "the run-ahead contract check: real Claude Code turns on the token's account; see the real-agent-checks skill"]
 fn real_claude_code_continues_as_the_fork_of_a_bare_answer() {
     continue_as_the_fork_of_a_bare_answer(ContractRun::start(Agent::Real, test_waits()));
 }
@@ -570,7 +570,7 @@ fn rehearse_settling_back_on_the_agent_s_own_session() {
 }
 
 #[test]
-#[ignore = "the run-ahead contract check: real Claude Code turns on the token's account; see .agents/wiki/run-ahead.md"]
+#[ignore = "the run-ahead contract check: real Claude Code turns on the token's account; see the real-agent-checks skill"]
 fn real_claude_code_settles_back_on_its_own_session() {
     settle_back_on_the_agent_s_own_session(ContractRun::start(Agent::Real, unconfirmed_switch()));
 }
@@ -762,7 +762,7 @@ impl RealConfiguration {
             .with_file_name("reviewer-mcp");
         assert!(
             bridge.is_file(),
-            "{} is not built: see .agents/wiki/run-ahead.md",
+            "{} is not built: see the real-agent-checks skill",
             bridge.display()
         );
         self.edit(".claude.json", |state| {

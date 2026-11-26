@@ -7,6 +7,6 @@ expected behavior, and reproduce the relevant interactions through the real UI.
 Keep supporting evidence with the test rather than relying on ignored artifacts
 under `target/`.
 
-See the [visual testing guide](../../../.agents/wiki/visual-testing.md)
+See the [`visual-testing` skill](../../../.agents/skills/visual-testing/SKILL.md)
 for the vision MCP server's tools. Run the resulting tests with
 `scripts/dev-shell make e2e-tui`.

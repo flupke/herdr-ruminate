@@ -7,7 +7,6 @@ use tempfile::TempDir;
 
 use crate::{Error, ReviewStore};
 
-/// The folder the review state of the store at `store` lives in, by the format of ADR 0013.
 fn expected_folder(state: &Path, slug: &str, store: &Path) -> PathBuf {
     let store = fs::canonicalize(store).unwrap();
     let hash = Sha256::digest(store.to_str().unwrap().as_bytes());

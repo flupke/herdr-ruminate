@@ -1,15 +1,5 @@
-//! The reviewer's Claude Code plugin, and what its hooks run.
-//!
-//! The plugin (`plugin/`, listed by the marketplace of this directory, which `make install`
-//! adds) runs `reviewer-control agent-hook` on each hook it registers, with Claude Code's event
-//! on its standard input. In a pane of Herdr or a terminal of herdr-core, that hands the event
-//! to the reviewers of the pane's host ([`agent_hooks`]), and a prompt a reviewer blocks does
-//! not run; anywhere else, it does nothing. In a terminal of herdr-core, which keeps no agent
-//! session, the hook also names the agent's session in the terminal's session label, and
-//! removes it when the session ends (ADR 0016). Claude Code reads its hooks when it starts: an
-//! agent started before the plugin was installed runs without them. Its hooks module
-//! (`plugin/hooks/register.ts`) runs the agent's main loop on the model and effort an Explore
-//! round's prompt names (`review-explore-model`).
+//! herdr-core keeps no agent session, so the hook names it in the terminal's session label.
+//! Claude Code reads its hooks when it starts: an agent started before the install runs without.
 
 use std::io::{Read, Write};
 use std::time::Duration;

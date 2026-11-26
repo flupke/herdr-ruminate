@@ -29,9 +29,6 @@ pub use herdr_events::{AgentStatusWatch, HerdrEventWatch};
 /// on a failure, and never delays a test that passes.
 pub const GUARD: Duration = Duration::from_secs(30);
 
-/// Check `condition` until it holds, for at most `timeout`; return whether it
-/// held. It polls: a test waits on an event instead (`.agents/wiki/unit-tests.md`). Its last
-/// user is `tests/tui/tests/live_viewer.rs`.
 pub fn eventually(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + timeout;
     loop {

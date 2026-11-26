@@ -1,8 +1,4 @@
-//! The contract check of prompt delivery under herdr-core: the owner's Claude Code, in a terminal
-//! of a private herdr-core, takes the reviewer's prompts as the reviewer expects. Each step names
-//! the assumption it rests on. Opt-in: real Claude Code turns on the owner's login, with the
-//! reviewer's plugin installed, and herdr-core, which the dev shell does not pin
-//! (`.agents/wiki/herdr-app.md`, "The contract check").
+//! Opt-in: real Claude Code on the owner's login, and herdr-core, which the dev shell does not pin.
 
 use std::fs;
 use std::path::PathBuf;
@@ -27,7 +23,7 @@ const BLOCKED: &str = "The progressive reviewer's contract check stopped this pr
 const PACE: Duration = Duration::from_millis(150);
 
 #[test]
-#[ignore = "the contract check under herdr-core: real Claude Code turns on the owner's login; see .agents/wiki/herdr-app.md"]
+#[ignore = "the contract check under herdr-core: real Claude Code turns on the owner's login; see the real-agent-checks skill"]
 fn claude_code_takes_the_reviewer_s_prompts_through_herdr_core() {
     let agent = RealAgent::start();
     let hooked = agent.hooked();

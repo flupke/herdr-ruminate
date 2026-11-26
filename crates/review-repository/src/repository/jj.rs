@@ -51,9 +51,7 @@ const REVISION_CANDIDATE_TEMPLATE: &str = concat!(
     r#"change_id ++ "\0" ++ change_id.shortest(8) ++ "\0" ++ "#,
     r#"description.first_line() ++ "\0""#,
 );
-/// The other workspaces' working-copy commits. The reviewer neither offers nor edits one: `jj
-/// edit` would put this workspace's working copy on the commit another workspace is writing.
-/// The changes below one, such as this workspace's own stack above @, stay offered: ADR 0023.
+/// `jj edit` would put this workspace's working copy on the commit another workspace is writing.
 macro_rules! other_workspaces_revset {
     () => {
         "(working_copies() ~ @)"

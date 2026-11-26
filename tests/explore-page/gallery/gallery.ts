@@ -1,4 +1,4 @@
-// The screenshot gallery of the Explore page (`make explore-gallery`, .agents/wiki/explore-page-standalone.md):
+// The screenshot gallery of the Explore page (`make explore-gallery`):
 // starts the standalone page server with the rich data set, moves a fresh session to each
 // state of states.ts, and takes a full-page screenshot of it at each width and theme with the
 // dev shell's headless Chromium, then writes the contact sheet. Each screenshot gets its own

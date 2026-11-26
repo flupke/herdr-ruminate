@@ -1,14 +1,3 @@
-//! Past rounds: every saved round of the repository other than the one the page follows, which
-//! the page lists in the column at the window's left and opens read only. Only the page on this
-//! machine has them (ADR 0003 and ADR 0004 open one round on the network and through the
-//! tunnel): its owner attaches [`PastRounds`] to that page's round alone
-//! ([`crate::PageRound::with_past_rounds`]).
-//!
-//! The owner publishes the list ([`PastRoundsPublisher`]) whenever the saved rounds change, and
-//! opens a round the reviewer asks for ([`PastRounds::new`]): it reads the round as it was saved,
-//! and derives its stage as the page shows a round that offers no action ([`PastRound::new`]).
-//! A page shows a past round on a socket of its own, which refuses every action.
-
 use std::sync::Arc;
 
 use change_references::ChangeReferences;

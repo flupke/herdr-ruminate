@@ -88,8 +88,6 @@ impl Shares {
 }
 
 impl PageNetwork {
-    /// The network page of the page of `round`, which offers no past round: those stay on this
-    /// machine (ADR 0003, ADR 0004).
     pub(crate) fn new(round: PageRound, runtime: Handle) -> Self {
         Self {
             round: round.without_past_rounds(),
@@ -341,12 +339,8 @@ fn interface_of(ip: Ipv4Addr) -> Option<String> {
         .map(|interface| interface.interface_name)
 }
 
-/// `ip`, of the interface `interface`, unless it is public: the page goes to a phone on the same
-/// network over plain HTTP (ADR 0003), and a server whose route to the internet has a public
-/// address, such as a herdr machine in a data centre, would serve it to the whole internet. A
-/// local network's addresses are private, link-local, or shared (100.64.0.0/10, which
-/// carrier-grade NAT and Tailscale use). The Interface setting names a public interface to serve
-/// the page there anyway.
+/// A local network's addresses are private, link-local, or shared (100.64.0.0/10, which
+/// carrier-grade NAT and Tailscale use).
 fn on_local_network(ip: Ipv4Addr, interface: Option<&str>) -> io::Result<Ipv4Addr> {
     let [first, second, ..] = ip.octets();
     let shared = first == 100 && second & 0b1100_0000 == 64;

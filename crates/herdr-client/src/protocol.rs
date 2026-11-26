@@ -296,8 +296,6 @@ pub trait AgentHost: AgentPort + std::fmt::Debug {
         send: &mut dyn FnMut(AgentStatus) -> bool,
     ) -> Result<()>;
 
-    /// Tells the host that the agent of `pane_id` runs the session `report` names, as the
-    /// agent's own hook does when the agent starts a session (ADR 0012, ADR 0016).
     fn report_agent_session(&self, pane_id: &PaneId, report: &SessionReport<'_>) -> Result<()>;
 }
 

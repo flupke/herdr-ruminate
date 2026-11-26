@@ -1,11 +1,3 @@
-//! Where the review state of one repository lives: one folder that every jj workspace, or
-//! every Git worktree, of the repository shares, named so a reader finds the repository.
-//!
-//! The folder is `repositories/<slug>-<hash>`: `<hash>` is the first 16 hex digits of the
-//! SHA-256 of the canonical path of the store the workspaces share (`.jj/repo` resolved, or the
-//! Git common directory), and `<slug>` the name of the parent worktree. `repository.json` in
-//! the folder holds that path in full (ADR 0013).
-
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};

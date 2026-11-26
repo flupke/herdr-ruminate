@@ -64,7 +64,6 @@ impl Fixture {
         WorkspaceState::key_of(&fs::canonicalize(self.repository.root()).unwrap()).unwrap()
     }
 
-    /// Write a mark of `a.txt` in the per-workspace state `key`, as builds before ADR 0013 did.
     fn write_mark(&self, key: &str, unit: &ReviewUnit, reviewed_at: &str) {
         let directory = self
             .state

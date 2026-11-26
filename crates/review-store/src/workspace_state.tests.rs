@@ -37,7 +37,6 @@ impl Fixture {
         }
     }
 
-    /// The store of a per-workspace state with `key`, as builds before ADR 0013 kept it.
     fn old(&self, key: &str) -> ReviewStore {
         let store = ReviewStore {
             state_root: self.state.clone(),

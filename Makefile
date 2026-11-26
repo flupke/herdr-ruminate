@@ -63,7 +63,7 @@ e2e-tui:
 	REVIEWER_BIN_PATH="$(CURDIR)/target/debug/reviewer" cargo nextest run --locked --manifest-path tests/tui/Cargo.toml
 
 # The e2e tests of the Explore page (https://github.com/tester-army/e2e): the reviewer's journeys,
-# each step an exact action, with no model (.agents/wiki/explore-page-e2e.md). E2E_ARGS go to
+# each step an exact action, with no model (the `explore-page-tools` skill). E2E_ARGS go to
 # `e2e run`.
 EXPLORE_E2E = tests/explore-page
 
@@ -86,14 +86,14 @@ e2e-explore: explore-client-check e2e-explore-deps
 	$(EXPLORE_E2E)/run.sh $(E2E_ARGS)
 
 # Screenshots of every state of the Explore page, at each width and theme, with a contact sheet
-# (.agents/wiki/explore-page-standalone.md). GALLERY_DIR, GALLERY_COMPARE, GALLERY_WIDTHS and
+# (the `explore-page-tools` skill). GALLERY_DIR, GALLERY_COMPARE, GALLERY_WIDTHS and
 # GALLERY_STATES go to the script through the environment.
 explore-gallery: e2e-explore-deps
 	cargo build --locked -p review-explore-page-server
 	node $(EXPLORE_E2E)/gallery/gallery.ts
 
 # Runs a throwaway Playwright script, SCRIPT, against a fresh session of the standalone server,
-# and prints its output and the paths of its screenshots (.agents/wiki/explore-page-standalone.md);
+# and prints its output and the paths of its screenshots (the `explore-page-tools` skill);
 # without SCRIPT, prints how to write one, the runner's header, and fails without building. SCRIPT_DATA,
 # SCRIPT_WIDTH, SCRIPT_THEME and SCRIPT_OUT go to the runner through the environment.
 ifeq ($(SCRIPT),)
@@ -118,7 +118,7 @@ explore-types:
 	EXPLORE_TYPES=write cargo test --locked -p review-explore-page typescript
 
 # Builds the vision MCP server and the reviewer it runs, and says how an agent uses it
-# (.agents/wiki/visual-testing.md). `.mcp.json` registers the server through scripts/vision-mcp.
+# (the `visual-testing` skill). `.mcp.json` registers the server through scripts/vision-mcp.
 vision:
 	cargo build --locked -p reviewer --bin reviewer --bin reviewer-control
 	cargo build --locked --manifest-path tests/tui/Cargo.toml -p reviewer-tui-tests --bin reviewer-vision -p reviewer-fake-agent --bin reviewer-fake-agent
@@ -146,7 +146,7 @@ mutants:
 # the review pane beside an agent of this machine, and its page (herdr-app-mod/common.js,
 # LINKED_REVIEWER).
 # On a machine without `codex` on PATH, reviewer-control skips Codex's MCP registration and
-# plugin, with a note (.agents/wiki/install.md).
+# plugin, with a note (the `install-check` skill).
 CLAUDE_MARKETPLACE = herdr-progressive-reviewer
 CLAUDE_PLUGIN = progressive-reviewer@$(CLAUDE_MARKETPLACE)
 REVIEWER_LINK = $${XDG_DATA_HOME:-$$HOME/.local/share}/herdr-progressive-reviewer/reviewer

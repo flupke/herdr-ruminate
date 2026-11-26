@@ -14,8 +14,8 @@ const SPACE_LABEL: &str = "herdr.space";
 /// The label herdr-app gives the terminals of a tab: its ID.
 const TAB_LABEL: &str = "herdr.tab";
 
-/// The label of a terminal that names the session its agent runs, as `<agent>:<session>`: the
-/// agent's hooks set it, since herdr-core keeps no agent session (ADR 0016).
+/// The label of a terminal that names the session its agent runs, as `<agent>:<session>`:
+/// herdr-core keeps no agent session.
 pub(crate) const SESSION_LABEL: &str = "herdr-reviewer.session";
 
 /// The value of [`SESSION_LABEL`] for the session `session` of the agent `agent`.

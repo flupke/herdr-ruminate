@@ -197,10 +197,8 @@ impl Resume<'_> {
         }
     }
 
-    /// Reports the session to the host, as Herdr's own Codex hook will at the agent's next turn
-    /// under Herdr: until then, the host would report the agent on the session it left, which
-    /// the pinned agent and the access identity bind. Under herdr-core, where nothing names a
-    /// Codex agent's session, the host reports none and this never runs (ADR 0016).
+    /// Herdr's own Codex hook reports the session only at the agent's next turn. Under
+    /// herdr-core, nothing names a Codex agent's session, so this never runs.
     fn report_to_host(&self) {
         let seq = SystemTime::now()
             .duration_since(UNIX_EPOCH)

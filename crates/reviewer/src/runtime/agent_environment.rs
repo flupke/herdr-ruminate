@@ -19,10 +19,6 @@ use herdr_client::protocol::AgentPort;
 
 use super::host::{Arguments, HostKind, host_kind};
 
-/// Variables the pane keeps its own of. The folders describe the agent's shell, not the pane;
-/// the home, state and configuration folders keep the pane's state and `config.toml` where
-/// every review pane of the user keeps them (ADR 0013), whatever runs in the focused terminal;
-/// the temporary folders of a dev shell go with it, while the pane may outlive it.
 const KEPT: [&str; 11] = [
     "PWD",
     "OLDPWD",

@@ -147,7 +147,7 @@ fn documentation_and_tooling_no_check_runs_reach_no_check() {
     assert_eq!(
         checks(&[
             "AGENTS.md",
-            ".agents/wiki/checks.md",
+            ".agents/skills/checks/SKILL.md",
             "docs/design/explore-page/README.md",
             "tests/tui/tests/README.md",
             "herdr-plugin.toml",

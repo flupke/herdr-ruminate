@@ -1,7 +1,3 @@
-//! What the workspaces of one repository share, and which workspaces and reviews the repository
-//! has: the review state of a repository is keyed on its shared store, and the states that
-//! each workspace kept for itself before are found by these (ADR 0013).
-
 use std::path::PathBuf;
 
 use review_types::ReviewUnit;

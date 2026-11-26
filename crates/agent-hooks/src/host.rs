@@ -17,7 +17,7 @@ pub struct HookPane {
     pub pane: PaneId,
     pub directory: HookDirectory,
     /// herdr-core's socket, when the pane is a terminal of herdr-core: the hook reports the
-    /// agent's session there (ADR 0016), where Herdr's own hook reports it under Herdr.
+    /// agent's session there, where Herdr's own hook reports it under Herdr.
     pub core: Option<PathBuf>,
 }
 

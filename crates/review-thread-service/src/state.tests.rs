@@ -1,5 +1,3 @@
-//! ADR-0001 sequencing rules, driven through the in-memory agent port.
-
 use std::sync::{Arc, Mutex};
 
 use herdr_client::memory::{InMemoryAgents, SentPrompt};

@@ -1,5 +1,5 @@
 // Runs a throwaway Playwright script against a fresh session of the standalone page server
-// (`make explore-script SCRIPT=path.ts`, .agents/wiki/explore-page-standalone.md): an agent's
+// (`make explore-script SCRIPT=path.ts`): an agent's
 // hands on the page. It runs the script once for each width and theme, each time in a new page
 // on a new session, and prints what the script prints, then the folder of the screenshots and
 // their names. It stores nothing in the repository, calls no model, and needs no network.

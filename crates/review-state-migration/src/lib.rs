@@ -1,12 +1,3 @@
-//! Brings the review state that each jj workspace or Git worktree kept for itself into the state
-//! its repository's workspaces share (ADR 0013).
-//!
-//! Each open of a reviewer finds the per-workspace states of its repository still at the root
-//! of the state directory: those of its current workspaces by path, and every other one by the
-//! reviews it holds, which the repository must hold too, hidden jj changes included. Before the
-//! first merge, every per-workspace state is backed up beside the state root; then each state of
-//! the repository is merged into the shared state and moved to `merged-workspaces/`.
-
 mod backup;
 
 use std::collections::BTreeSet;

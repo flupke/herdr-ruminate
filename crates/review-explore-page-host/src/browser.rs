@@ -1,11 +1,3 @@
-//! Opening the page of a review pane's reviewer in the default browser of this machine: for the
-//! Herdr action, by the record of its tab; for the pane's Start, Start with Challenger, Open the
-//! Explore page and Past rounds, at the address its reviewer serves the page at. The pane opens
-//! other addresses with the same [`Browser`], such as a Linear issue's page from its header.
-//! `BROWSER` names the program and its arguments; by default `xdg-open` on Linux, `open` on
-//! macOS. The page opens at the address of this machine's loopback listener, the only one that
-//! offers past rounds (ADR 0003, ADR 0004).
-
 use std::env;
 use std::ffi::OsString;
 use std::path::Path;

@@ -1,23 +1,3 @@
-// The client's rendering rules, in one place (.agents/wiki/explore-page-client.md):
-//
-// 1. One state, one entry point: the latest view from the tool is the only model, and
-//    `render(view)` in page.js draws it. What only the page knows (a notice, the quiz item just
-//    answered or moved to) lives beside it and is never overwritten by a push.
-// 2. Stable regions: the page is a fixed list of regions, each marked by an anchor in its parent.
-//    A region is rebuilt only when its key changes; with the same key it stays as it is, so the
-//    nodes the reviewer uses (a text box, a selection, an open fold) survive every push.
-// 3. Text from the data goes in with `textContent` (through `h`); HTML only through two named
-//    functions: `setRenderedMarkdown`, for the agent's Markdown the tool rendered, and
-//    `setDiagramDrawing`, for the SVG Mermaid drew in strict mode. The agent's plain texts
-//    (a choice, its reason, a follow-up) go through `codeSpans`, which draws their backtick
-//    spans as code, still as text nodes.
-// 4. A text box's value is set only when it is built, from the reviewer's draft (drafts.js), and
-//    never on a push. A rebuild that takes the focus from a text box gives it back to the text
-//    box of the same draft in the new nodes, or of the draft that takes it over (its
-//    `data-draft-from`, as a revised question's comment), with its selection; and one that
-//    takes it from a control marked with `data-focus-key` gives it back to the control of the
-//    same key, when that control can still act.
-
 /**
  * @typedef {Record<string, string | number | boolean | null | undefined | EventListener>} Props
  */
