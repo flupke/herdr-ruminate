@@ -1,9 +1,3 @@
-//! `make check-changed`: runs the checks that the files changed between two jj revisions reach,
-//! and nothing else: by default from the change's parent to the working copy. `--dry-run` prints
-//! them without running them, and `--to` plans for another revision than the working copy, with
-//! `--dry-run` only, since the checks run on the working copy. `--check-map` fails when a
-//! tracked file is in no check's map, so that a new directory is mapped before it is skipped.
-
 mod lock;
 mod plan;
 mod workspace;
@@ -18,11 +12,9 @@ use eyre::{Context, Result};
 use plan::Changes;
 use workspace::Workspace;
 
-/// The revisions compared when none are given: the working copy's change and its parent.
 const DEFAULT_BASE: &str = "@-";
 const DEFAULT_TO: &str = "@";
 
-/// What the command was asked to do.
 struct Options {
     base: String,
     to: String,
@@ -75,7 +67,6 @@ fn main() -> Result<ExitCode> {
     }
 }
 
-/// Fails when a tracked file is in no check's map.
 fn check_map(root: &Path, workspace: &Workspace) -> Result<ExitCode> {
     let tracked = lines(&jj(root, &["file", "list"])?);
     let unmapped = workspace.unmapped(&tracked);
@@ -92,13 +83,9 @@ fn check_map(root: &Path, workspace: &Workspace) -> Result<ExitCode> {
     Ok(ExitCode::FAILURE)
 }
 
-/// Runs the checks the changed files reach, the cheapest first, and stops at the first that
-/// fails.
 fn run(root: &Path, workspace: &Workspace, options: &Options) -> Result<ExitCode> {
     let changes = changes(root, &options.base, &options.to)?;
     if changes.paths.is_empty() {
-        // A gate that checks nothing passes nothing: the change to check is not the working
-        // copy's, or `--base` names the wrong revision.
         eprintln!(
             "check-changed: no file changed from {} to {}: run it with the change to check as \
              the working copy (`jj edit`), or set CHECK_BASE",
@@ -129,13 +116,10 @@ fn run(root: &Path, workspace: &Workspace, options: &Options) -> Result<ExitCode
     Ok(ExitCode::SUCCESS)
 }
 
-/// The files changed from `base` to `to`, both paths of a rename included, and the packages
-/// whose entry in `Cargo.lock` changed.
 fn changes(root: &Path, base: &str, to: &str) -> Result<Changes> {
     let summary = jj(root, &["diff", "--summary", "--from", base, "--to", to])?;
     let paths: Vec<String> = summary.lines().flat_map(summary_paths).collect();
     let locked = if paths.iter().any(|path| path == "Cargo.lock") {
-        // A lock added or removed at either end cannot be compared: every check runs.
         let lock = |revision| jj(root, &["file", "show", "-r", revision, "Cargo.lock"]).ok();
         lock(base)
             .zip(lock(to))
@@ -146,8 +130,6 @@ fn changes(root: &Path, base: &str, to: &str) -> Result<Changes> {
     Ok(Changes { paths, locked })
 }
 
-/// The paths of one line of `jj diff --summary`: `M path`, or both sides of a rename or a copy
-/// written `R {old => new}/file` or `R old => new`.
 fn summary_paths(line: &str) -> Vec<String> {
     let Some((_, path)) = line.split_once(' ') else {
         return Vec::new();

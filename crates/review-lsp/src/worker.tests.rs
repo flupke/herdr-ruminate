@@ -99,7 +99,6 @@ fn worker_waits_for_an_open_document_before_starting_rust_analyzer() {
     let worker = Worker::start(directory.path().to_owned());
     let events = worker.event_receiver();
 
-    // Dropping the worker ends its thread, which reports all it would before it ends.
     drop(worker);
 
     assert_eq!(
@@ -164,9 +163,7 @@ fn rust_analyzer_finds_definitions_and_type_definitions() {
     }
 }
 
-/// Asks `operation` at `query` until the language server finds locations: rust-analyzer finds
-/// none while it still indexes the crate after it became ready. Each attempt waits for the
-/// answer to the one before.
+// rust-analyzer finds no locations while it still indexes the crate after it became ready.
 fn locations_once_indexed(worker: &Worker, operation: Operation, query: &Query) -> Event {
     loop {
         worker

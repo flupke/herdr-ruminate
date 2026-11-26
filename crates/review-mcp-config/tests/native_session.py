@@ -1,5 +1,3 @@
-"""A private, persistent native Codex app-server session for MCP lifecycle tests."""
-
 import json
 import selectors
 import subprocess

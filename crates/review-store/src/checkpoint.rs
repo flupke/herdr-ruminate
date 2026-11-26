@@ -10,48 +10,28 @@ use serde::{Deserialize, Serialize};
 
 use super::{Error, Result, ReviewStore, StateKey};
 
-/// A mark that covers the whole file at its baseline commit.
 const FILE_SCHEMA_VERSION: u8 = 1;
-/// A mark that covers some hunks. Older readers ignore it, so they show the
-/// file as unreviewed rather than as reviewed. Who marked the lines is an
-/// optional field older readers skip: a record without it was marked by the
-/// reviewer.
 const PARTIAL_SCHEMA_VERSION: u8 = 2;
 
-/// One valid stored review mark.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewRecord {
-    /// The exact repository-relative path.
     pub path: Vec<u8>,
-    /// The commit that was reviewed.
     pub baseline_commit_id: String,
-    /// The diagnostic write time.
     pub reviewed_at: String,
-    /// Who marked the whole file. A partial mark names the authors of its
-    /// lines in its attribution, and repeats that attribution's default here.
     pub author: MarkAuthor,
-    /// The reviewed version, when the mark covers only some lines.
     pub partial: Option<Box<PartialReview>>,
 }
 
-/// The reviewed version of a file whose mark covers only some of its lines,
-/// and the base it was built on.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PartialReview {
-    /// The file at the base of the reviewed comparison.
     pub base: Vec<u8>,
-    /// The base with the reviewed lines applied, and who accepted them.
     pub reviewed: Reviewed,
 }
 
-/// The result of loading one path record.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LoadResult {
-    /// No usable record exists.
     Unreviewed,
-    /// A valid record exists.
     Reviewed(ReviewRecord),
-    /// A record was ignored because its schema version is unknown.
     UnknownSchema,
 }
 
@@ -78,7 +58,6 @@ struct StoredPartialReview {
     attribution: StoredAttribution,
 }
 
-/// Who accepted the changes of a partial mark; see [`Attribution`].
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct StoredAttribution {
     #[serde(default)]
@@ -96,8 +75,6 @@ struct StoredAuthoredLines {
     author: StoredAuthor,
 }
 
-/// An author kept as written, so that one a newer reviewer wrote makes its
-/// record unknown rather than unreadable, and no older reviewer overwrites it.
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(transparent)]
 struct StoredAuthor(Option<serde_json::Value>);
@@ -107,8 +84,6 @@ impl StoredAuthor {
         Self(serde_json::to_value(author).ok())
     }
 
-    /// The author, or `None` when this reviewer does not know its kind. A
-    /// record without one was marked by the reviewer.
     fn decode(&self) -> Option<MarkAuthor> {
         match &self.0 {
             None => Some(MarkAuthor::Reviewer),
@@ -124,14 +99,11 @@ enum PathEncoding {
     Base64,
 }
 
-/// The review marks of one review, exclusively locked for a read-modify-write until this value
-/// is dropped; see [`ReviewStore::lock_marks`].
 #[derive(Debug)]
 pub struct MarksLock {
     _file: fs::File,
 }
 
-/// A partial mark that lost the versions it needs.
 struct BrokenRecord;
 
 pub(super) struct ReviewUnitKey;
@@ -141,7 +113,6 @@ struct CommitKey;
 struct StatePath;
 
 impl ReviewStore {
-    /// Store one complete review mark.
     pub fn mark(
         &self,
         review_unit: &ReviewUnit,
@@ -152,7 +123,6 @@ impl ReviewStore {
         self.store_mark(review_unit, path, baseline_commit_id, author, None)
     }
 
-    /// Store a mark that covers only some lines of one path.
     pub fn mark_partial(
         &self,
         review_unit: &ReviewUnit,
@@ -193,10 +163,6 @@ impl ReviewStore {
         Ok(record)
     }
 
-    /// Lock the review marks of `review_unit` against every reviewer process, which share them
-    /// across the workspaces of the repository. Each read-modify-write of the marks reads them
-    /// under this lock, so no reviewer writes a mark computed from a stale one over another's.
-    /// A process must not take it twice: the second waits forever.
     pub fn lock_marks(&self, review_unit: &ReviewUnit) -> Result<MarksLock> {
         ReviewUnitKey::validate(review_unit)?;
         let path = self
@@ -209,7 +175,6 @@ impl ReviewStore {
         })
     }
 
-    /// Load and validate one review mark.
     pub fn load(&self, review_unit: &ReviewUnit, path: &[u8]) -> Result<LoadResult> {
         ReviewUnitKey::validate(review_unit)?;
         StatePath::validate(path)?;
@@ -239,7 +204,6 @@ impl ReviewStore {
         }))
     }
 
-    /// Remove one review mark. A missing record is success.
     pub fn unreview(&self, review_unit: &ReviewUnit, path: &[u8]) -> Result<()> {
         ReviewUnitKey::validate(review_unit)?;
         StatePath::validate(path)?;
@@ -258,10 +222,6 @@ impl ReviewStore {
         }
     }
 
-    /// Remove the review mark of one path that was written at `reviewed_at`, and leave a mark
-    /// written since, by a reviewer of another workspace, in place. Without the marks lock, which
-    /// its caller may hold, a mark written between the check and the removal is lost: the window
-    /// is that of two file operations, for a mark whose baseline commit no longer exists.
     pub fn unreview_expired(
         &self,
         review_unit: &ReviewUnit,
@@ -276,8 +236,6 @@ impl ReviewStore {
         }
     }
 
-    /// Clear all file review marks for one logical review, including absent paths.
-    /// Conversations and other reviews are stored outside this directory.
     pub fn unreview_all(&self, review_unit: &ReviewUnit) -> Result<()> {
         ReviewUnitKey::validate(review_unit)?;
         let target = self.record_directory(review_unit);
@@ -327,8 +285,6 @@ impl ReviewStore {
         self.atomic_json(&target, &stored, "write review record")
     }
 
-    /// Read one record whatever its size: a partial mark holds two versions
-    /// of the file, like threads hold their source context.
     fn read_stored(target: &Path) -> Result<Option<StoredRecord>> {
         Self::read_json_within(target, "read review record", None)
     }
@@ -338,8 +294,6 @@ impl ReviewStore {
             .join(format!("{}.json", StateKey::hash(path).0))
     }
 
-    /// A store under `state_root` for the same repository, holding a copy of the review marks of
-    /// `review_unit` and nothing else: marks written to it leave this store's alone.
     pub fn copy_marks_to(&self, review_unit: &ReviewUnit, state_root: &Path) -> Result<Self> {
         let repository = self
             .repository_dir
@@ -378,16 +332,11 @@ impl ReviewStore {
         Ok(copy)
     }
 
-    /// Whether `review_unit` has a review mark.
     pub fn has_marks(&self, review_unit: &ReviewUnit) -> Result<bool> {
         ReviewUnitKey::validate(review_unit)?;
         Ok(!self.record_files(review_unit)?.is_empty())
     }
 
-    /// Give `review_unit`, when it never had a review mark, the marks of `origins`: each path
-    /// that exactly one of them marked takes that mark, the same but for its review. A path that
-    /// several of them marked takes none, since their marks disagree. `lock` is the marks lock
-    /// of `review_unit`. Returns whether a path took a mark.
     pub fn take_marks(
         &self,
         _lock: &MarksLock,
@@ -407,7 +356,6 @@ impl ReviewStore {
                     .filter(|path| {
                         StatePath::validate(path).is_ok() && file == self.record_path(origin, path)
                     });
-                // `load` checks the mark as every read of it does.
                 if let Some(path) = path
                     && let LoadResult::Reviewed(record) = self.load(origin, &path)?
                 {
@@ -428,7 +376,6 @@ impl ReviewStore {
         Ok(taken)
     }
 
-    /// The record files of the marks of `review_unit`.
     fn record_files(&self, review_unit: &ReviewUnit) -> Result<Vec<PathBuf>> {
         let directory = self.record_directory(review_unit);
         let entries = match fs::read_dir(&directory) {
@@ -461,9 +408,6 @@ impl ReviewStore {
         Ok(files)
     }
 
-    /// A value that changes each time the marks of `review_unit` change, from any process: what
-    /// is computed from the marks stays valid while it stays the same. None before the first
-    /// change of its marks that wrote one.
     pub fn marks_stamp(&self, review_unit: &ReviewUnit) -> Result<Option<String>> {
         ReviewUnitKey::validate(review_unit)?;
         let target = self.stamp_path(review_unit);
@@ -478,9 +422,6 @@ impl ReviewStore {
         }
     }
 
-    /// Records that the marks of `review_unit` changed: a new random stamp, renamed into place
-    /// so that a reader never sees half of it. It is not synced to disk: what it keeps valid
-    /// lives in memory, and goes with a crash too.
     pub(super) fn stamp_marks(&self, review_unit: &ReviewUnit) -> Result<()> {
         const OPERATION: &str = "stamp review marks";
         let target = self.stamp_path(review_unit);
@@ -539,7 +480,6 @@ impl StoredRecord {
             .all(|author| author.decode().is_some())
     }
 
-    /// The stored partial review, if the mark covers only some hunks.
     fn decode_partial(&self) -> std::result::Result<Option<Box<PartialReview>>, BrokenRecord> {
         if self.schema_version != PARTIAL_SCHEMA_VERSION {
             return Ok(None);
@@ -584,8 +524,6 @@ impl From<&Attribution> for StoredAttribution {
 }
 
 impl StoredAttribution {
-    /// The attribution, its entries sorted and without overlaps so every
-    /// line has one author. Authors were checked with the schema.
     fn to_attribution(&self) -> Attribution {
         let entries = |entries: &[StoredAuthoredLines]| {
             let mut entries = entries

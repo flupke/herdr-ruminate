@@ -81,7 +81,6 @@ fn accepting_every_open_line_reviews_the_whole_file() {
 
 #[test]
 fn rewritten_reviewed_lines_leave_with_their_whole_change() {
-    // "B" was reviewed and is now "BB": the edit has one addressable line.
     let review = HunkReview::new(b"a\nb\nc\n", b"a\nB\nc\n", b"a\nBB\nc\n");
 
     assert!(matches!(
@@ -169,7 +168,6 @@ fn a_hunk_whose_picks_would_come_out_wrong_changes_whole() {
         },
     ];
 
-    // The first hunk cannot be split; the second can.
     let settled = settle(&changes, picks, |picks| {
         picks[0].added == [false, false] || picks[0].added == [true, true]
     })
@@ -194,8 +192,6 @@ fn changes_a_few_lines_apart_share_a_hunk() {
 
 #[test]
 fn a_split_the_new_diff_would_pair_with_an_equal_line_marks_the_whole_hunk() {
-    // Accepting the first "b" alone leaves a reviewed version whose diff to
-    // the current file opens the first "b" instead of the second.
     let review = HunkReview::new(b"a\n", b"a\n", b"b\nb\n");
 
     assert!(matches!(

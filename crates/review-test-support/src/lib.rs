@@ -1,5 +1,3 @@
-//! Shared integration-test fixtures.
-
 #![allow(
     clippy::missing_panics_doc,
     reason = "test fixture methods fail fast by design"
@@ -25,8 +23,6 @@ pub mod turn;
 pub use herdr::{PrivateHerdrServer, write_reviewer_settings};
 pub use herdr_events::{AgentStatusWatch, HerdrEventWatch};
 
-/// How long a test waits for a process or a thread before it fails: a guard that fires only
-/// on a failure, and never delays a test that passes.
 pub const GUARD: Duration = Duration::from_secs(30);
 
 pub fn eventually(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
@@ -42,14 +38,10 @@ pub fn eventually(timeout: Duration, mut condition: impl FnMut() -> bool) -> boo
     }
 }
 
-/// Whether `address` refuses TCP connections now. A stopped listener is closed once the stop
-/// returns, since the stop waits for the thread that serves it.
 pub fn refuses_connections(address: std::net::SocketAddr) -> bool {
     std::net::TcpStream::connect(address).is_err()
 }
 
-/// Waits for `child` to exit and returns its output; kills it once `guard` ran out, which
-/// only a failing test reaches.
 pub fn wait_with_output_within(child: Child, guard: Duration) -> Output {
     let pid = child.id().to_string();
     let (finished, done) = mpsc::channel::<()>();
@@ -64,17 +56,12 @@ pub fn wait_with_output_within(child: Child, guard: Duration) -> Output {
     output
 }
 
-/// The repository layout for a jj integration fixture.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JjLayout {
-    /// A repository whose Git storage is private to jj.
     NonColocated,
-    /// A repository with `.jj` and `.git` at its root.
     Colocated,
 }
 
-/// A new directory under `parent` for a repository fixture, named so that one a killed test left
-/// behind is easy to find.
 fn fixture_directory(parent: &Path) -> tempfile::TempDir {
     tempfile::Builder::new()
         .prefix("review-repository-")
@@ -82,13 +69,10 @@ fn fixture_directory(parent: &Path) -> tempfile::TempDir {
         .unwrap()
 }
 
-/// Create a temporary repository for one backend.
 pub fn repository_fixture(repository_type: RepoType) -> Box<dyn ReviewRepositoryFixture> {
     repository_fixture_in(repository_type, &std::env::temp_dir())
 }
 
-/// Create a temporary repository for one backend in a new directory under `parent`, such as
-/// one that a sandbox without the host's `/tmp` sees.
 pub fn repository_fixture_in(
     repository_type: RepoType,
     parent: &Path,
@@ -99,7 +83,6 @@ pub fn repository_fixture_in(
     }
 }
 
-/// Poll one stable snapshot from a synchronous test repository.
 pub fn complete_repository_snapshot(repository: &Repository) -> Snapshot {
     match repository.poll().unwrap() {
         PollResult::Complete(snapshot) => snapshot,
@@ -107,39 +90,25 @@ pub fn complete_repository_snapshot(repository: &Repository) -> Snapshot {
     }
 }
 
-/// Common repository operations used by backend-neutral integration tests.
 pub trait ReviewRepositoryFixture: Send {
-    /// Get the temporary repository root.
     fn root(&self) -> &Path;
-    /// Write one repository-relative file.
     fn write(&self, relative_path: &str, contents: &[u8]);
-    /// Delete one repository-relative file.
     fn remove(&self, relative_path: &str);
-    /// Rename one repository-relative file.
     fn rename(&self, from: &str, to: &str);
-    /// Create one repository-relative symbolic link.
     fn symlink(&self, target: &str, link: &str);
-    /// Get the revision that identifies the current review context.
     fn revision_id(&self) -> String;
-    /// Start a new review context after the current worktree state.
     fn new_change(&self, description: &str);
-    /// Return to an earlier review context.
     fn edit(&self, revision: &str);
-    /// Rewrite repository history without changing the reviewed file.
     fn rewrite_base_without_reviewed_file_change(&self);
-    /// Add a workspace of the repository named `name` beside its root, and return its root: a
-    /// jj workspace that edits the change under review, or a Git worktree at `HEAD`.
     fn add_workspace(&self, name: &str) -> PathBuf;
 }
 
-/// A temporary jj repository for integration tests.
 #[derive(Debug)]
 pub struct JjFixture {
     _directory: tempfile::TempDir,
     root: PathBuf,
 }
 
-/// A temporary Git repository for integration tests.
 #[derive(Debug)]
 pub struct GitFixture {
     _directory: tempfile::TempDir,
@@ -147,12 +116,10 @@ pub struct GitFixture {
 }
 
 impl GitFixture {
-    /// Create an empty Git repository with one base commit.
     pub fn new() -> Self {
         Self::new_in(&std::env::temp_dir())
     }
 
-    /// [`Self::new`], in a new directory under `parent`.
     fn new_in(parent: &Path) -> Self {
         let directory = fixture_directory(parent);
         let root = directory.path().join("repository");
@@ -168,18 +135,15 @@ impl GitFixture {
         fixture
     }
 
-    /// Get the temporary repository root.
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// Add all worktree changes and commit them.
     pub fn commit_all(&self, message: &str) {
         self.git(["add", "-A"]);
         self.git(["commit", "--quiet", "-m", message]);
     }
 
-    /// Run a Git command in the fixture and require success.
     pub fn git<'a>(&self, arguments: impl IntoIterator<Item = &'a str>) -> Output {
         let output = Command::new("git")
             .args(arguments)
@@ -257,12 +221,10 @@ impl ReviewRepositoryFixture for GitFixture {
 }
 
 impl JjFixture {
-    /// Create an empty repository with the selected layout.
     pub fn new(layout: JjLayout) -> Self {
         Self::new_in(layout, &std::env::temp_dir())
     }
 
-    /// [`Self::new`], in a new directory under `parent`.
     fn new_in(layout: JjLayout, parent: &Path) -> Self {
         let directory = fixture_directory(parent);
         let root = directory.path().join("repository");
@@ -292,12 +254,10 @@ impl JjFixture {
         }
     }
 
-    /// Get the temporary repository root.
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// Write one repository-relative fixture file.
     pub fn write(&self, relative_path: impl AsRef<Path>, contents: &[u8]) {
         let relative_path = relative_path.as_ref();
         assert!(
@@ -312,39 +272,31 @@ impl JjFixture {
         fs::write(path, contents).unwrap();
     }
 
-    /// Delete one repository-relative fixture file.
     pub fn remove(&self, relative_path: impl AsRef<Path>) {
         fs::remove_file(self.root.join(relative_path)).unwrap();
     }
 
-    /// Rename one repository-relative fixture file.
     pub fn rename(&self, from: impl AsRef<Path>, to: impl AsRef<Path>) {
         fs::rename(self.root.join(from), self.root.join(to)).unwrap();
     }
 
-    /// Create one repository-relative symbolic link.
     pub fn symlink(&self, target: impl AsRef<Path>, link: impl AsRef<Path>) {
         std::os::unix::fs::symlink(target, self.root.join(link)).unwrap();
     }
 
-    /// Start a new jj change with the current change as its parent.
     pub fn new_change(&self, description: &str) {
         self.jj(["new", "-m", description]);
     }
 
-    /// Edit an existing jj change.
     pub fn edit(&self, revision: &str) {
         self.jj(["edit", revision]);
     }
 
-    /// Get the full stable change ID for the working copy.
     pub fn change_id(&self) -> String {
         let output = self.jj(["log", "--no-graph", "-r", "@", "-T", r#"change_id ++ "\n""#]);
         String::from_utf8(output.stdout).unwrap().trim().to_owned()
     }
 
-    /// Add a workspace beside the fixture, whose working copy is a new change on top of
-    /// `parent`, and return its root.
     pub fn add_workspace_on(&self, name: &str, parent: &str) -> PathBuf {
         let root = self.root.with_file_name(name);
         self.jj([
@@ -359,7 +311,6 @@ impl JjFixture {
         root
     }
 
-    /// Get the full stable change ID of the working copy of the workspace named `workspace`.
     pub fn working_copy(&self, workspace: &str) -> String {
         let revset = format!("{workspace}@");
         let output = self.jj([
@@ -373,7 +324,6 @@ impl JjFixture {
         String::from_utf8(output.stdout).unwrap().trim().to_owned()
     }
 
-    /// Run a jj command in the fixture and require success.
     pub fn jj<'a>(&self, arguments: impl IntoIterator<Item = &'a str>) -> Output {
         let output = Command::new("jj")
             .args(["--color=never", "--no-pager"])

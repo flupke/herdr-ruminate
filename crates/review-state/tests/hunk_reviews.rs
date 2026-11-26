@@ -8,8 +8,6 @@ use review_test_support::{
 use review_types::MarkAuthor;
 use test_case::test_case;
 
-/// Twenty lines; the change under review rewrites lines 2, 10 and 18, far
-/// enough apart to make three hunks.
 fn file(edits: &[(usize, &str)]) -> Vec<u8> {
     let mut lines = (1..=20)
         .map(|line| format!("line {line}"))
@@ -287,8 +285,6 @@ fn reviewed_hunks_stay_reviewed_when_the_base_changes_elsewhere() {
 fn a_reviewed_change_that_meets_a_new_base_change_reopens(repository_type: RepoType) {
     let review = Review::new(repository_type);
     let snapshot = review.snapshot();
-    // The mark was made on a base whose line 2 has changed since; line 10
-    // was reviewed too, on lines the base change did not touch.
     review
         .store
         .mark_partial(
@@ -431,7 +427,6 @@ impl Review {
 fn accepting_one_side_of_a_rewritten_line_splits_its_hunk(repository_type: RepoType) {
     let review = Review::new(repository_type);
 
-    // Accept "two" but not the removal of "line 2" it replaces.
     assert_eq!(
         review.accept_lines(&selection(&[], &[1]), &MarkAuthor::Jev),
         MarkResult::Marked
@@ -477,7 +472,6 @@ fn a_file_reviewed_by_several_authors_keeps_who_reviewed_which_line(repository_t
     assert_eq!(attribution.added_by(9), &MarkAuthor::Jev);
     assert_eq!(attribution.removed_by(17), &MarkAuthor::Jev);
 
-    // Reopening Jev's lines leaves the reviewer's.
     let snapshot = review.snapshot();
     assert_eq!(
         review
@@ -549,7 +543,6 @@ fn lines_a_partial_mark_left_open_change_since_review_only_when_the_file_does(
     repository_type: RepoType,
 ) {
     let review = Review::new(repository_type);
-    // Accept the removal of "line 2" but not the "two" replacing it.
     review.accept_lines(&selection(&[1], &[]), &MarkAuthor::Reviewer);
     let since_review = |review: &Review| {
         review
@@ -578,11 +571,9 @@ fn open_rows_number_removed_lines_like_the_base_and_the_rest_like_the_current_fi
 ) {
     use review_state::RowChange::{Added, Removed};
     let review = Review::new(repository_type);
-    // Two more lines at the top shift the current numbering away from the base's.
     let mut shifted = b"new first\nnew second\n".to_vec();
     shifted.extend(current());
     review.files.write("file.txt", &shifted);
-    // Review the two new lines and the first hunk's replacement.
     review.accept_lines(&selection(&[1], &[0, 1, 3]), &MarkAuthor::Reviewer);
     let snapshot = review.snapshot();
 
@@ -644,8 +635,6 @@ fn a_binary_file_marked_whole_has_no_lines(repository_type: RepoType) {
     assert_eq!(lines, review_state::FileLines::default());
 }
 
-/// Reviewers of several workspaces share the marks: each accepts its hunk from what the others
-/// saved, so none is lost.
 #[test_case(RepoType::Git; "git")]
 #[test_case(RepoType::Jj; "jj")]
 fn reviewers_that_accept_hunks_at_once_keep_every_hunk(repository_type: RepoType) {
@@ -669,7 +658,6 @@ fn reviewers_that_accept_hunks_at_once_keep_every_hunk(repository_type: RepoType
     let snapshot = review.snapshot();
     let barrier = std::sync::Barrier::new(spans.len());
 
-    // A lost write needs one reviewer to read between another's read and write: race often.
     for _ in 0..10 {
         review
             .store

@@ -783,7 +783,6 @@ fn registered_watchers_hear_the_file_changes_they_match() {
             crate::api::FileChangeKind::Changed,
         ),
     ];
-    // Nothing goes out before the server registers its watchers.
     session.files_changed(&changes).unwrap();
 
     session
@@ -814,7 +813,6 @@ fn registered_watchers_hear_the_file_changes_they_match() {
     );
 }
 
-/// The unindexed files a references response reports, once `session` sent its query.
 fn unindexed_files(session: &mut Session, path: &std::path::Path) -> usize {
     std::fs::write(path, "fn main() {}\n").unwrap();
     session
@@ -865,7 +863,6 @@ fn expert_counts_the_changed_files_it_has_not_indexed() {
             file_change(&template, Changed),
         ])
         .unwrap();
-    // The open document changes through the editor's protocol, which reindexes it.
     let Message::Notification(change) = read_message(&mut session, &mut output) else {
         panic!("the open document was not resynced");
     };
@@ -880,11 +877,9 @@ fn expert_counts_the_changed_files_it_has_not_indexed() {
     session
         .files_changed(&[file_change(&root.join("moved"), Deleted)])
         .unwrap();
-    // `created.ex` alone: `deleted.exs` and the moved directory left the index, Expert does
-    // not index templates.
+    // Expert does not index templates.
     assert_eq!(unindexed_files(&mut session, &queried), 1);
 
-    // Opening a file does not reindex it; a change of the open document does.
     session.open_document(&created).unwrap();
     assert_eq!(unindexed_files(&mut session, &queried), 1);
     std::fs::write(
@@ -901,7 +896,6 @@ fn expert_counts_the_changed_files_it_has_not_indexed() {
 #[test]
 fn rust_analyzer_counts_no_file_changed_on_disk() {
     let directory = tempfile::tempdir().unwrap();
-    // An Elixir file, which only Expert would miss.
     let changed = directory.path().join("lib.ex");
     let mut session = session(State::Ready);
     session

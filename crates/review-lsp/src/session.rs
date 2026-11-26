@@ -84,7 +84,6 @@ pub(super) struct Session {
     encoding: PositionEncodingKind,
     documents: HashMap<PathBuf, (String, i32)>,
     watched_files: WatchedFiles,
-    /// Files changed on disk that the server's index misses until it restarts.
     unindexed: BTreeSet<PathBuf>,
     state: State,
 }
@@ -338,16 +337,11 @@ impl Session {
         Ok(())
     }
 
-    /// Tell the server about files that changed on disk: resync the open documents among
-    /// them, and send the changes its watchers match.
     pub(super) fn files_changed(&mut self, changes: &[FileChange]) -> Result<(), String> {
         for change in changes {
             let deleted = change.kind == FileChangeKind::Deleted;
             let open = self.documents.contains_key(&change.path);
-            // A deleted file leaves the index through its watcher event; an open document
-            // changes through `sync_document`, which reindexes it.
             if deleted {
-                // A deleted directory takes its files with it.
                 self.unindexed
                     .retain(|path| !path.starts_with(&change.path));
             } else if !open && self.server.misses_disk_change(&change.path) {
@@ -358,8 +352,6 @@ impl Session {
             if deleted || !open {
                 continue;
             }
-            // The file may be gone again, or unreadable for a moment: the next change or
-            // query reads it again.
             if let (Ok(text), Ok(uri)) = (fs::read_to_string(&change.path), path_uri(&change.path))
             {
                 self.sync_document(&change.path, uri, &text)?;

@@ -13,29 +13,23 @@ use herdr_client::protocol::{AgentStatus, HerdrEvent, PaneId};
 
 use crate::{GUARD, PrivateHerdrServer};
 
-/// Submits `text` to the agent of `pane`, as the reviewer and the user do.
 pub fn prompt(herdr: &PrivateHerdrServer, pane: &PaneId, text: &str) {
     herdr.run_cli(&["agent", "prompt", &pane.0, text]);
 }
 
-/// What Codex asks once `/new` is typed in a Git repository, before it starts the session.
 const WHERE_TO_RUN: &str = "Where should the new conversation run?";
 
-/// What the input box of the agent of a Codex pane shows while it is empty.
 const EMPTY_INPUT_BOX: &str = "Ask Codex to do anything";
 
-/// Starts a new agent session in the agent of `pane`, in its current Git worktree, and returns
-/// once its input box takes the next prompt: Codex asks where the session runs, and would take
-/// that prompt's Enter for the answer.
+// Codex asks where the session runs, and would take the next prompt's Enter for the answer.
 pub fn new_session(herdr: &PrivateHerdrServer, pane: &PaneId) {
     prompt(herdr, pane, "/new");
     wait_output(herdr, pane, WHERE_TO_RUN);
-    // The first choice, selected already: "Use current Git worktree".
+    // Codex's first choice, selected already: "Use current Git worktree".
     herdr.run_cli(&["pane", "send-keys", &pane.0, "enter"]);
     wait_output(herdr, pane, EMPTY_INPUT_BOX);
 }
 
-/// Waits until the pane `pane` of `herdr` shows `text`, as Herdr reads it.
 pub fn wait_output(herdr: &PrivateHerdrServer, pane: &PaneId, text: &str) {
     let guard = GUARD.as_millis().to_string();
     herdr.run_cli(&[
@@ -51,7 +45,6 @@ pub fn wait_output(herdr: &PrivateHerdrServer, pane: &PaneId, text: &str) {
     ]);
 }
 
-/// A scratch Codex home, with its user's home and the workspace the agent works in.
 pub struct CodexHome {
     directory: tempfile::TempDir,
     workspace: PathBuf,
@@ -80,7 +73,6 @@ impl CodexHome {
         Self::working_in(directory, workspace)
     }
 
-    /// A scratch home whose agent works in `workspace`, a repository the test made.
     pub fn in_repository(workspace: &Path) -> Self {
         Self::working_in(tempfile::tempdir().unwrap(), workspace.to_owned())
     }
@@ -96,7 +88,6 @@ impl CodexHome {
         }
     }
 
-    /// The scratch directory that holds the homes, and the fixtures' logs.
     fn root(&self) -> &Path {
         self.directory.path()
     }
@@ -105,12 +96,10 @@ impl CodexHome {
         self.workspace.clone()
     }
 
-    /// The Codex home, `CODEX_HOME`.
     pub fn home(&self) -> PathBuf {
         self.root().join("codex")
     }
 
-    /// The variables every Codex process of this home runs with.
     pub fn environment(&self) -> [(&'static str, PathBuf); 2] {
         [
             ("CODEX_HOME", self.home()),
@@ -118,16 +107,12 @@ impl CodexHome {
         ]
     }
 
-    /// Writes the configuration that has Codex use the model fixture listening on `provider`,
-    /// and trust the workspace, followed by `mcp`, the TOML that registers the reviewer's MCP
-    /// server `herdr_reviewer`, whose `list_threads` it may call without asking.
     pub fn configure(&self, provider: u16, mcp: &str) {
         let workspace = serde_json::to_string(&self.workspace()).unwrap();
         fs::write(
             self.home().join("config.toml"),
             format!(
-                // A model with no migration: the TUI would announce one, and drop what is typed
-                // meanwhile.
+                // Codex's TUI announces a model migration, and drops what is typed meanwhile.
                 r#"model = "gpt-6.1-sol"
 model_provider = "fixture"
 approval_policy = "never"
@@ -157,8 +142,6 @@ approval_mode = "approve"
         .unwrap();
     }
 
-    /// Starts the Codex TUI with `arguments` in a pane of `herdr`, and returns once Herdr
-    /// reports it idle: it takes what is typed from then on.
     pub fn start_tui(&self, herdr: &PrivateHerdrServer, arguments: &[&str]) -> PaneId {
         let workspace = herdr.run_cli_json(&[
             "workspace",
@@ -179,8 +162,6 @@ approval_mode = "approve"
         pane
     }
 
-    /// Runs the Codex TUI with `arguments` in the pane `pane` of `herdr`, and returns once Herdr
-    /// reports it idle.
     pub fn run_tui(&self, herdr: &PrivateHerdrServer, pane: &PaneId, arguments: &[&str]) {
         let events = herdr.events();
         let command = self
@@ -199,9 +180,6 @@ approval_mode = "approve"
         herdr.agent_statuses(pane).wait_for(AgentStatus::Idle);
     }
 
-    /// Installs Herdr's Codex integration in the home, whose hook reports the agent's session
-    /// to the Herdr server of the pane that started the daemon. [`Self::trust_hooks`] has Codex
-    /// run it.
     pub fn install_herdr_integration(&self, herdr: &PrivateHerdrServer) {
         let output = Command::new(herdr.binary())
             .args(["integration", "install", "codex"])
@@ -215,8 +193,7 @@ approval_mode = "approve"
         );
     }
 
-    /// Trusts every hook the home's Codex would run, as Codex's `/hooks` does: Codex runs no
-    /// hook it does not trust.
+    // Codex runs no hook it does not trust.
     pub fn trust_hooks(&self) {
         let mut server = StdioServer::start(self);
         let listed = server.request("hooks/list", &json!({}));
@@ -239,7 +216,7 @@ approval_mode = "approve"
     }
 }
 
-/// Codex's app server on standard input and output, which takes one JSON-RPC message per line.
+// Codex's app server takes one JSON-RPC message per line.
 struct StdioServer {
     input: ChildStdin,
     output: BufReader<ChildStdout>,
@@ -272,7 +249,6 @@ impl StdioServer {
         server
     }
 
-    /// The result of the request `method` with `params`.
     fn request(&mut self, method: &str, params: &Value) -> Value {
         self.next += 1;
         let id = self.next;
@@ -298,8 +274,7 @@ fn quoted(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// The native Codex binary of the `codex` on the `PATH`, which the npm package runs under a
-/// Node wrapper: a test signals the app server itself.
+// codex's npm package runs the native binary under a Node wrapper.
 fn native_codex() -> PathBuf {
     let codex = std::env::var_os("PATH")
         .and_then(|path| {
@@ -332,39 +307,27 @@ fn native_codex() -> PathBuf {
     native.unwrap_or(codex)
 }
 
-/// The local model fixture: a prompt that says "call the reviewer" has the agent call the
-/// reviewer's `list_threads`; an Explore prompt, of the agent or of a fork, waits for the
-/// test's reply ([`Self::next_prompt`], [`Self::reply`]), then calls the reviewer's tool the
-/// reply names; every other turn ends with the message `Answered: <prompt>`. What each tool
-/// answered comes to [`Self::next_output`].
 pub struct Provider {
     port: u16,
     prompts: Mutex<Receiver<ExplorePrompt>>,
     outputs: Mutex<Receiver<ToolOutput>>,
-    /// Where the test's replies go; dropped before the fixture, which then stops.
     replies: Mutex<ChildStdin>,
     _child: Lifetime,
 }
 
-/// An Explore prompt a turn got, which waits for the test's reply.
 #[derive(Clone, Debug)]
 pub struct ExplorePrompt {
-    /// The access value the prompt names.
     pub access: String,
     pub prompt: String,
 }
 
-/// What a tool answered a turn, as the model read it.
 #[derive(Clone, Debug)]
 pub struct ToolOutput {
-    /// The prompt of the turn.
     pub prompt: String,
     pub output: String,
 }
 
 impl Provider {
-    /// Starts the fixture, and configures `codex` to use it, with `mcp` as
-    /// [`CodexHome::configure`] takes it.
     pub fn start(codex: &CodexHome, mcp: &str) -> Self {
         let mut child = Command::new("python3")
             .arg("-B")
@@ -411,7 +374,6 @@ impl Provider {
         }
     }
 
-    /// The next Explore prompt a turn got, once one did.
     pub fn next_prompt(&self) -> ExplorePrompt {
         self.prompts
             .lock()
@@ -420,7 +382,6 @@ impl Provider {
             .expect("the provider stopped")
     }
 
-    /// What a tool answered the next turn whose prompt is `prompt`, once one did.
     pub fn next_output(&self, prompt: &str) -> String {
         let outputs = self.outputs.lock().unwrap_or_else(PoisonError::into_inner);
         loop {
@@ -431,8 +392,6 @@ impl Provider {
         }
     }
 
-    /// Has the turn whose prompt named `access` call the reviewer's tool `tool` with
-    /// `arguments`, and the access value as `review`.
     pub fn reply(&self, access: &str, tool: &str, arguments: &Value) {
         let mut replies = self.replies.lock().unwrap_or_else(PoisonError::into_inner);
         writeln!(
@@ -444,23 +403,17 @@ impl Provider {
     }
 }
 
-/// An unmanaged Codex app server on the home's control socket, which the TUI takes for its
-/// daemon: unlike the managed daemon, it never updates itself. It runs outside the test's
-/// Herdr, without the `HERDR_*` variables of the test's own environment.
+// Codex's managed daemon updates itself; an unmanaged app server never does.
 pub struct AppServer {
     pid: String,
     lifetime: Lifetime,
 }
 
-/// What the app server writes once its control socket accepts connections.
 const LISTENING: &str = "app-server control socket listening";
 
 impl AppServer {
-    /// Starts the server of `codex`, with the variables `environment` too, and returns once it
-    /// listens.
     pub fn start(codex: &CodexHome, provider: &Provider, environment: &[(&str, &OsStr)]) -> Self {
         assert_ne!(provider.port, 0);
-        // The shell stops the server once the test lets go of its stdin, even by dying.
         let mut command = Command::new("sh");
         command
             .args([
@@ -514,7 +467,6 @@ impl AppServer {
         }
     }
 
-    /// Stops the server as the daemon stops to update itself, and waits until it exited.
     pub fn stop(mut self) {
         assert!(
             Command::new("kill")
@@ -527,7 +479,6 @@ impl AppServer {
     }
 }
 
-/// A child process that stops once its stdin closes: on drop, or when the test dies.
 struct Lifetime {
     child: Child,
     stdin: Option<ChildStdin>,

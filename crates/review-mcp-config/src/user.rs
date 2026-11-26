@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use super::{Client, document::Configuration, file::ConfigFile};
 
-/// Register the bridge once for every repository a native client opens.
 pub struct UserConfig {
     client: Client,
     directory: PathBuf,
@@ -33,11 +32,8 @@ impl UserConfig {
         self.directory.join(self.client.file_name())
     }
 
-    /// Retain existing settings and tool policies, rejecting conflicting registrations.
-    /// Returns whether configuration was written.
     pub fn install(&self) -> Result<bool, String> {
         std::fs::create_dir_all(&self.directory).map_err(|error| error.to_string())?;
-        // A configuration directory may be a symlink into the user's dotfiles checkout.
         let directory = self
             .directory
             .canonicalize()

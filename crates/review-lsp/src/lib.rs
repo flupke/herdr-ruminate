@@ -1,5 +1,3 @@
-//! Language server process integration.
-
 mod api;
 mod language;
 mod manager;

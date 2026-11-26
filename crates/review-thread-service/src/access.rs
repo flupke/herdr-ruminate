@@ -5,13 +5,11 @@ use review_types::ReviewUnit;
 
 use crate::agent_identity::{AgentIdentity, IdentityError, IdentityRules, Verdict};
 
-/// Access to one logical review for the selected agent process or native session.
 #[derive(Clone)]
 pub(super) struct Access {
     pub(super) token: String,
     pub(super) review_unit: ReviewUnit,
     pub(super) agent: Agent,
-    /// Clones share one identity, so a session adopted through any clone binds them all.
     identity: Arc<Mutex<AgentIdentity>>,
 }
 
@@ -46,7 +44,6 @@ impl Access {
         Ok(current)
     }
 
-    /// A missing native session does not match: access values are bearer tokens.
     pub(super) fn matches_agent(
         &self,
         port: &dyn AgentPort,
@@ -65,8 +62,6 @@ impl Access {
         error.into_message("Herdr did not identify the selected agent process")
     }
 
-    /// The wakeup that brings the agent the review's pending threads: the rules for answering
-    /// them come with the threads, from `get_new_messages`.
     pub(super) fn prompt(&self) -> String {
         format!(
             "Review comments for you in review {}: call get_new_messages, a tool of the {} MCP \

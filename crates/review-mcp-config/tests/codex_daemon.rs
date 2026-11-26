@@ -1,8 +1,3 @@
-//! A Codex TUI in a private Herdr server, on an app server of its own with a scratch Codex home and
-//! a local model fixture: the reviewer learns the agent's session from its call to a reviewer
-//! tool, then follows the session through the daemon, across a `/resume` and a restart of the
-//! daemon. It calls no model API.
-
 use std::fs;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -29,7 +24,7 @@ fn the_reviewer_follows_a_codex_agent_s_session_through_its_daemon() {
     })
     .unwrap();
     let provider = Provider::start(&codex, &bridge_registration(&codex));
-    // MCP servers run in the daemon, which the bridge reaches the reviewer from.
+    // Codex runs MCP servers in its daemon.
     let bridge_port = port.number().to_string();
     let environment = [(
         "HERDR_REVIEWER_MCP_PORT",
@@ -105,7 +100,6 @@ fn the_reviewer_follows_a_codex_agent_s_session_through_its_daemon() {
 #[test]
 fn a_codex_agent_without_the_daemon_has_none_to_join() {
     let codex = CodexHome::new();
-    // The agent takes no turn: its provider listens nowhere.
     let registration = bridge_registration(&codex);
     codex.configure(9, &registration);
     let herdr = PrivateHerdrServer::start(&codex.workspace());
@@ -119,11 +113,9 @@ fn a_codex_agent_without_the_daemon_has_none_to_join() {
     );
 }
 
-/// What the reviewer heard of the session, in order.
 struct Events(mpsc::Receiver<SessionEvent>);
 
 impl Events {
-    /// The events up to the first one that `last` accepts, that one included.
     fn until(
         &mut self,
         what: &str,
@@ -143,8 +135,6 @@ impl Events {
         }
     }
 
-    /// The events up to the end of the turn that starts on `prompt`, once they say that it
-    /// started, took the prompt and completed, in that order.
     fn turn(&mut self, prompt: &str) -> Vec<SessionEvent> {
         let mut turn = None;
         let heard = self.until(&format!("the turn of {prompt:?}"), |event| match event {
@@ -184,7 +174,6 @@ impl Events {
     }
 }
 
-/// The configuration that registers the reviewer's MCP bridge in `codex`'s home.
 fn bridge_registration(codex: &CodexHome) -> String {
     assert!(
         UserConfig::new(

@@ -9,8 +9,6 @@ fn set(names: &[&str]) -> BTreeSet<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
 }
 
-/// `server` uses `core` and `serde`, and tests with `fixture` and `sandbox`, a path dependency
-/// beside the repository; `core` builds with `build-helper`.
 fn graph() -> Graph {
     let package = |name: &str, local: bool| {
         json!({
@@ -54,7 +52,6 @@ fn graph() -> Graph {
     Graph::new(Path::new("/repository"), &metadata).unwrap()
 }
 
-/// A local package outside the repository, `sandbox`, is none of the repository's.
 #[test]
 fn local_packages_are_found_by_their_directory_and_members_by_their_id() {
     let graph = graph();

@@ -1,19 +1,3 @@
-"""A local Responses provider for a Codex agent: it calls no model.
-
-It prints its port, then answers each request until its standard input closes:
-
-- a prompt that says "call the reviewer" has the agent call the reviewer's list_threads tool;
-- an Explore prompt, which names its turn's index, `<directory>/index.md`, beside the round's
-  data and the turn's (`round.md`, `turn.md`, as `turn.rs` reads them too), whose access value
-  is on a line "Explore review access: <access>", is printed on standard output with that data,
-  as one JSON line {"access", "prompt"}; the turn then waits for
-  the test's reply, a JSON line {"access", "tool", "arguments"} on standard input, and calls
-  the reviewer's tool with those arguments and the access value as "review";
-- every other turn, and every turn once its tool answered, ends with the message
-  "Answered: <prompt>"; once a tool answered, what it answered is printed on standard output
-  first, as one JSON line {"prompt", "output"}.
-"""
-
 import http.server
 import json
 import os
@@ -26,7 +10,6 @@ printing = threading.Lock()
 
 
 def last_prompt(items):
-    """The last prompt of `items`, and whether a tool answered since."""
     for index in range(len(items) - 1, -1, -1):
         item = items[index]
         if item.get("type") == "message" and item.get("role") == "user":
@@ -38,7 +21,6 @@ def last_prompt(items):
 
 
 def with_turn(prompt):
-    """`prompt` followed by the round's data and the turn's, when it names a turn's index."""
     for word in prompt.split():
         if word.endswith("/index.md"):
             directory = word.removesuffix("/index.md")
@@ -61,7 +43,6 @@ def access_of(prompt):
 
 
 def call(tool, arguments, call_id):
-    """A call of the reviewer's tool `tool` with `arguments`, through Codex's exec tool."""
     script = (f'const tool = ALL_TOOLS.find(t => t.name.endsWith("herdr_reviewer__{tool}")); '
               f'text(tool ? JSON.stringify(await tools[tool.name]({json.dumps(arguments)})) '
               ': "reviewer-unavailable");')
@@ -70,7 +51,6 @@ def call(tool, arguments, call_id):
 
 
 def explore_reply(prompt, access):
-    """The test's reply to the Explore prompt `prompt`, once it gave it."""
     with printing:
         print(json.dumps({"access": access, "prompt": prompt}), flush=True)
     with replied:
@@ -134,7 +114,6 @@ def serve():
 
 
 threading.Thread(target=serve, daemon=True).start()
-# The test holds the other end: once it lets go, even by dying, the provider stops.
 for line in sys.stdin:
     reply = json.loads(line)
     with replied:

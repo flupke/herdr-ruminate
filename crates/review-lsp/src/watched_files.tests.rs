@@ -24,7 +24,6 @@ fn change(path: &Path, kind: FileChangeKind) -> FileChange {
     }
 }
 
-/// The paths and types of the events, relative to `root`.
 fn events(
     watched: &WatchedFiles,
     root: &Path,
@@ -78,7 +77,6 @@ fn a_watcher_hears_only_the_kinds_it_asked_for() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
     let mut watched = WatchedFiles::new(root);
-    // Delete only.
     watched.register(registration(
         "1",
         serde_json::json!([{ "globPattern": "**/*.ex", "kind": 4 }]),

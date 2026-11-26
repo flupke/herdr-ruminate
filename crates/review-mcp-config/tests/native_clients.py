@@ -1,5 +1,3 @@
-"""Exercise installed user configuration without contacting a model provider."""
-
 import http.server
 import json
 import os

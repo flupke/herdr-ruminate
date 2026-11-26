@@ -1,8 +1,3 @@
-//! Reviewer prompts are submitted through Herdr: the conversation worker decides what to send,
-//! and its courier sends it, on a lane of its own for each agent's terminal: a prompt that waits
-//! for one agent's input line to empty holds none to another. An agent that runs the reviewer's
-//! hooks confirms each prompt through them, and the hooks block text left in its input box that
-//! joined the prompt.
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     Arc, Condvar, Mutex, PoisonError,
@@ -17,23 +12,13 @@ use herdr_client::protocol::{Agent, AgentPort, PaneId, PromptWait};
 
 use crate::{Input, PinnedAgent};
 
-/// How long a prompt to an agent that runs the reviewer's hooks waits for them to report it,
-/// before Herdr's status decides: they report it within milliseconds of the submission, also
-/// while the agent works on a turn.
 const HOOK_LIMIT: Duration = Duration::from_secs(5);
 
-/// Why the agent's hooks block a prompt submitted while the reviewer types one, as the agent
-/// shows it.
 const BLOCKED: &str = "The progressive reviewer stopped this prompt while it typed one of its \
                        own here, since text left in the input box joins its prompt. Empty the \
                        input box, keeping your own text elsewhere, before you Retry in the \
                        reviewer.";
 
-/// Submit `text` to `agent` and wait until it starts on it: as its `hooks` report the prompt,
-/// when the agent runs them, and otherwise as Herdr reports the agent's status. `waits` hears
-/// why the host holds the prompt before it types it, each time that changes, and `withdrawal`
-/// withdraws it until the host may be typing it. A host that refuses the prompt typed nothing;
-/// any other failure may come after the host wrote the text, so it leaves the outcome unknown.
 fn prompt_agent(
     port: &dyn AgentPort,
     hooks: Option<&AgentHooks>,
@@ -56,8 +41,6 @@ fn prompt_agent(
             .prompt_agent_telling_waits(&agent.pane_id, text, waits, withdrawal)
             .map_err(failure);
     };
-    // A host that types the prompt only once nobody types there may wait for seconds: the
-    // user's own prompts go on meanwhile, when it holds none of the reviewer's text.
     let others = OtherPrompts::for_host(port);
     let expectation = hooks.expect_prompt(&hooked, text, BLOCKED, others);
     port.submit_prompt_telling_waits(&agent.pane_id, text, waits, withdrawal)
@@ -71,8 +54,6 @@ fn prompt_agent(
              then Retry."
                 .into(),
         )),
-        // The hooks did not say. A working agent started on it, as Herdr judges for an agent
-        // without them; an idle one may have ended a quick turn on it already.
         Some(Heard::Resumed | Heard::Blocked { .. }) | None => match port.get_agent(&agent.pane_id)
         {
             Ok(Some(now)) if now.agent_status.started_on_prompt() => Ok(()),
@@ -85,19 +66,13 @@ fn prompt_agent(
     }
 }
 
-/// What the courier calls with the outcome of one prompt, on its own thread.
 type Outcome = Box<dyn FnOnce(Result<(), PromptError>) + Send>;
 
-/// What the courier calls, on its own thread, with why the host holds a prompt before it types
-/// it, each time that changes, and `None` once it no longer does.
 type Waits = Box<dyn FnMut(Option<PromptWait>) + Send>;
 
-/// One prompt for the courier to send, and where its outcome goes.
 struct QueuedPrompt {
     agent: Agent,
     text: String,
-    /// Cancelled when the owner withdraws the prompt: one still waiting behind another, or for
-    /// the agent's input line to empty, is not sent.
     withdrawal: EventCanceller,
     waits: Waits,
     outcome: Outcome,
@@ -123,13 +98,10 @@ impl QueuedPrompt {
 
 enum Parcel {
     Prompt(Box<QueuedPrompt>),
-    /// Answers once every earlier prompt is sent.
     #[cfg(test)]
     Flush(Sender<()>),
 }
 
-/// Keeps the courier from sending while any [`PromptHold`] lives, as while run-ahead switches
-/// the agent of a pane to another session: no prompt may reach the agent meanwhile.
 #[derive(Default)]
 pub(super) struct PromptGate {
     state: Mutex<GateState>,
@@ -138,13 +110,9 @@ pub(super) struct PromptGate {
 
 #[derive(Default)]
 struct GateState {
-    /// The holds that live.
     holds: usize,
-    /// The terminals the courier is sending a prompt to, one at most each.
     sending: HashSet<PaneId>,
-    /// The prompts handed to the courier that it has not sent, withdrawn or failed yet.
     queued: usize,
-    /// Whether the courier waits for the holds to end before it sends a prompt.
     #[cfg(test)]
     held: bool,
 }
@@ -154,7 +122,6 @@ impl PromptGate {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Sends `delivery` once no hold lives; no hold begins while it is sent.
     fn send(&self, delivery: QueuedPrompt, port: &dyn AgentPort, hooks: Option<&AgentHooks>) {
         let mut state = self.lock();
         #[cfg(test)]
@@ -177,19 +144,15 @@ impl PromptGate {
         delivery.send(port, hooks);
     }
 
-    /// A prompt for the courier to send, after those it holds already.
     fn queue(&self) {
         self.lock().queued += 1;
     }
 
-    /// The courier will never send a prompt it was handed: it stopped.
     fn unqueue(&self) {
         self.lock().queued -= 1;
         self.changed.notify_all();
     }
 
-    /// Waits until the courier sent, withdrew or failed every prompt it was handed, but those
-    /// a [`PromptHold`] holds.
     #[cfg(any(test, feature = "flush"))]
     fn settle(&self) {
         drop(
@@ -201,7 +164,6 @@ impl PromptGate {
         );
     }
 
-    /// Waits until the courier holds a prompt back for a hold, and fails after `guard`.
     #[cfg(test)]
     fn wait_until_held(&self, guard: std::time::Duration) {
         let (state, waited) = self
@@ -216,8 +178,6 @@ impl PromptGate {
     }
 }
 
-/// Marks the courier's prompt to `pane` sent, and its outcome reported, once dropped, even when
-/// sending it panicked.
 struct Sent<'a> {
     gate: &'a PromptGate,
     pane: PaneId,
@@ -233,23 +193,16 @@ impl Drop for Sent<'_> {
     }
 }
 
-/// Holds every prompt the courier has not begun to send, the thread service's wakeups
-/// included, until it is dropped. A prompt withdrawn meanwhile is not sent. A prompt the
-/// courier was sending when the hold began may still be on its way, as one that waits for an
-/// agent's input line to empty: [`PromptHold::drained`] waits for the one to a terminal.
 #[must_use = "prompts are held only while the hold lives"]
 pub struct PromptHold(Arc<PromptGate>);
 
 impl PromptHold {
     fn new(gate: &Arc<PromptGate>) -> Self {
         gate.lock().holds += 1;
-        // A flush waits for the prompts that no hold holds.
         gate.changed.notify_all();
         Self(Arc::clone(gate))
     }
 
-    /// What tells, on any thread, when the prompt the courier was sending to `pane` as the hold
-    /// began, if any, is sent: a prompt to another terminal is none of its business.
     pub fn drained(&self, pane: &PaneId) -> Drained {
         Drained {
             gate: Arc::clone(&self.0),
@@ -258,14 +211,12 @@ impl PromptHold {
     }
 }
 
-/// Tells when no prompt is on its way to a terminal any more, while a [`PromptHold`] lives.
 pub struct Drained {
     gate: Arc<PromptGate>,
     pane: PaneId,
 }
 
 impl Drained {
-    /// Waits until the courier sends no prompt to the terminal.
     pub fn wait(self) {
         drop(
             self.gate
@@ -289,11 +240,6 @@ impl std::fmt::Debug for PromptHold {
     }
 }
 
-/// Sends prompts on a lane of its own for each agent's terminal: a thread that sends the prompts
-/// to that terminal one at a time and in order. So the worker keeps serving the reviewer and the
-/// agents while Herdr waits for an agent to start on a prompt, and a prompt that waits there, as
-/// for the agent's input line to empty, holds none to another agent. A lane lives as long as the
-/// courier: a reviewer prompts few terminals.
 pub(super) struct Courier {
     lanes: Mutex<HashMap<PaneId, Sender<Parcel>>>,
     port: Arc<dyn AgentPort>,
@@ -302,8 +248,6 @@ pub(super) struct Courier {
 }
 
 impl Courier {
-    /// Sends through `port`, and confirms the prompts to the agents that run the reviewer's
-    /// hooks through `hooks`, when the reviewer listens to them.
     pub(super) fn start(
         port: Arc<dyn AgentPort>,
         gate: Arc<PromptGate>,
@@ -317,13 +261,10 @@ impl Courier {
         }
     }
 
-    /// The reviewer's end of the agents' hooks, which confirm the prompts to the agents that run
-    /// them, when the reviewer listens to them.
     pub(super) fn hooks(&self) -> Option<&AgentHooks> {
         self.hooks.as_deref()
     }
 
-    /// The lane of the terminal `pane`, started on its first prompt.
     fn lane(&self, pane: &PaneId) -> Sender<Parcel> {
         let mut lanes = self.lanes.lock().unwrap_or_else(PoisonError::into_inner);
         lanes
@@ -335,8 +276,6 @@ impl Courier {
                     Arc::clone(&self.gate),
                     self.hooks.clone(),
                 );
-                // Not joined: a prompt in flight may wait for its agent for long, and its
-                // outcome still reaches its owner after the worker stops.
                 thread::spawn(move || {
                     for parcel in parcels {
                         match parcel {
@@ -355,8 +294,6 @@ impl Courier {
             .clone()
     }
 
-    /// Send `text` to `agent` after the prompts sent to its terminal before it, unless
-    /// `withdrawal` is cancelled before the host may be typing it, and report the outcome.
     pub(super) fn send(
         &self,
         agent: Agent,
@@ -367,8 +304,6 @@ impl Courier {
         self.send_telling_waits(agent, text, withdrawal, |_| {}, outcome);
     }
 
-    /// [`Self::send`], telling `waits` why the host holds the prompt before it types it, each
-    /// time that changes, and `None` once it no longer does.
     pub(super) fn send_telling_waits(
         &self,
         agent: Agent,
@@ -394,7 +329,6 @@ impl Courier {
         }
     }
 
-    /// Wait until every prompt sent so far has its outcome.
     #[cfg(test)]
     pub(super) fn flush(&self) {
         let lanes: Vec<Sender<Parcel>> = self
@@ -426,7 +360,6 @@ impl std::fmt::Debug for PromptSender {
     }
 }
 
-/// A queued request completes once, after delivery or a permanent failure.
 pub struct PromptReceipt(Receiver<Result<(), PromptError>>);
 
 #[derive(Debug, thiserror::Error)]
@@ -437,8 +370,6 @@ pub enum PromptError {
     Delivery(String),
     #[error("The agent did not start on the prompt. Look at the agent's pane, then Retry.")]
     NotStarted,
-    /// The agent's hooks blocked the prompt, joined by the text `left` in its input box: the
-    /// agent did not run it.
     #[error(
         "Text left in the agent's input box joined the prompt, so the reviewer stopped both. \
          Empty the agent's input box, then Retry. The text left there: {left}"
@@ -448,7 +379,6 @@ pub enum PromptError {
     Unknown(String),
 }
 
-/// Optional durable boundary for a caller's intent before external delivery.
 pub trait DispatchObserver: Send + Sync {
     fn before_attempt(&self, agent: &herdr_client::protocol::Agent) -> Result<(), String>;
     fn finished(&self, result: &Result<(), PromptError>) -> Result<(), String>;
@@ -464,13 +394,9 @@ impl PromptReceipt {
     }
 }
 
-/// Dropping the owner's guard withdraws a prompt the host has not begun to type: one that waits
-/// behind another, or for the agent's input line to empty, is not sent.
 #[derive(Debug)]
 pub struct PromptCancellation {
     withdrawal: EventCanceller,
-    /// Wakes the worker, which may wait for an input with the prompt queued: under a host that
-    /// announces sessions, nothing else makes it look at the prompt again.
     worker: Sender<Input>,
 }
 
@@ -482,8 +408,6 @@ impl Drop for PromptCancellation {
 }
 
 impl PromptSender {
-    /// Holds every prompt not yet on its way to an agent, this sender's and the thread
-    /// service's, until the hold is dropped.
     pub fn hold(&self) -> PromptHold {
         PromptHold::new(&self.gate)
     }
@@ -492,21 +416,12 @@ impl PromptSender {
         self.send_observed(agent, text, None)
     }
 
-    /// Publishes `words`, which the user wrote to an agent outside a review thread, on the
-    /// herdr-bus file the worker publishes the review comments on, in the background; nothing
-    /// when it publishes none.
     pub fn publish_words(&self, words: review_words_bus::UserWords) {
         let _ = self
             .sender
             .send(Input::Bus(crate::BusInput::Publish(words)));
     }
 
-    /// Waits until the worker took every prompt sent before, and the courier sent, withdrew or
-    /// failed each one it was handed, but those a [`PromptHold`] holds: a test learns that a
-    /// prompt it did not see by then was not sent. A prompt whose pinned agent is not known yet
-    /// stays with the worker, unsent. A prompt sent with a [`DispatchObserver`] has its outcome
-    /// reported to it once this returns, and the words handed to the worker's herdr-bus are
-    /// published, or failed.
     #[cfg(any(test, feature = "flush"))]
     pub fn flush(&self) {
         let (done, taken) = mpsc::channel();
@@ -565,8 +480,6 @@ impl PromptRequest {
         let _ = self.response.send(result);
     }
 
-    /// Begin the attempt, and return the agent to send the prompt to; `None` while the
-    /// pinned agent is not known yet.
     fn begin(&self, port: &dyn AgentPort) -> Result<Option<Agent>, PromptError> {
         if self.withdrawal.is_cancelled() {
             return Err(PromptError::Cancelled);
@@ -602,9 +515,6 @@ impl PromptQueue {
     pub(super) fn poll(&mut self, port: &dyn AgentPort, courier: &Courier) {
         for request in std::mem::take(&mut self.0) {
             match request.begin(port) {
-                // After the durable attempt marker, a prompt the host may be typing wins a
-                // cancellation race; one still waiting behind another prompt, or for the agent's
-                // input line to empty, is withdrawn.
                 Ok(Some(agent)) => {
                     let text = request.text.clone();
                     let withdrawal = request.withdrawal.clone();
@@ -626,15 +536,12 @@ mod tests {
     use super::*;
     use herdr_client::memory::InMemoryAgents;
 
-    /// How long a test waits for what must come, before it fails.
     const GUARD: Duration = Duration::from_secs(10);
 
-    /// An idle agent in `pane`, of the tab `tab`.
     fn agent_in(pane: &str) -> Agent {
         serde_json::from_value(serde_json::json!({"pane_id": pane, "tab_id": "tab", "workspace_id": "workspace", "agent_status": "idle"})).unwrap()
     }
 
-    /// A thread service's worker that prompts `agents`, and keeps its state in `directory`.
     fn worker(agents: &InMemoryAgents, directory: &std::path::Path) -> crate::Worker {
         let store = review_store::ReviewStore::open(directory.join("state"), directory).unwrap();
         crate::Worker::start(
@@ -651,7 +558,6 @@ mod tests {
         )
     }
 
-    /// The texts of the prompts `agents` got, with the pane each went to, in order.
     fn typed(agents: &InMemoryAgents) -> Vec<(String, String)> {
         agents
             .prompts()
@@ -660,7 +566,6 @@ mod tests {
             .collect()
     }
 
-    /// The outcome `receipt` gets, failing after [`GUARD`].
     fn outcome(receipt: &PromptReceipt) -> Result<(), PromptError> {
         receipt
             .0
@@ -733,7 +638,6 @@ mod tests {
         let (to_a, _to_a) = prompts.send(PinnedAgent::new(a.clone()), "to A".into());
         agents.wait_until_waiting(&a.pane_id, 1);
 
-        // As run-ahead holds the prompts before it switches the session of B's agent.
         let hold = prompts.hold();
         hold.drained(&b.pane_id).wait();
         let emptying = {
@@ -801,7 +705,6 @@ mod tests {
         assert_eq!(outcome.recv().unwrap(), ("withdrawn", false));
     }
 
-    /// Records whether the outcome of a prompt was saved.
     struct SavedOutcome(AtomicBool);
 
     impl DispatchObserver for SavedOutcome {

@@ -8,7 +8,6 @@ fn ids(tickets: &[Ticket]) -> Vec<&str> {
     tickets.iter().map(|ticket| ticket.id.as_str()).collect()
 }
 
-/// The GitHub tickets of `text`, with whether the change says it is for each.
 fn said(text: &str) -> Vec<(String, bool)> {
     github_tickets(text, Some(&home()))
         .into_iter()
@@ -16,7 +15,6 @@ fn said(text: &str) -> Vec<(String, bool)> {
         .collect()
 }
 
-/// The GitHub tickets of `text`, without whether the change says it is for them.
 fn github(text: &str, home: Option<&GitHubRepository>) -> Vec<Ticket> {
     github_tickets(text, home)
         .into_iter()
@@ -143,7 +141,6 @@ fn finds_issues_after_a_keyword_in_their_repository() {
 
 #[test]
 fn a_number_without_a_keyword_names_no_issue() {
-    // A pull request, an issue mentioned in passing, a step: not the change's ticket.
     assert!(
         github(
             "Follow up on #12, see issue #110, refs #4, part of #9, step #2",
@@ -163,7 +160,6 @@ fn finds_issue_links_anywhere_and_names_them_in_the_changes_repository() {
         Some(&home()),
     );
 
-    // The same issue in another case is the same ticket, at the same address.
     assert_eq!(ids(&tickets), ["#42", "other/tools#5", "#42"]);
     assert_eq!(tickets[0].url, tickets[2].url);
 }

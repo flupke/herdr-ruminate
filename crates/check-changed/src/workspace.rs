@@ -1,5 +1,3 @@
-//! The repository's packages and dependency graph, from `cargo metadata`.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
@@ -9,28 +7,19 @@ use serde_json::Value;
 
 use crate::plan::Suite;
 
-/// The binary the pane's end-to-end tests run, and the server the page's run.
 const PANE_ROOT: &str = "reviewer";
 const PAGE_ROOT: &str = "review-explore-page-server";
-/// The harness of the pane's end-to-end tests, a workspace of its own.
 const PANE_HARNESS: &str = "tests/tui/Cargo.toml";
 
-/// The repository as the checks see it.
 #[derive(Debug, Default)]
 pub(crate) struct Workspace {
-    /// The directory of each local package, relative to the repository, with its name.
     pub(crate) packages: BTreeMap<String, String>,
-    /// The packages whose unit tests `make test` runs.
     pub(crate) members: BTreeSet<String>,
-    /// For each package, local or not, the packages that depend on it with any kind of
-    /// dependency: the tests of a dependent use it too.
     pub(crate) dependents: BTreeMap<String, BTreeSet<String>>,
-    /// The packages each end-to-end suite builds, local or not.
     pub(crate) built: BTreeMap<Suite, BTreeSet<String>>,
 }
 
 impl Workspace {
-    /// The workspace of the repository at `root`.
     pub(crate) fn read(root: &Path) -> Result<Self> {
         let graph = Graph::new(root, &metadata(root, None)?)?;
         let harness = Graph::new(root, &metadata(root, Some(PANE_HARNESS))?)?;
@@ -65,19 +54,14 @@ fn metadata(root: &Path, manifest: Option<&str>) -> Result<Value> {
     serde_json::from_slice(&output.stdout).context("read cargo metadata")
 }
 
-/// The packages of one `cargo metadata`, and the dependencies between them.
 struct Graph {
-    /// Each local package's directory, relative to the repository, with its name.
     packages: BTreeMap<String, String>,
     members: BTreeSet<String>,
-    /// Each package's dependencies, by name.
     dependencies: BTreeMap<String, Vec<Dependency>>,
 }
 
-/// A dependency of a package.
 struct Dependency {
     name: String,
-    /// Built into the package, as a normal or a build dependency, not only for its tests.
     built: bool,
 }
 
@@ -88,8 +72,6 @@ impl Graph {
         for package in array(metadata, "packages")? {
             let name = text(package, "name")?;
             names.insert(text(package, "id")?.to_owned(), name.to_owned());
-            // A path dependency outside the repository, such as herdr-common's test tooling
-            // beside the checkout, is another repository's: none of this one's files are its.
             if package["source"].is_null()
                 && let Some(directory) = Path::new(text(package, "manifest_path")?)
                     .parent()
@@ -109,7 +91,7 @@ impl Graph {
                 .context("cargo metadata resolves an unknown package")?;
             let of_node = array(node, "deps")?.iter().filter_map(|dependency| {
                 let name = names.get(dependency["pkg"].as_str()?)?.clone();
-                // A kind is null for a normal dependency, "build" or "dev" otherwise.
+                // cargo metadata gives a normal dependency the kind null, else "build" or "dev".
                 let built = dependency["dep_kinds"]
                     .as_array()?
                     .iter()
@@ -128,7 +110,6 @@ impl Graph {
         })
     }
 
-    /// For each package, the packages that depend on it, with any kind.
     fn dependents(&self) -> BTreeMap<String, BTreeSet<String>> {
         let mut dependents: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for (package, dependencies) in &self.dependencies {
@@ -142,8 +123,6 @@ impl Graph {
         dependents
     }
 
-    /// `root` and the packages it is built from: its normal and build dependencies,
-    /// transitively, without the ones only its tests use.
     fn built_by(&self, root: &str) -> Result<BTreeSet<String>> {
         eyre::ensure!(
             self.dependencies.contains_key(root),

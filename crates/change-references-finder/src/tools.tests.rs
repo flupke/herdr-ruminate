@@ -2,7 +2,6 @@ use super::*;
 
 #[test]
 fn reads_the_newest_pull_request_of_the_repository_s_own_branch_and_its_body() {
-    // Newest first: a fork's pull request from a branch of the same name, then the repository's.
     let output = r#"[{"body":"","isCrossRepository":true,"number":13,"title":"Fork","url":"https://github.com/acme/shop/pull/13"},{"body":"Fixes #7","isCrossRepository":false,"number":12,"title":"Name past rounds","url":"https://github.com/acme/shop/pull/12"}]"#;
 
     assert_eq!(
@@ -36,7 +35,6 @@ fn a_command_that_cannot_start_or_fails_gives_nothing() {
 
 #[test]
 fn a_command_past_its_time_is_killed_and_gives_nothing() {
-    // It would run far longer than any test.
     let mut hanging = Command::new("sh");
     hanging.args(["-c", "exec sleep 600"]);
 

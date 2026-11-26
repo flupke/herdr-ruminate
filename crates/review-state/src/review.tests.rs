@@ -320,7 +320,6 @@ fn unchanged_diff_reuses_frozen_data_without_repository_commands(repository_type
     let fixture = review_fixture(repository_type, b"after\n");
     let snapshot = &fixture.reviewed;
     let expected = fixture.tracker.diff(snapshot, &snapshot.files[0]).unwrap();
-    // Any further repository command would fail, but immutable cached data is usable.
     fixture.repository.cancel();
     let mut loaded = fixture.tracker.diff(snapshot, &snapshot.files[0]).unwrap();
     assert_eq!(loaded, expected);

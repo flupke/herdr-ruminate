@@ -1,13 +1,9 @@
-//! Herdr's event stream, for tests that wait until a private Herdr server gets somewhere.
-
 use std::sync::mpsc;
 use std::thread;
 
 use herdr_client::client::{EventCanceller, HerdrClient};
 use herdr_client::protocol::{AgentStatus, HerdrEvent, PaneId};
 
-/// The events the reviewer follows, focus and agent detection, from a subscription that holds
-/// once [`Self::start`] returns, until this drops.
 pub struct HerdrEventWatch {
     events: mpsc::Receiver<HerdrEvent>,
     canceller: EventCanceller,
@@ -22,8 +18,6 @@ impl HerdrEventWatch {
         Self { events, canceller }
     }
 
-    /// The next event that `matches`, skipping the others; fails after [`crate::GUARD`], when
-    /// none came, with `what` it waited for.
     pub fn wait_for(&self, what: &str, mut matches: impl FnMut(&HerdrEvent) -> bool) -> HerdrEvent {
         loop {
             let event = self
@@ -43,8 +37,6 @@ impl Drop for HerdrEventWatch {
     }
 }
 
-/// The status of one agent: the status it has when the subscription holds, then each change,
-/// until this drops.
 pub struct AgentStatusWatch {
     statuses: mpsc::Receiver<AgentStatus>,
     canceller: EventCanceller,
@@ -64,13 +56,10 @@ impl AgentStatusWatch {
         }
     }
 
-    /// Waits until Herdr reports the agent `status`; fails after [`crate::GUARD`] when it does
-    /// not.
     pub fn wait_for(&self, status: AgentStatus) {
         self.wait_within(crate::GUARD, status);
     }
 
-    /// [`Self::wait_for`], which fails after `guard` without a report.
     pub fn wait_within(&self, guard: std::time::Duration, status: AgentStatus) {
         let mut seen = Vec::new();
         while seen.last() != Some(&status) {

@@ -7,8 +7,6 @@ use change_references::{ChangeReferences, PullRequest, Ticket};
 
 use super::*;
 
-/// jj and gh as a test sets them: a repository's remotes, its pull requests by head branch and
-/// its issues' titles. It records the pull requests and issues asked for.
 #[derive(Default)]
 struct FakeTools {
     remotes: Option<String>,
@@ -130,9 +128,7 @@ fn names_a_change_by_the_pull_request_of_one_of_its_bookmarks() {
         Some(12)
     );
     assert_eq!(references.title(), Some("Fix the login page"));
-    // The description's ticket first, then the pull request's.
     assert_eq!(ids(&references), ["#7", "FND-1871"]);
-    // With a pull request, no issue's title is read.
     assert_eq!(
         asked,
         ["pr acme/shop main-ish", "pr acme/shop luper/fix-login"]
@@ -172,13 +168,11 @@ fn links_the_linear_issues_of_the_configured_teams_once() {
         references.tickets[0].url,
         "https://linear.app/rayon/issue/FND-1871"
     );
-    // A Linear issue has no title: the change keeps the description's.
     assert_eq!(references.title(), None);
 }
 
 #[test]
 fn without_gh_keeps_the_tickets_the_texts_name() {
-    // gh missing, logged out or offline: it finds neither pull request nor title.
     let (references, _) = find(on_github(), None, &change("Fixes #3", &["t3-slug"]));
 
     assert_eq!(references.pull_request, None);
@@ -215,7 +209,6 @@ fn the_ticket_of_the_bookmark_comes_first_and_names_the_change() {
         ),
     );
 
-    // A `t2-` path in the description is no bookmark.
     assert_eq!(ids(&references), ["#7", "#110"]);
     assert_eq!(references.title(), Some("Name past rounds"));
 }
@@ -232,7 +225,6 @@ fn without_a_github_remote_keeps_the_references_that_name_their_repository() {
     );
 
     assert_eq!(ids(&references), ["other/tools#4", "acme/shop#5"]);
-    // The title of the issue the change is for, from the repository it names.
     assert_eq!(asked, ["issue other/tools 4"]);
 }
 

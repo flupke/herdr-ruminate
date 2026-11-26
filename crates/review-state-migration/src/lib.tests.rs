@@ -12,7 +12,6 @@ use tempfile::TempDir;
 
 use super::{Error, migrate};
 
-/// The name of the mark file of `a.txt`: the SHA-256 of the path.
 const MARK_FILE: &str = "18b7cb099a9ea3f50ba899b5ba81e0d377a5f3b16f8f6eeb8b3e58cd4692b993.json";
 const DELETED: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 const FOREIGN: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
@@ -22,15 +21,11 @@ struct Fixture {
     repository: JjFixture,
     _state_directory: TempDir,
     state: PathBuf,
-    /// A change of the repository, and one it abandoned, so a hidden one.
     kept: ReviewUnit,
     abandoned: ReviewUnit,
 }
 
 impl Fixture {
-    /// A repository with a second workspace; per-workspace states of its main workspace, of a
-    /// deleted workspace that reviewed its abandoned change, of another repository, and an
-    /// empty one.
     fn new() -> Self {
         let repository = JjFixture::new(JjLayout::NonColocated);
         repository.write("a.txt", b"a\n");
@@ -82,7 +77,6 @@ impl Fixture {
         .unwrap();
     }
 
-    /// The reviewer of the second workspace opens, as the pane does.
     fn open(&self) -> (Repository, ReviewStore) {
         let repository =
             Repository::discover(self.repository.root().with_file_name("second")).unwrap();
@@ -121,7 +115,6 @@ fn reviewed_at(store: &ReviewStore, unit: &ReviewUnit) -> Option<String> {
     }
 }
 
-/// Every file under `directory`, by its path relative to it, with its bytes.
 fn files(directory: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     fn walk(root: &Path, directory: &Path, found: &mut BTreeMap<PathBuf, Vec<u8>>) {
         for entry in fs::read_dir(directory).unwrap() {
@@ -158,7 +151,6 @@ fn the_states_of_the_repository_are_merged_after_a_backup_of_every_state() {
     assert_eq!(moved, expected);
     assert!(migration.unreadable.is_empty());
     assert_eq!(fixture.keys_left(), [EMPTY, FOREIGN]);
-    // An empty state belongs to no repository: it is checked again at each open.
     assert_eq!(
         store.foreign_workspace_states().unwrap(),
         [FOREIGN.to_owned()].into()

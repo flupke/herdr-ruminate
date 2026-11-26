@@ -134,8 +134,6 @@ pub(super) fn path_uri(path: &Path) -> Result<Uri, String> {
     file_uri(path)
 }
 
-/// The URI of a file that changed on disk, which may be gone: its nearest ancestor that still
-/// exists resolves as `path_uri` resolves a whole path.
 pub(super) fn changed_path_uri(path: &Path) -> Result<Uri, String> {
     let resolved = path
         .ancestors()

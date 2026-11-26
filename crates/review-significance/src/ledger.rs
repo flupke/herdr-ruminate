@@ -1,6 +1,3 @@
-//! Jev's decisions about the changes of one comparison: which changes it
-//! classified, and which changed lines it found too insignificant to need
-//! review.
 use review_explore::{Comparison, SourceSide};
 use review_repository::{
     diff::{DiffRow, NoticeKind, parse_file_diff},
@@ -9,7 +6,6 @@ use review_repository::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Intervals are one-based and half-open. Each unit belongs to exactly one changed file.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChangeUnit {
@@ -33,16 +29,12 @@ impl ChangeUnit {
     }
 }
 
-/// Every change of a comparison: its changed lines and its non-text changes.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ChangeInventory {
     pub units: Vec<ChangeUnit>,
-    /// Whether every change could be listed.
     pub complete: bool,
 }
 
-/// One file's changed lines that Jev excluded, one-based like diff rows:
-/// old-side lines of the base and new-side lines of the current file.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ExcludedLines(Vec<(SourceSide, std::ops::Range<u32>)>);
 
@@ -221,7 +213,6 @@ impl ChangeInventory {
     }
 }
 
-/// What Jev decided about the changes of one comparison.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SignificanceLedger {
     inventory: ChangeInventory,
@@ -237,8 +228,6 @@ impl SignificanceLedger {
         }
     }
 
-    /// Record one classification of changes in the inventory; false when it
-    /// was recorded already or names other changes.
     pub fn record_significance(&mut self, result: SignificanceResult) -> bool {
         if self.classifications.contains_key(&result.id)
             || result.units.is_empty()
@@ -259,7 +248,6 @@ impl SignificanceLedger {
         true
     }
 
-    /// Every change of the comparison.
     pub fn inventory(&self) -> &ChangeInventory {
         &self.inventory
     }
@@ -268,7 +256,6 @@ impl SignificanceLedger {
         self.classifications.values()
     }
 
-    /// The changed lines of one file that Jev excluded.
     pub fn excluded_lines(&self, file: usize) -> ExcludedLines {
         ExcludedLines(
             self.excluded
@@ -286,8 +273,6 @@ impl SignificanceLedger {
         )
     }
 
-    /// Whether a file changes more than its text lines (a mode, type or
-    /// path change), or has changes the inventory cannot list.
     pub fn changes_more_than_lines(&self, comparison: &Comparison, file: usize) -> bool {
         !self.inventory.file_complete(comparison, file)
             || self
@@ -297,8 +282,6 @@ impl SignificanceLedger {
                 .any(|unit| matches!(unit, ChangeUnit::Item { file: unit_file, .. } if *unit_file == file))
     }
 
-    /// Files whose entire listed change Jev excluded. Files the inventory
-    /// cannot list completely never qualify.
     pub fn fully_excluded_files(&self, comparison: &Comparison) -> Vec<usize> {
         (0..comparison.files.len())
             .filter(|file| {

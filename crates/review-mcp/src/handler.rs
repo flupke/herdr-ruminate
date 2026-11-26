@@ -256,8 +256,6 @@ impl Handler {
         CallToolResult::success(vec![ContentBlock::text(value.to_string())])
     }
 
-    /// A thread as the agent reads it: its code selection, or the Explore round whose
-    /// conversation it is, and its messages.
     fn thread(thread: &ReviewThread) -> serde_json::Value {
         let in_reply_to = thread.last_comment().map(|message| &message.id);
         match &thread.subject {

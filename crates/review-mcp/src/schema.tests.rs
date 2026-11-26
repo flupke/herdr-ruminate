@@ -58,7 +58,6 @@ fn a_round_conversation_names_its_round_and_each_message_its_question_and_quote(
     assert_eq!(message["quote"], "the store takes a lock");
 }
 
-/// The instructions `get_new_messages` returns with `threads`.
 fn instructions(threads: Vec<review_threads::ReviewThread>) -> String {
     let result = Handler::result(super::Response::NewMessages(threads));
     let text = result.content[0].as_text().unwrap();
@@ -163,13 +162,11 @@ fn explore_tool_schemas_describe_the_full_submission_without_a_kickoff_example()
     assert!(update["properties"].get("inspections").is_none());
     assert!(update["properties"].get("conclusion").is_none());
     assert_eq!(update["additionalProperties"], false);
-    // Terms with their definitions, which the page marks: a map of strings.
     assert_eq!(update["properties"]["glossary"]["type"], "object");
     assert_eq!(
         update["properties"]["glossary"]["additionalProperties"]["type"],
         "string"
     );
-    // Only the interpretation of an answer changes a topic's status.
     assert!(definitions["Topic"]["properties"].get("status").is_none());
     let question = &update["properties"]["next"]["properties"];
     assert_eq!(question["alternatives"]["minItems"], 2);
@@ -351,7 +348,6 @@ fn the_question_tool_asks_for_a_thesis_for_the_change_and_for_each_part_of_its_d
         .find(|tool| tool.name == "submit_question")
         .unwrap();
     let definitions = &question.input_schema["$defs"];
-    // A part is never a bare string, as it was in a round saved before theses.
     for (name, required) in [
         (
             "Design",

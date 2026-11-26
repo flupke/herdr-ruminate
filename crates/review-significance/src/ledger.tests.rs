@@ -5,7 +5,6 @@ use review_source::ReviewCheckpoint;
 
 use super::*;
 
-/// Two modified files: `a.rs` replaces line 1 with two lines, `b.rs` adds one line.
 fn comparison() -> Comparison {
     Comparison {
         checkpoint: ReviewCheckpoint::new("review", "checkpoint"),

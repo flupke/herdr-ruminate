@@ -50,7 +50,6 @@ fn posted(submission: Option<Submission>) -> Post {
     }
 }
 
-/// The drafts saved for the review, as the thread owner would load them.
 fn saved_with(drafts: &[&Draft]) -> SavedDrafts {
     let mut saved = SavedDrafts::default();
     for draft in drafts {

@@ -1,11 +1,5 @@
-//! The packages whose entry in `Cargo.lock` changed: a version, a checksum, or the
-//! dependencies of a package, added, removed or moved. Each is a package whose dependents the
-//! change reaches.
-
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The names of the packages whose entry differs between two versions of `Cargo.lock`, or
-/// `None` when either has no package entry to compare.
 pub(crate) fn changed_packages(before: &str, after: &str) -> Option<BTreeSet<String>> {
     let before = entries(before)?;
     let after = entries(after)?;
@@ -22,7 +16,6 @@ pub(crate) fn changed_packages(before: &str, after: &str) -> Option<BTreeSet<Str
     Some(changed)
 }
 
-/// Each `[[package]]` entry, by its name and version.
 fn entries(lock: &str) -> Option<BTreeMap<(String, String), &str>> {
     let entries: BTreeMap<_, _> = lock
         .split("[[package]]")
@@ -37,7 +30,6 @@ fn entries(lock: &str) -> Option<BTreeMap<(String, String), &str>> {
     (!entries.is_empty()).then_some(entries)
 }
 
-/// The value of a `key = "value"` line of an entry.
 fn field(entry: &str, key: &str) -> Option<String> {
     entry.lines().find_map(|line| {
         let value = line

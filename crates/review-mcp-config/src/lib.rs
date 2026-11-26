@@ -1,5 +1,3 @@
-//! Registration of the reviewer's MCP bridge in native clients.
-
 mod document;
 mod file;
 mod user;
@@ -8,7 +6,6 @@ use std::str::FromStr;
 
 pub use user::UserConfig;
 
-/// A native client supported by the reviewer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Client {
     Codex,

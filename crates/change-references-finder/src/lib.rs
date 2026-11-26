@@ -1,24 +1,3 @@
-//! Finds the pull request and the tickets of a reviewed change, which name its past rounds on
-//! the Explore page.
-//!
-//! [`ReferencesFinder::find`] looks for them once a round starts, on a thread of its own, since
-//! it runs `jj` and `gh`, which can be slow, missing, logged out or offline: any of these leaves
-//! out what it would have found, never more. It reads:
-//!
-//! - the GitHub repository of the jj repository's remote (`upstream`, then `origin`);
-//! - the pull request of that repository whose head branch is one of the change's names (its
-//!   local bookmarks, then its jj workspaces), in the repository or in the fork it pushes to,
-//!   through `gh`;
-//! - the tickets that the change's names (herdr-bowtie's `t157-slug`), its description and the
-//!   pull request's body name: GitHub issues (`Fixes #157`, issue links) and Linear issues (the
-//!   identifiers of the teams of the `[linear]` table of `config.toml`, and links to
-//!   linear.app);
-//! - without a pull request, through `gh`, the title of the first GitHub ticket that the change
-//!   says it is for: its bookmark's, else one after a word such as "Fixes". An issue link alone
-//!   may be one the change only mentions: it never names the change.
-//!
-//! The reviewer has no Linear API key: a Linear issue has no title.
-
 mod text;
 mod tools;
 
@@ -33,7 +12,6 @@ use crate::text::GitHubRepository;
 use crate::tools::SystemTools;
 pub use crate::tools::Tools;
 
-/// Finds the pull request and the tickets of a change, with the commands `tools` runs.
 #[derive(Clone)]
 pub struct ReferencesFinder {
     linear: Option<LinearSettings>,
@@ -41,18 +19,14 @@ pub struct ReferencesFinder {
 }
 
 impl ReferencesFinder {
-    /// A finder that runs jj and gh, and knows the Linear teams of `linear`.
     pub fn new(linear: Option<LinearSettings>) -> Self {
         Self::with_tools(linear, Arc::new(SystemTools))
     }
 
-    /// A finder that runs its commands with `tools`.
     pub fn with_tools(linear: Option<LinearSettings>, tools: Arc<dyn Tools>) -> Self {
         Self { linear, tools }
     }
 
-    /// The references of the change `identity`, in the jj repository at `root`. It blocks on
-    /// jj and gh. A Git working tree has none.
     pub fn find(&self, root: &Path, identity: &SnapshotIdentity) -> ChangeReferences {
         let SnapshotIdentity::Jj { description, .. } = identity else {
             return ChangeReferences::default();
@@ -87,10 +61,6 @@ impl ReferencesFinder {
         }
     }
 
-    /// The tickets that the change's `names` and `texts` name, the change's repository being
-    /// `repository`: herdr-bowtie's ticket of its names first, since herdr-bowtie names a
-    /// workspace and its bookmark after the ticket it works on, then those of its names and its
-    /// texts, in that order.
     fn tickets(
         &self,
         names: &[String],
@@ -126,7 +96,6 @@ impl ReferencesFinder {
         tickets
     }
 
-    /// Reads the title of the GitHub ticket the change says it is for, the first one, with gh.
     fn read_title(&self, tickets: &mut Tickets) {
         let Some(named) = &tickets.named else {
             return;
@@ -139,24 +108,19 @@ impl ReferencesFinder {
     }
 }
 
-/// A pull request as gh lists it, with its body, where tickets may be named.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FoundPullRequest {
     pub pull_request: PullRequest,
     pub body: String,
 }
 
-/// Tickets, each once by its address, in the order they first came.
 #[derive(Default)]
 struct Tickets {
     found: Vec<Ticket>,
-    /// The address of the first GitHub ticket the change says it is for, whose title names
-    /// the change without a pull request. A Linear issue has no title to read.
     named: Option<String>,
 }
 
 impl Tickets {
-    /// Adds `ticket`, which the change says it is for when `said`, unless it came before.
     fn add(&mut self, ticket: Ticket, said: bool) {
         if said && self.named.is_none() && text::github_issue(&ticket.url).is_some() {
             self.named = Some(ticket.url.clone());

@@ -1,6 +1,3 @@
-//! Explore records in their saved format. Loading them and writing them back
-//! must reproduce the exact bytes; records of the first format load as absent.
-
 use super::*;
 
 const INSTANCE: &str = "eb9afce9-0943-4b1d-993b-722ec98ca4c5";

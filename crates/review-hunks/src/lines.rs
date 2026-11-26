@@ -1,6 +1,3 @@
-//! Accepting and reopening individual changed lines. Hunks are only a view
-//! of the reviewed version, so a hunk splits where a selection ends.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
@@ -10,16 +7,12 @@ use crate::attribution::{Rebuild, Reviewed};
 use crate::review::{HunkReview, ReviewedVersion};
 use crate::text::{Change, Lines, after_line, before_line, changes, hunk_groups};
 
-/// Changed lines picked from a file's diff from the base, zero-based: base
-/// lines it removes and current lines it adds.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct LineSelection {
     pub removed: BTreeSet<u32>,
     pub added: BTreeSet<u32>,
 }
 
-/// The reviewed lines the current file still shows, with who reviewed each:
-/// base lines removed and, numbered like the current file, lines added.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReviewedLines {
     pub removed: BTreeMap<u32, MarkAuthor>,
@@ -31,7 +24,6 @@ impl LineSelection {
         self.removed.is_empty() && self.added.is_empty()
     }
 
-    /// The lines of `self` that `other` does not have.
     #[must_use]
     pub fn difference(&self, other: &Self) -> Self {
         Self {
@@ -42,7 +34,6 @@ impl LineSelection {
 }
 
 impl ReviewedLines {
-    /// The lines, without their authors.
     pub fn selection(&self) -> LineSelection {
         LineSelection {
             removed: self.removed.keys().copied().collect(),
@@ -51,8 +42,6 @@ impl ReviewedLines {
     }
 }
 
-/// The picked lines of one change. `removed` and `added` follow the change's
-/// before and after lines.
 #[derive(Clone, Debug)]
 struct Pick {
     removed: Vec<bool>,
@@ -80,7 +69,6 @@ impl Pick {
 }
 
 impl HunkReview<'_> {
-    /// The reviewed lines the current file still shows, with their authors.
     pub fn reviewed_lines(&self) -> ReviewedLines {
         let open = changes(self.reviewed, self.current);
         let mut lines = ReviewedLines::default();
@@ -101,10 +89,6 @@ impl HunkReview<'_> {
         lines
     }
 
-    /// Accept the open lines `selection` names; `None` when it names none.
-    /// An accepted change keeps its unpicked lines open, so its hunk splits.
-    /// Reviewed lines a change rewrites have no base number: they go only
-    /// when every line of their change is picked.
     pub fn accept_lines(
         &self,
         selection: &LineSelection,
@@ -134,7 +118,6 @@ impl HunkReview<'_> {
                         .map(|line| selection.added.contains(&line))
                         .collect(),
                 };
-                // Rewritten reviewed lines leave with a fully picked change.
                 let addressed = bases
                     .iter()
                     .zip(&pick.removed)
@@ -158,8 +141,6 @@ impl HunkReview<'_> {
         Some(self.version(accept.build(&picks)?))
     }
 
-    /// Reopen the reviewed lines `selection` names; `None` when it names
-    /// none. Reviewed lines the current file rewrote are open already.
     pub fn reopen_lines(&self, selection: &LineSelection) -> Option<ReviewedVersion> {
         let reviewed_changes = changes(self.base, self.reviewed);
         let open = changes(self.reviewed, self.current);
@@ -190,10 +171,6 @@ impl HunkReview<'_> {
     }
 }
 
-/// Settle which lines to change. Each hunk whose picked lines would not come
-/// out exactly as picked (the new diff can pair up equal lines differently)
-/// changes whole instead, so no hunk ends up half changed in a way nobody
-/// picked. `None` when nothing is picked.
 fn settle(
     changes: &[Change],
     mut picks: Vec<Pick>,
@@ -218,7 +195,6 @@ fn settle(
     Some(picks)
 }
 
-/// The picks of one hunk, with nothing picked elsewhere.
 fn alone(changes: &[Change], picks: &[Pick], hunk: &Range<usize>) -> Vec<Pick> {
     changes
         .iter()
@@ -234,14 +210,12 @@ fn alone(changes: &[Change], picks: &[Pick], hunk: &Range<usize>) -> Vec<Pick> {
         .collect()
 }
 
-/// Pick every line of one hunk.
 fn widen(changes: &[Change], picks: &mut [Pick], hunk: &Range<usize>) {
     for index in hunk.clone() {
         picks[index] = Pick::every(&changes[index]);
     }
 }
 
-/// The positions of each hunk's changes in `changes`.
 fn hunks(changes: &[Change]) -> impl Iterator<Item = Range<usize>> {
     let mut start = 0;
     hunk_groups(changes).map(move |group| {
@@ -251,7 +225,6 @@ fn hunks(changes: &[Change]) -> impl Iterator<Item = Range<usize>> {
     })
 }
 
-/// Accepting picked open lines into the reviewed version.
 struct Accept<'a> {
     review: &'a HunkReview<'a>,
     reviewed_changes: &'a [Change],
@@ -260,8 +233,6 @@ struct Accept<'a> {
 }
 
 impl Accept<'_> {
-    /// The reviewed version with the picked lines accepted: each change keeps
-    /// its unpicked reviewed lines, followed by its picked current lines.
     fn build(&self, picks: &[Pick]) -> Option<Reviewed> {
         let review = self.review;
         let reviewed = Lines::new(review.reviewed);
@@ -277,8 +248,6 @@ impl Accept<'_> {
         Some(rebuild.finish(review.base))
     }
 
-    /// Write one open change: its unpicked reviewed lines, then its picked
-    /// current lines.
     fn accept(
         &self,
         rebuild: &mut Rebuild,
@@ -301,7 +270,6 @@ impl Accept<'_> {
         Some(())
     }
 
-    /// Whether accepting `picks` leaves open exactly the lines it did not pick.
     fn matches(&self, picks: &[Pick]) -> bool {
         let mut expected = LineSelection::default();
         for (change, pick) in self.open.iter().zip(picks) {
@@ -324,8 +292,6 @@ impl Accept<'_> {
     }
 }
 
-/// The open lines of a reviewed version: the base lines its open diff
-/// removes and the current lines it adds.
 fn open_lines(base: &[u8], reviewed: &[u8], current: &[u8]) -> LineSelection {
     let reviewed_changes = changes(base, reviewed);
     let mut named = LineSelection::default();
@@ -341,7 +307,6 @@ fn open_lines(base: &[u8], reviewed: &[u8], current: &[u8]) -> LineSelection {
     named
 }
 
-/// Reopening picked reviewed lines.
 struct Reopen<'a> {
     review: &'a HunkReview<'a>,
     reviewed_changes: &'a [Change],
@@ -349,9 +314,6 @@ struct Reopen<'a> {
 }
 
 impl Reopen<'_> {
-    /// The reviewed version with the picked lines reopened: each reviewed
-    /// change takes back its picked base lines, followed by its unpicked
-    /// added lines.
     fn build(&self, picks: &[Pick]) -> Option<Reviewed> {
         let review = self.review;
         let reviewed = Lines::new(review.reviewed);
@@ -376,7 +338,6 @@ impl Reopen<'_> {
         Some(rebuild.finish(review.base))
     }
 
-    /// Whether reopening `picks` keeps reviewed exactly the lines it did not pick.
     fn matches(&self, picks: &[Pick]) -> bool {
         let mut expected = LineSelection::default();
         for (change, pick) in self.reviewed_changes.iter().zip(picks) {
@@ -397,9 +358,6 @@ impl Reopen<'_> {
     }
 }
 
-/// The reviewed lines of a reviewed version that the current file still
-/// shows: the base lines it removes and, numbered like the current file,
-/// the lines it adds.
 fn reviewed_lines(base: &[u8], reviewed: &[u8], current: &[u8]) -> LineSelection {
     let open = changes(reviewed, current);
     let mut named = LineSelection::default();

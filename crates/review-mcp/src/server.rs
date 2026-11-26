@@ -8,14 +8,12 @@ use tokio::sync::oneshot;
 
 use crate::{Endpoint, Request, handler::Handler};
 
-/// An HTTP listener whose lifetime is bounded by the reviewer's owner.
 pub struct Server {
     stop: Option<oneshot::Sender<()>>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Server {
-    /// Bind before returning so the caller can report an occupied configured port.
     pub fn start(
         endpoint: Endpoint,
         dispatch: impl Fn(Request) -> Result<(), String> + Send + Sync + 'static,

@@ -12,40 +12,31 @@ use time::format_description::well_known::Rfc3339;
 use super::explore::MAX_VIEW;
 use super::{Error, Result, ReviewStore, StateKey};
 
-/// Where merged per-workspace states move, under the state root.
 const MERGED_WORKSPACES: &str = "merged-workspaces";
-/// The file in a moved state that names the shared folder it was merged into.
 const MERGED_INTO: &str = "merged-into";
-/// The file in a repository's folder that lists the per-workspace states found to belong to
-/// another repository, so each is checked once.
 const FOREIGN_WORKSPACES: &str = "foreign-workspaces.json";
 
-/// The review state one workspace kept for itself.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkspaceState {
     key: String,
     path: PathBuf,
 }
 
-/// A mark file as the merge compares it: by when it was written.
 #[derive(Deserialize)]
 struct MarkTime {
     reviewed_at: String,
 }
 
-/// The review of a stored thread document.
 #[derive(Deserialize)]
 struct StoredThreadsOwner {
     conversations: StoredOwner,
 }
 
-/// The review a stored document belongs to.
 #[derive(Deserialize)]
 struct StoredOwner {
     review_unit: ReviewUnit,
 }
 
-/// The review of a stored Explore round, read without the rest of the round.
 #[derive(Deserialize)]
 struct StoredRoundOwner {
     value: RoundOwner,
@@ -67,8 +58,6 @@ struct ComparisonOwner {
 }
 
 impl WorkspaceState {
-    /// Every per-workspace state left at the root of `state_root`: the folders named by 64
-    /// lowercase hex digits.
     pub fn list(state_root: &Path) -> Result<Vec<Self>> {
         let entries = match fs::read_dir(state_root) {
             Ok(entries) => entries,
@@ -92,7 +81,6 @@ impl WorkspaceState {
         Ok(states)
     }
 
-    /// The key a workspace whose canonical root is `root` kept its state under.
     pub fn key_of(root: &Path) -> Result<String> {
         let root = root.to_str().ok_or(Error::InvalidStateKey {
             field: "workspace root",
@@ -115,8 +103,6 @@ impl WorkspaceState {
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     }
 
-    /// Every review the state holds a record of: the reviews of its marks, threads, drafts
-    /// and Explore rounds. A record it cannot read names none.
     pub fn review_units(&self) -> Result<BTreeSet<ReviewUnit>> {
         let mut units = BTreeSet::new();
         for (name, _) in entries(&self.path.join("changes"))? {
@@ -143,7 +129,6 @@ impl WorkspaceState {
         Ok(units)
     }
 
-    /// The review of the first readable round in the Explore folder `review`.
     fn explore_unit(review: &Path) -> Option<ReviewUnit> {
         ReviewStore::round_files_in(review)
             .unwrap_or_default()
@@ -155,31 +140,24 @@ impl WorkspaceState {
             })
     }
 
-    /// When anything in the state last changed: the latest modification time of its folders
-    /// and files.
     pub fn last_modified(&self) -> Result<SystemTime> {
         latest_modification(&self.path)
     }
 }
 
 impl ReviewStore {
-    /// The folder of this repository's state.
     pub fn directory(&self) -> &Path {
         &self.repository_dir
     }
 
-    /// The root of the state directory, which every repository's state shares.
     pub fn state_root(&self) -> &Path {
         &self.state_root
     }
 
-    /// Lock the migration of per-workspace states for every reviewer process of the state root,
-    /// until the returned file is dropped.
     pub fn lock_migration(&self) -> Result<fs::File> {
         self.exclusive_lock(&self.state_root.join("migration.lock"), "lock migration")
     }
 
-    /// The per-workspace states this repository checked and found to be another's.
     pub fn foreign_workspace_states(&self) -> Result<BTreeSet<String>> {
         Ok(Self::read_json(
             &self.repository_dir.join(FOREIGN_WORKSPACES),
@@ -188,7 +166,6 @@ impl ReviewStore {
         .unwrap_or_default())
     }
 
-    /// Record the per-workspace states this repository checked and found to be another's.
     pub fn save_foreign_workspace_states(&self, keys: &BTreeSet<String>) -> Result<()> {
         self.atomic_json(
             &self.repository_dir.join(FOREIGN_WORKSPACES),
@@ -197,15 +174,6 @@ impl ReviewStore {
         )
     }
 
-    /// Merge every record of `state`, a per-workspace state of this repository, into the shared
-    /// state, each under the lock its own writes take, and return the records that could not be
-    /// read: they stay in `state` only. Merging the same state again changes nothing.
-    ///
-    /// A review mark goes in when the shared state has none for its file, or an older one. The
-    /// threads and drafts of a review are merged by thread. Explore rounds and their views and
-    /// run-ahead records are copied; when both states hold a history of the same review, the
-    /// merged history lists the rounds of both in the order they were saved, none of them
-    /// editable, unless the shared history already lists every round of the other.
     pub fn merge_workspace_state(&self, state: &WorkspaceState) -> Result<Vec<PathBuf>> {
         let old = Self {
             state_root: self.state_root.clone(),
@@ -221,8 +189,6 @@ impl ReviewStore {
         Ok(unreadable)
     }
 
-    /// Move a merged per-workspace state to `merged-workspaces/`, with a file that names the
-    /// shared folder it was merged into, and return where it moved.
     pub fn retire_workspace_state(&self, state: &WorkspaceState) -> Result<PathBuf> {
         let merged = self.state_root.join(MERGED_WORKSPACES);
         self.create_dir(&merged)?;
@@ -247,7 +213,6 @@ impl ReviewStore {
         Ok(target)
     }
 
-    /// Copy the thread contexts the shared state lacks; they are named by their content.
     fn merge_thread_contexts(&self, old: &Self) -> Result<()> {
         for (name, path) in entries(&old.repository_dir.join("thread-contexts"))? {
             let target = self.repository_dir.join("thread-contexts").join(&name);
@@ -365,12 +330,9 @@ impl ReviewStore {
         Ok(())
     }
 
-    /// Merge `old`, the history of one review in a per-workspace state, into the shared
-    /// history in `directory`, whose round files the shared state now holds.
     fn merge_history(&self, directory: &Path, old: ExploreHistory) -> Result<()> {
         let path = directory.join("index.json");
         let Ok(kept) = Self::read_explore::<ExploreHistory>(&path, MAX_VIEW) else {
-            // Restoring the review rebuilds a damaged history from the round files.
             return Ok(());
         };
         let merged = match kept {
@@ -383,7 +345,6 @@ impl ReviewStore {
         self.write_explore(&path, &merged, MAX_VIEW)
     }
 
-    /// The history of every round file in `directory`, oldest first, none of them editable.
     fn rounds_in_saved_order(directory: &Path) -> Result<ExploreHistory> {
         let mut rounds = Self::round_files_in(directory)?
             .into_iter()
@@ -397,7 +358,6 @@ impl ReviewStore {
         })
     }
 
-    /// Copy `from` to `to` when `to` is missing or older, keeping the time `from` was saved.
     fn copy_newer(&self, from: &Path, to: &Path) -> Result<()> {
         let saved = modified(from)?;
         if to.exists() && modified(to)? >= saved {
@@ -413,7 +373,6 @@ impl ReviewStore {
     }
 }
 
-/// The review a stored thread document (`conversations`) or draft document (`drafts`) names.
 fn record_unit(kind: &str, path: &Path) -> Result<ReviewUnit> {
     let bytes = fs::read(path).map_err(io("read review record", path))?;
     let json = ReviewStore::decode_thread_json(path, &bytes)?;
@@ -430,8 +389,6 @@ fn record_unit(kind: &str, path: &Path) -> Result<ReviewUnit> {
     })
 }
 
-/// Whether the mark written at `time` is later than the one written at `than`. Times this
-/// reviewer cannot read compare as text.
 fn later(time: &str, than: &str) -> bool {
     match (
         OffsetDateTime::parse(time, &Rfc3339),
@@ -442,7 +399,6 @@ fn later(time: &str, than: &str) -> bool {
     }
 }
 
-/// The name and path of each entry of `directory`; none when it is missing.
 fn entries(directory: &Path) -> Result<Vec<(String, PathBuf)>> {
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,

@@ -1,28 +1,17 @@
-//! Which checks the changed files reach. Cargo's dependency graph says which crates a change
-//! reaches, and which of them each end-to-end suite builds; the tables below say what the files
-//! outside the crates belong to. A file the tables do not name runs every check, and
-//! `--check-map` fails on it, so a new directory is never left unchecked.
-
 use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::workspace::Workspace;
 
-/// A check, as `make` runs it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Check {
-    /// `make lint`: clippy, the client's types and the complexity gate, a few seconds.
     Lint,
-    /// `make test` for these crates only, with nextest.
     UnitTests(BTreeSet<String>),
-    /// `make test` for the whole workspace, its doc tests included.
     AllUnitTests,
-    /// An end-to-end suite.
     EndToEnd(Suite),
 }
 
 impl Check {
-    /// The arguments of `make` for this check.
     pub(crate) fn make_arguments(&self) -> Vec<String> {
         match self {
             Self::Lint => vec!["lint".into()],
@@ -39,12 +28,9 @@ impl Check {
     }
 }
 
-/// An end-to-end suite.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum Suite {
-    /// The pane, driven in a private Herdr.
     Pane,
-    /// The Explore page, in a browser.
     Page,
 }
 
@@ -66,37 +52,23 @@ impl Suite {
     }
 }
 
-/// What a changed file belongs to.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Owner {
-    /// A file of this local package, sources and assets alike.
     Package(String),
-    /// A file of an end-to-end suite's harness.
     Suite(Suite),
-    /// A file no check reads: documentation, agents' notes, tooling the checks do not run.
     Nothing,
-    /// `Cargo.lock`: the packages whose entry changed say what it reaches.
     Lock,
-    /// A file every check reads: the workspace's manifest, the toolchain, the Makefile.
     Everything,
-    /// A file the tables do not name.
     Unmapped,
 }
 
-/// Files that every check reads. `Cargo.lock` is not one: its changed packages say which crates
-/// it reaches.
 const EVERYTHING: &[&str] = &["Cargo.toml", "nix/", "Makefile", ".config/"];
 
-/// The harnesses of the end-to-end suites.
 const SUITES: &[(&str, Suite)] = &[
     ("tests/tui/", Suite::Pane),
     ("tests/explore-page/", Suite::Page),
 ];
 
-/// Files that no check reads. Markdown outside the crates is one of them too: inside a crate, a
-/// Markdown file may be compiled into it. `scripts/dev-shell` enters the shell the checks run in,
-/// but no check runs it; `.envrc`, `herdr-plugin.toml` and `herdr-app-mod/` serve direnv, Herdr's
-/// install and herdr-app's, and `.mcp.json` registers the vision MCP server for agents.
 const NOTHING: &[&str] = &[
     "docs/",
     ".agents/",
@@ -110,30 +82,22 @@ const NOTHING: &[&str] = &[
     "herdr-app-mod/",
 ];
 
-/// What changed between two revisions.
 #[derive(Debug, Default)]
 pub(crate) struct Changes {
-    /// The changed files, relative to the repository: both paths of a rename.
     pub(crate) paths: Vec<String>,
-    /// The packages whose entry in `Cargo.lock` changed, when it did; `None` when `Cargo.lock`
-    /// changed in a way these could not be read from.
     pub(crate) locked: Option<BTreeSet<String>>,
 }
 
-/// The checks a change reaches, and why.
 #[derive(Debug, Default, Eq, PartialEq)]
 pub(crate) struct Plan {
     pub(crate) checks: Vec<Check>,
     pub(crate) reasons: Vec<String>,
 }
 
-/// The changed files, sorted by what they belong to.
 #[derive(Default)]
 struct Owners {
-    /// The changed packages: local ones by their files, any one by its entry in `Cargo.lock`.
     packages: BTreeSet<String>,
     suites: BTreeSet<Suite>,
-    /// Why every check runs, when it does.
     run_everything: Vec<String>,
 }
 
@@ -168,7 +132,6 @@ impl Owners {
 }
 
 impl Workspace {
-    /// What `path`, relative to the repository, belongs to.
     fn owner(&self, path: &str) -> Owner {
         if path == "Cargo.lock" {
             return Owner::Lock;
@@ -200,7 +163,6 @@ impl Workspace {
         Owner::Unmapped
     }
 
-    /// The checks that `changes` reach.
     pub(crate) fn plan(&self, changes: &Changes) -> Plan {
         let owners = Owners::of(self, changes);
         if !owners.run_everything.is_empty() {
@@ -247,7 +209,6 @@ impl Workspace {
         plan
     }
 
-    /// The tracked files that the tables do not name.
     pub(crate) fn unmapped<'a>(&self, tracked: &'a [String]) -> Vec<&'a str> {
         tracked
             .iter()
@@ -256,7 +217,6 @@ impl Workspace {
             .collect()
     }
 
-    /// `packages` and every package that depends on one of them, transitively.
     fn reached(&self, packages: &BTreeSet<String>) -> BTreeSet<String> {
         let mut reached = packages.clone();
         let mut pending: Vec<String> = packages.iter().cloned().collect();
@@ -271,8 +231,6 @@ impl Workspace {
     }
 }
 
-/// Whether `path` is the file `rule` names, or is under the directory `rule` names with a
-/// trailing slash.
 fn matches_rule(path: &str, rule: &str) -> bool {
     if rule.ends_with('/') {
         path.starts_with(rule)

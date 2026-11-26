@@ -1,6 +1,3 @@
-//! Every thread document version that earlier builds wrote still loads, and what this
-//! build writes is byte for byte what the build before it wrote.
-
 use std::sync::Arc;
 
 use review_threads::{MessageId, Post, Resolution, ThreadId, ThreadSource};
@@ -27,7 +24,6 @@ fn write_document(store: &ReviewStore, document: &Value) {
     store.write_json_fixture(&store.threads_fixture_path(), &document.to_string());
 }
 
-/// A version 2 or 3 document holding one thread with `messages`.
 fn legacy_document(version: u8, messages: &Value, readers: &Value) -> Value {
     json!({"version": version, "conversations": {
         "review_unit": "change",
@@ -194,7 +190,6 @@ fn version_2_recovery_only_delivers_comments_still_waiting_for_an_answer() {
         };
         let directory = tempfile::tempdir().unwrap();
         let store = open(&directory);
-        // Version 2 advanced the cursor on every fetch, including the final one.
         write_document(
             &store,
             &legacy_document(2, &messages, &json!({"agent": {THREAD: 3}})),
@@ -202,7 +197,6 @@ fn version_2_recovery_only_delivers_comments_still_waiting_for_an_answer() {
 
         let recovered = store.load_threads(&unit()).unwrap();
         let thread = recovered.thread(&thread_id()).unwrap();
-        // Version 2 recorded no attention state: the thread is open and its reply unread.
         assert_eq!(recovered.counts().open, 1);
         assert_eq!(recovered.counts().unread, 1);
         assert_eq!(
@@ -215,8 +209,6 @@ fn version_2_recovery_only_delivers_comments_still_waiting_for_an_answer() {
             usize::from(!late_before_reply)
         );
         if late_before_reply {
-            // Without an exact boundary, legacy replies cover preceding comments, just as
-            // the thread's visible Waiting status does.
             assert!(!thread.is_waiting());
             assert_eq!(recovered.pending_comment_sequence(), None);
             assert!(recovered.retry(&thread_id()).is_err());

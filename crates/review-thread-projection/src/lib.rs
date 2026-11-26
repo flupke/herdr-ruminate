@@ -1,14 +1,3 @@
-//! One projection of the review threads onto the reviewed files.
-//!
-//! [`ThreadProjector`] rebuilds the projection from each file list and each
-//! thread load. The files list and the Threads list read the threads, the file
-//! each thread belongs to, per-file counts and placement from clones of one
-//! [`SharedThreadProjection`] instead of each deriving them. Only the diff
-//! loads the code a thread points at, so it reports each thread's
-//! [`ThreadPlacement`] into the projection. Diff viewers still match threads
-//! to the documents they show, which for Explore evidence are the files of a
-//! saved comparison rather than the reviewed files.
-
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -18,23 +7,14 @@ use review_threads::{ReviewThread, ReviewThreads, ThreadCounts, ThreadId, Thread
 use review_types::ReviewUnit;
 use ui_events::{FileSummary, RepositoryFilesChanged, ReviewThreadsLoaded};
 
-/// Where a thread's saved context sits in the code the diff shows now,
-/// separate from the immutable saved context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThreadPlacement {
-    /// The saved lines map to rows the diff shows.
     Current,
-    /// The saved lines map to the file, but the diff hides their rows.
     Hidden,
-    /// The saved lines no longer map to the file's current code.
     Earlier,
-    /// The thread's file is not part of the reviewed diff.
     OutsideDiff,
-    /// The file's code is not loaded, so only the saved context is known.
     Original,
-    /// The thread's current source could not be read.
     Unavailable,
-    /// The thread is the conversation of an Explore round, on no code.
     ExploreRound,
 }
 
@@ -52,53 +32,40 @@ impl ThreadPlacement {
     }
 }
 
-/// The review's threads, the file each belongs to, per-file counts and
-/// placement, for the review whose files were listed last.
 #[derive(Default)]
 pub struct ThreadProjection {
     review_unit: Option<ReviewUnit>,
     files: HashSet<String>,
     paths: ThreadPaths,
     threads: Option<ReviewThreads>,
-    /// The threads before the latest load, so readers can tell what it changed.
     previous: Option<ReviewThreads>,
     file_counts: HashMap<String, ThreadCounts>,
     placements: HashMap<ThreadId, ThreadPlacement>,
 }
 
 impl ThreadProjection {
-    /// The threads of the review, once loaded.
     pub fn threads(&self) -> Option<&ReviewThreads> {
         self.threads.as_ref()
     }
 
-    /// The threads the latest load replaced.
     pub fn previous_threads(&self) -> Option<&ReviewThreads> {
         self.previous.as_ref()
     }
 
-    /// The path a thread saved on `path` belongs to now: that reviewed
-    /// file, or the single destination it was renamed to. Threads on paths
-    /// that are not reviewed files keep their saved path.
     pub fn current_path<'a>(&'a self, path: &'a str) -> &'a str {
         self.paths.resolve(path)
     }
 
-    /// Whether `thread` belongs to one of the reviewed files.
     fn is_on_reviewed_file(&self, thread: &ReviewThread) -> bool {
         thread
             .path()
             .is_some_and(|path| self.files.contains(self.current_path(path)))
     }
 
-    /// Counts of the threads that belong to `path`.
     pub fn file_counts(&self, path: &str) -> ThreadCounts {
         self.file_counts.get(path).copied().unwrap_or_default()
     }
 
-    /// Where the diff last placed `thread`. Before the diff reports it, a
-    /// thread on a reviewed file shows its saved context and any other
-    /// thread on code lies outside the diff.
     pub fn placement(&self, thread: &ReviewThread) -> ThreadPlacement {
         if thread.round().is_some() {
             return ThreadPlacement::ExploreRound;
@@ -113,7 +80,6 @@ impl ThreadProjection {
             })
     }
 
-    /// Replace the reviewed files; a new review forgets the previous one.
     fn list_files(&mut self, event: &RepositoryFilesChanged) {
         let review_unit = &event.review_checkpoint.review_unit;
         if self.review_unit.as_ref() != Some(review_unit) {
@@ -127,8 +93,6 @@ impl ThreadProjection {
         self.count_files();
     }
 
-    /// Accept threads loaded for the current review; a failed load keeps
-    /// the threads already shown.
     fn load_threads(&mut self, event: &ReviewThreadsLoaded) {
         if self.review_unit.as_ref() != Some(&event.review_unit) {
             return;
@@ -160,13 +124,10 @@ impl ThreadProjection {
     }
 }
 
-/// One projection shared by every component that shows review threads.
 #[derive(Clone, Default)]
 pub struct SharedThreadProjection(Rc<RefCell<ThreadProjection>>);
 
 impl SharedThreadProjection {
-    /// Borrow the current projection. Release it before the next event.
-    ///
     /// # Panics
     ///
     /// Panics if called while the projection is being updated.
@@ -174,8 +135,6 @@ impl SharedThreadProjection {
         self.0.borrow()
     }
 
-    /// Record where the diff placed each thread of `review_unit`.
-    ///
     /// # Panics
     ///
     /// Panics if called while the projection is borrowed.
@@ -184,9 +143,6 @@ impl SharedThreadProjection {
     }
 }
 
-/// Rebuilds the shared projection from file lists and thread loads. Mount it
-/// before the components that read the projection, so they see each update
-/// while handling the same event.
 pub struct ThreadProjector {
     projection: SharedThreadProjection,
 }

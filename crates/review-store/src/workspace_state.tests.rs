@@ -69,7 +69,6 @@ fn round(unit: &str) -> ExploreRound {
     })))
 }
 
-/// Save `round` in `store` with the history `rounds`, its file dated `saved`.
 fn save_round(store: &ReviewStore, round: &ExploreRound, rounds: Vec<String>, saved: SystemTime) {
     let unit = round.exploration.comparison.checkpoint.review_unit.clone();
     let records = store.lock_explore(&unit).unwrap();
@@ -91,7 +90,6 @@ fn save_round(store: &ReviewStore, round: &ExploreRound, rounds: Vec<String>, sa
         .unwrap();
 }
 
-/// Every file under `directory` with its bytes, but the locks.
 fn files(directory: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     let mut found = BTreeMap::new();
     for entry in fs::read_dir(directory).unwrap() {
@@ -177,7 +175,6 @@ fn the_later_mark_of_each_file_wins_and_marks_of_one_side_are_kept() {
     shared
         .mark(&unit, b"newer-in-task.rs", COMMIT, &MarkAuthor::Jev)
         .unwrap();
-    // Marks written within one second share their time: date the shared ones apart.
     let shared_record = shared.record_path(&unit, b"newer-in-task.rs");
     let text = fs::read_to_string(&shared_record).unwrap();
     let written = reviewed_at(shared, &unit, b"newer-in-task.rs").unwrap();

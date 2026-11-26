@@ -571,7 +571,6 @@ fn each_change_of_a_reviews_marks_gives_it_a_new_stamp() {
     let marked = store.marks_stamp(&fixture.change).unwrap().unwrap();
     store.unreview(&fixture.change, b"a.rs").unwrap();
     let unmarked = store.marks_stamp(&fixture.change).unwrap().unwrap();
-    // Unmarking a path without a mark changes nothing.
     store.unreview(&fixture.change, b"a.rs").unwrap();
     assert_eq!(
         store.marks_stamp(&fixture.change).unwrap().unwrap(),

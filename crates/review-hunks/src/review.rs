@@ -1,15 +1,9 @@
-//! Edits of the reviewed version: accepting and reopening hunks, and moving it
-//! onto a new base.
-
 use review_types::MarkAuthor;
 
 use crate::attribution::{Attribution, REVIEWER_ONLY, Rebuild, Reviewed};
 use crate::hunks::HunkSpan;
 use crate::text::{Lines, before_line, changes, overlaps, translate};
 
-/// The three versions of one file that decide which of its hunks are
-/// reviewed: the base, the reviewed version and the current file, with who
-/// accepted the reviewed version's changes.
 pub struct HunkReview<'a> {
     pub(crate) base: &'a [u8],
     pub(crate) reviewed: &'a [u8],
@@ -17,43 +11,29 @@ pub struct HunkReview<'a> {
     pub(crate) attribution: &'a Attribution,
 }
 
-/// The lines one open hunk changes, numbered like the base and the current file.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ChangedLines {
-    /// Zero-based base lines the hunk removes.
     pub removed: Vec<u32>,
-    /// Zero-based current lines the hunk adds.
     pub added: Vec<u32>,
-    /// The hunk removes reviewed lines the base does not have: it rewrites
-    /// what the reviewer approved, which no change from the base shows.
     pub rewrites_reviewed: bool,
 }
 
-/// Where the lines of the reviewed version sit in the base.
 pub struct BaseNumbering(Vec<crate::text::Change>);
 
 impl BaseNumbering {
-    /// The zero-based base line behind a zero-based line of the reviewed
-    /// version, or `None` for a line a reviewed change added.
     pub fn base_line(&self, reviewed_line: u32) -> Option<u32> {
         before_line(&self.0, reviewed_line)
     }
 }
 
-/// The reviewed version after lines were accepted or reopened.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewedVersion {
-    /// Every line is reviewed: the reviewed version is the current file.
     Current(Attribution),
-    /// No line is reviewed: the reviewed version is the base.
     Base,
-    /// Some lines are reviewed.
     Partial(Reviewed),
 }
 
 impl<'a> HunkReview<'a> {
-    /// Relate the versions of one file whose changes the reviewer accepted.
-    /// `reviewed` must already sit on `base` (see [`replay`]).
     pub fn new(base: &'a [u8], reviewed: &'a [u8], current: &'a [u8]) -> Self {
         Self {
             base,
@@ -63,7 +43,6 @@ impl<'a> HunkReview<'a> {
         }
     }
 
-    /// Say who accepted the reviewed version's changes.
     #[must_use]
     pub fn attributed(self, attribution: &'a Attribution) -> Self {
         Self {
@@ -72,14 +51,10 @@ impl<'a> HunkReview<'a> {
         }
     }
 
-    /// Accept one hunk of the open diff (reviewed version to current file):
-    /// the reviewed version takes the hunk's current lines.
     pub fn review(&self, open: &HunkSpan, author: &MarkAuthor) -> Option<ReviewedVersion> {
         self.review_all(std::slice::from_ref(open), author)
     }
 
-    /// Accept several hunks of the open diff at once, or none when two of
-    /// them overlap. The unchanged lines a hunk spans keep their authors.
     pub fn review_all(&self, open: &[HunkSpan], author: &MarkAuthor) -> Option<ReviewedVersion> {
         let reviewed = Lines::new(self.reviewed);
         let current = Lines::new(self.current);
@@ -102,7 +77,6 @@ impl<'a> HunkReview<'a> {
             }
             for (offset, text) in (0..).zip(added) {
                 let author = match before_line(&inside, offset) {
-                    // An unchanged line inside the hunk keeps its author.
                     Some(kept) => self.attribution.added_by(span.old.start + kept),
                     None => author,
                 };
@@ -114,13 +88,10 @@ impl<'a> HunkReview<'a> {
         Some(self.version(rebuild.finish(self.base)))
     }
 
-    /// How to number the reviewed version's lines like the base.
     pub fn base_numbering(&self) -> BaseNumbering {
         BaseNumbering(changes(self.base, self.reviewed))
     }
 
-    /// The lines each open hunk changes, zero-based: the base lines it
-    /// removes and the current lines it adds.
     pub fn changed_lines(&self, open: &[HunkSpan]) -> Vec<ChangedLines> {
         let reviewed_changes = changes(self.base, self.reviewed);
         let open_changes = changes(self.reviewed, self.current);
@@ -144,9 +115,6 @@ impl<'a> HunkReview<'a> {
             .collect()
     }
 
-    /// Reopen one reviewed hunk: the reviewed version takes the hunk's base
-    /// lines back. The hunk's current lines match the reviewed version, so
-    /// they move to it untouched.
     pub fn unreview(&self, reviewed: &HunkSpan) -> Option<ReviewedVersion> {
         let open = changes(self.reviewed, self.current);
         let range = translate(
@@ -179,10 +147,6 @@ impl<'a> HunkReview<'a> {
     }
 }
 
-/// Move a reviewed version from the base it was built on to a new base. The
-/// reviewed changes land on the new base with their authors; a reviewed
-/// change that meets an upstream change is dropped, so its lines read as
-/// unreviewed again rather than as silently reviewed.
 pub fn replay(old_base: &[u8], reviewed: &Reviewed, new_base: &[u8]) -> Reviewed {
     if old_base == new_base {
         return reviewed.clone();

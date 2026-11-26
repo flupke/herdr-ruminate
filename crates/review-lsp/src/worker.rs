@@ -6,7 +6,6 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use crate::api::{Command, Event, FileChange, Operation, Query};
 use crate::manager::Manager;
 
-/// A running LSP worker.
 pub struct Worker {
     commands: Sender<Command>,
     events: Receiver<Event>,
@@ -14,7 +13,6 @@ pub struct Worker {
 }
 
 impl Worker {
-    /// Start a worker for one repository root.
     pub fn start(root: PathBuf) -> Self {
         let (commands, command_receiver) = unbounded();
         let (event_sender, events) = unbounded();
@@ -28,32 +26,26 @@ impl Worker {
         }
     }
 
-    /// Open a supported document, starting its language server when necessary.
     pub fn open_document(&self, path: PathBuf) -> Result<(), String> {
         self.send(Command::OpenDocument(path))
     }
 
-    /// Run one LSP request.
     pub fn request(&self, operation: Operation, query: Query) -> Result<(), String> {
         self.send(Command::Request { operation, query })
     }
 
-    /// Return a sender, for another thread, of the files that change on disk.
     pub fn file_change_sender(&self) -> FileChangeSender {
         FileChangeSender(self.commands.clone())
     }
 
-    /// Restart active language servers and reopen known documents.
     pub fn restart(&self) -> Result<(), String> {
         self.send(Command::Restart)
     }
 
-    /// Return the next available event without waiting.
     pub fn try_recv(&self) -> Option<Event> {
         self.events.try_recv().ok()
     }
 
-    /// Return a receiver that can forward worker events to an application channel.
     pub fn event_receiver(&self) -> Receiver<Event> {
         self.events.clone()
     }
@@ -65,13 +57,10 @@ impl Worker {
     }
 }
 
-/// Tells a worker's running language servers about files that changed on disk, so that their
-/// indexes follow the edits made outside the review.
 #[derive(Clone, Debug)]
 pub struct FileChangeSender(Sender<Command>);
 
 impl FileChangeSender {
-    /// Send one batch of changes; a stopped worker ignores it.
     pub fn send(&self, changes: Vec<FileChange>) {
         let _ = self.0.send(Command::FilesChanged(changes));
     }

@@ -22,10 +22,7 @@ use crate::{
     wakeup::Wakeup,
 };
 
-/// How often the worker checks the host again while a prompt or wakeup waits. A prompt bound to
-/// a native session waits while the pane reports none, and Herdr publishes no event when an
-/// agent reports its session again: only asking shows it. herdr-core tells it
-/// ([`HerdrEvent::AgentSessionChanged`]), so such a prompt waits for that event there.
+// Herdr publishes no event when an agent reports its session again: only asking shows it.
 const RECHECK_INTERVAL: Duration = Duration::from_millis(100);
 
 pub(super) struct State {
@@ -34,29 +31,19 @@ pub(super) struct State {
     target: AgentTarget,
     available: bool,
     books: HashMap<ReviewUnit, ReviewThreads>,
-    /// The threads of each review that the reviewer retried, or reopened, in this tab, with the
-    /// latest comment each Retry covered: those come to this tab's agent whichever tab posted
-    /// them.
     retried: HashMap<ReviewUnit, BTreeMap<ThreadId, u64>>,
     access: HashMap<String, Access>,
     notifications: HashMap<ReviewUnit, Notification>,
     wakeups: HashMap<String, Wakeup>,
     prompts: PromptQueue,
     courier: Courier,
-    /// Where the outcomes of comment notifications come back, behind the other inputs.
     inputs: Sender<Input>,
     publish: Box<dyn Fn(Event) + Send>,
-    /// A vision session's record of the wakeups sent, for its scripted agent.
     turns: Option<TurnLog>,
-    /// Where the new review comments, and the words handed to the worker, are published for
-    /// other programs; `None` publishes none.
     bus: Option<WordsBus>,
-    /// The new review comments of each review that wait for the agent the next wakeup picks,
-    /// whose pane they are published to.
     unpublished: HashMap<ReviewUnit, Vec<UserWords>>,
 }
 
-/// A comments wakeup as a vision session's turn log records it.
 #[derive(Serialize)]
 struct CommentsTurn<'a> {
     kind: &'static str,
@@ -114,7 +101,6 @@ impl State {
         }
     }
 
-    /// Handle one input; break once the owner stops the worker.
     fn input(&mut self, input: Input) -> ControlFlow<()> {
         match input {
             Input::Ui(command) => self.command(command),
@@ -142,8 +128,6 @@ impl State {
         ControlFlow::Continue(())
     }
 
-    /// Answers `done` once every earlier input is handled, and the words handed to the bus
-    /// are published, or failed.
     #[cfg(any(test, feature = "flush"))]
     fn flush(&self, done: &std::sync::mpsc::Sender<()>) {
         if let Some(bus) = &self.bus {
@@ -172,7 +156,6 @@ impl State {
         }
     }
 
-    /// News of the notification sent for access `token`, for the comments `through` a sequence.
     fn notification(&mut self, token: &str, through: u64, news: NotificationNews) {
         match news {
             NotificationNews::Outcome(result) => self.notified(token, through, result),
@@ -180,9 +163,6 @@ impl State {
         }
     }
 
-    /// The notification sent for access `token`, for the comments `through` a sequence, has
-    /// its outcome. One that failed is not sent again until the reviewer retries or posts
-    /// another comment, which a wakeup requested since then already did.
     fn notified(&mut self, token: &str, through: u64, result: Result<(), PromptError>) {
         if let Some(wakeup) = self.wakeups.get_mut(token) {
             wakeup.hold(None);
@@ -210,9 +190,6 @@ impl State {
         );
     }
 
-    /// The notification sent for access `token` waits for `wait` before the agent's host types it,
-    /// or no longer waits: the threads its wakeup covers say so, with those of the notifications
-    /// after it, which wait behind it.
     fn notification_waits(&mut self, token: &str, wait: Option<PromptWait>) {
         let Some(wakeup) = self.wakeups.get_mut(token) else {
             return;
@@ -228,14 +205,11 @@ impl State {
             .access
             .get(token)
             .map(|access| access.review_unit.clone());
-        // A wait alone is no error: without a review to name, nothing shows it.
         if let Some(unit) = &unit {
             self.report_wakeup(Some(unit), notice);
         }
     }
 
-    /// The wakeup for the pending comments of `unit` cannot reach the agent: say why, and
-    /// which comments wait.
     fn undelivered(&self, unit: Option<&ReviewUnit>, error: String) {
         match unit.and_then(|unit| {
             self.books
@@ -250,9 +224,6 @@ impl State {
         }
     }
 
-    /// Publish what became of the latest wakeup for `unit`: `None` while one is on its way, why
-    /// it waits to reach the agent, or why one did not reach it. Without a review or a waiting
-    /// comment to name, a failure is only an error.
     fn report_wakeup(&self, unit: Option<&ReviewUnit>, notice: Option<WakeupNotice>) {
         match unit {
             Some(unit) => (self.publish)(Event::Wakeup {
@@ -267,9 +238,6 @@ impl State {
         }
     }
 
-    /// Whether something waits that only asking the host again may move: a prompt waiting for
-    /// its agent's session, unless the host announces sessions; a notification; or a wakeup
-    /// that needs a poll.
     fn needs_recheck(&self) -> bool {
         (self.prompts.is_pending() && !self.port.announces_sessions())
             || !self.notifications.is_empty()
@@ -366,8 +334,6 @@ impl State {
         }));
     }
 
-    /// The latest drafts saved for `unit`, as every reviewer process sees them.
-    /// Unreadable drafts are reported but never hide the threads; they stay on disk.
     fn drafts_to_restore(&self, unit: &ReviewUnit) -> SavedDrafts {
         self.store.load_drafts(unit).unwrap_or_else(|error| {
             (self.publish)(Event::Error(format!("Could not load drafts: {error}")));
@@ -395,7 +361,6 @@ impl State {
         let post = post.from_tab(self.target.tab_id().0.clone());
         let message_id = post.message().id.clone();
         let thread_id = post.thread_id().clone();
-        // What the bus gets of a review comment, an agent's reply aside.
         let words =
             (post.message().author == Author::Reviewer).then(|| post.message().text.clone());
         let result = self.update(review_unit, |book| {
@@ -428,8 +393,6 @@ impl State {
         let result = result.map(|_| ());
         let posted = result.is_ok();
         if posted {
-            // Updating the drafts forgets every draft whose post the threads now hold. A
-            // crash before this write cannot restore the draft: loading forgets it too.
             let forgotten = self.update_drafts(review_unit, |_, _| Ok(()));
             self.report(forgotten);
         }
@@ -448,13 +411,11 @@ impl State {
         if posted && let Err(error) = self.schedule(review_unit, false) {
             self.undelivered(Some(review_unit), error);
         }
-        // A comment that wakes an agent waits for the next poll, which picks it.
         if !self.notifications.contains_key(review_unit) {
             self.publish_comments(review_unit, None);
         }
     }
 
-    /// Publishes the new review comments of `unit` on the bus, to the agent in the pane `to`.
     fn publish_comments(&mut self, unit: &ReviewUnit, to: Option<&PaneId>) {
         let comments = self.unpublished.remove(unit).unwrap_or_default();
         let Some(bus) = &self.bus else {
@@ -498,7 +459,6 @@ impl State {
         Ok(result)
     }
 
-    /// Change the saved drafts. The posted threads are never rewritten for a draft.
     fn update_drafts(
         &mut self,
         unit: &ReviewUnit,
@@ -554,7 +514,6 @@ impl State {
         Ok(access)
     }
 
-    /// This tab's review pane, as the recipient of the pending comments of `unit`.
     fn recipient(&self, unit: &ReviewUnit) -> Recipient<'_> {
         const NONE: &BTreeMap<ThreadId, u64> = &BTreeMap::new();
         Recipient {
@@ -563,17 +522,12 @@ impl State {
         }
     }
 
-    /// Whether a pending comment of `unit` is for this tab's agent: one this tab posted, or one
-    /// of a thread the reviewer retried here. Another tab's comment, which may come from the
-    /// review pane of another workspace of the repository, waits for that tab's reviewer.
     fn waits_for_agent(&self, unit: &ReviewUnit) -> bool {
         self.books
             .get(unit)
             .is_some_and(|book| book.has_new_messages_for(&self.recipient(unit)))
     }
 
-    /// Bring the comments of `thread` posted so far to this tab's agent, whichever tab posted
-    /// them; a comment posted later waits for its own tab.
     fn release(&mut self, unit: &ReviewUnit, thread: ThreadId) {
         let Some(through) = self
             .books
@@ -611,8 +565,6 @@ impl State {
             .request(sequence, retry);
     }
 
-    /// Serves an agent's call with `access`, which names the agent's session `session` if the
-    /// agent names one, as Codex does.
     fn request(
         &mut self,
         access: &str,
@@ -664,8 +616,6 @@ impl State {
                 released: true,
                 ..
             } => {
-                // An agent can resume in the same pane after MCP setup.
-                // Keep its grant; every request still checks the live identity.
                 self.interrupt_wakeups(&pane_id);
                 self.refresh_target();
             }
@@ -677,7 +627,6 @@ impl State {
                 self.resume_access(&pane_id);
                 self.refresh_target();
             }
-            // The poll after each input sends the prompts that waited for the session.
             HerdrEvent::AgentSessionChanged(_) | HerdrEvent::PaneFocused(_) => {}
         }
     }
@@ -738,8 +687,6 @@ impl State {
         }
     }
 
-    /// Grants the agent the reviewer wakes for the pending comments of `unit` its access, and
-    /// requests its wakeup; returns its pane, or `None` when no comment waits for it.
     fn prepare_notification(&mut self, unit: &ReviewUnit) -> Result<Option<PaneId>, String> {
         let retry = self
             .notifications
@@ -785,7 +732,6 @@ impl State {
         };
         if wakeup.needs_poll() {
             let through = wakeup.sent();
-            // One on its way, or waiting behind one that waits.
             let notice = wakeup.held().map(|(wait, through)| {
                 WakeupNotice::Waiting(WakeupWait {
                     through,

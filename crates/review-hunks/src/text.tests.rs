@@ -66,6 +66,5 @@ fn a_line_moves_past_changes_before_it_and_vanishes_in_one() {
     assert_eq!(after_line(&changes, 0), Some(0));
     assert_eq!(after_line(&changes, 1), None);
     assert_eq!(after_line(&changes, 4), Some(6));
-    // An insertion right before a line only shifts it.
     assert_eq!(after_line(&changes, 5), Some(9));
 }

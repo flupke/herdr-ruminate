@@ -1,31 +1,19 @@
-//! Where the texts of a change name its repository and its tickets: the remotes jj lists, the
-//! change's description, its names and its pull request's body.
-
 use change_references::Ticket;
 
-/// The remotes whose repository is the change's, before the others: in a fork's clone,
-/// `upstream` is the repository whose pull requests and issues the change belongs to, and
-/// `origin` the fork its branches are pushed to.
 const PREFERRED_REMOTES: [&str; 2] = ["upstream", "origin"];
 
-/// The words before a reference to the issue that a change is for: `Fixes #157`, `Ticket
-/// #116`. A looser word, such as "issue" or "refs", also comes before issues a change only
-/// mentions, which would then name it.
 const KEYWORDS: [&str; 10] = [
     "close", "closes", "closed", "fix", "fixes", "fixed", "resolve", "resolves", "resolved",
     "ticket",
 ];
 
-/// A repository on GitHub.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct GitHubRepository {
-    /// `owner/name` in lower case, as gh's `--repo` takes it: GitHub's names ignore case, and
-    /// one issue written in two cases is then one ticket.
+    // GitHub's names ignore case.
     slug: String,
 }
 
 impl GitHubRepository {
-    /// The repository `owner/name`; `None` when either is not a GitHub name.
     fn new(owner: &str, name: &str) -> Option<Self> {
         let name = name.strip_suffix(".git").unwrap_or(name);
         (is_github_name(owner) && is_github_name(name)).then(|| Self {
@@ -37,7 +25,6 @@ impl GitHubRepository {
         &self.slug
     }
 
-    /// The owner of the repository, user or organization.
     fn owner(&self) -> &str {
         self.slug
             .split_once('/')
@@ -45,16 +32,12 @@ impl GitHubRepository {
     }
 }
 
-/// The GitHub repository of the change, and the owner of the fork its branches are pushed to,
-/// when they are pushed elsewhere.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct GitHubRemotes {
     pub(crate) repository: GitHubRepository,
-    /// The fork's owner, whose pull requests to `repository` come from a branch of the fork.
     pub(crate) fork_owner: Option<String>,
 }
 
-/// Whether `name` can be a GitHub owner's or repository's name.
 fn is_github_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -62,12 +45,7 @@ fn is_github_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
-/// The GitHub repository of the remotes that `jj git remote list` printed, a name and an
-/// address a line, then ` (push: <address>)` for a remote that pushes elsewhere: `upstream`'s,
-/// then `origin`'s, then the first one on GitHub. Its branches are pushed to a fork when it
-/// pushes to another repository, or when it is `upstream` beside an `origin` that is another.
 pub(crate) fn github_remotes(remotes: &str) -> Option<GitHubRemotes> {
-    // Each remote's name, the repository it fetches from, and the one it pushes to.
     let remotes: Vec<(&str, GitHubRepository, Option<GitHubRepository>)> = remotes
         .lines()
         .filter_map(|line| {
@@ -99,8 +77,6 @@ pub(crate) fn github_remotes(remotes: &str) -> Option<GitHubRemotes> {
     })
 }
 
-/// The GitHub repository at the Git address `address`: `https://github.com/o/r(.git)`,
-/// `git@github.com:o/r(.git)` or `ssh://git@github.com/o/r(.git)`.
 fn repository_at(address: &str) -> Option<GitHubRepository> {
     let path = address.strip_prefix("git@github.com:").or_else(|| {
         let rest = address
@@ -114,8 +90,6 @@ fn repository_at(address: &str) -> Option<GitHubRepository> {
     GitHubRepository::new(owner, name)
 }
 
-/// The GitHub issue that herdr-bowtie's bookmark or workspace `name` is for: `t157-slug`, after
-/// a prefix that ends with `/` (`luper/t157-slug`).
 pub(crate) fn bookmark_ticket(name: &str) -> Option<u64> {
     let name = name.rsplit_once('/').map_or(name, |(_, last)| last);
     let (number, slug) = name.strip_prefix('t')?.split_once('-')?;
@@ -125,10 +99,6 @@ pub(crate) fn bookmark_ticket(name: &str) -> Option<u64> {
     number.parse().ok()
 }
 
-/// The GitHub issues `text` names, each with whether the change says it is for it: a
-/// reference after a keyword on the same line (`Fixes #157`, `Ticket owner/repo#3`) is; a link
-/// to an issue on github.com, anywhere, may be one the change only mentions. `#157` alone is
-/// an issue of `home`, the change's repository, and names none without it.
 pub(crate) fn github_tickets(text: &str, home: Option<&GitHubRepository>) -> Vec<(Ticket, bool)> {
     let mut tickets = Vec::new();
     for line in text.lines() {
@@ -153,7 +123,6 @@ pub(crate) fn github_tickets(text: &str, home: Option<&GitHubRepository>) -> Vec
     tickets
 }
 
-/// The issue of a reference: `#157` in `home`, `owner/name#157`.
 fn issue_reference(
     reference: &str,
     home: Option<&GitHubRepository>,
@@ -169,7 +138,6 @@ fn issue_reference(
     Some((repository, number))
 }
 
-/// The repository and the number of the GitHub issue whose page is at `url`.
 pub(crate) fn github_issue(url: &str) -> Option<(GitHubRepository, u64)> {
     let path = url
         .strip_prefix("https://github.com/")
@@ -182,8 +150,6 @@ pub(crate) fn github_issue(url: &str) -> Option<(GitHubRepository, u64)> {
     Some((GitHubRepository::new(owner, name)?, number_of(number)?))
 }
 
-/// The Linear issues that links in `text` name: `https://linear.app/<workspace>/issue/<ID>`,
-/// with or without the slug of the title after it.
 pub(crate) fn linear_links(text: &str) -> Vec<Ticket> {
     text.split_whitespace()
         .filter_map(|word| {
@@ -211,8 +177,6 @@ pub(crate) fn linear_links(text: &str) -> Vec<Ticket> {
         .collect()
 }
 
-/// The GitHub issue `number` of `repository`, as the change's repository `home` names it: by
-/// its number alone in the same repository.
 pub(crate) fn github_ticket(
     home: Option<&GitHubRepository>,
     repository: &GitHubRepository,
@@ -229,8 +193,6 @@ pub(crate) fn github_ticket(
     }
 }
 
-/// `word` without the punctuation that a sentence or Markdown puts around a reference:
-/// `(#157).`, `<https://…>`, `[link](https://…)`.
 fn trim_punctuation(word: &str) -> &str {
     let word = word.rsplit_once("](").map_or(word, |(_, link)| link);
     word.trim_matches(|c: char| {
@@ -256,7 +218,6 @@ fn trim_punctuation(word: &str) -> &str {
     })
 }
 
-/// The number `digits` spells, when it is digits alone.
 fn number_of(digits: &str) -> Option<u64> {
     (!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
         .then(|| digits.parse().ok())

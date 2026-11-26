@@ -1,8 +1,3 @@
-//! The thread service's delivery through the hc backend, against a real herdr-core of its own
-//! ([`hc_test_support::PrivateCore`]), never the user's core. Opt-in, since each test starts a
-//! core of its own: `cargo nextest run -p review-thread-service --run-ignored only`, with the dev
-//! shell's pinned `hc` (`TEST_HC_BIN_PATH`), or else `hc` on the `PATH`.
-
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -14,7 +9,6 @@ use review_source::{AnchorKind, DiffRangeAnchor};
 use review_thread_service::{Command, Event, PinnedAgent, Worker};
 use review_threads::{Post, ThreadCommand};
 
-/// Waits until the agent of `pane` reports itself idle.
 fn wait_until_idle(client: &hc_client::HcClient, pane: &PaneId) {
     client
         .forward_agent_status(pane, &EventCanceller::default(), &mut |reported| {
@@ -23,8 +17,6 @@ fn wait_until_idle(client: &hc_client::HcClient, pane: &PaneId) {
         .unwrap();
 }
 
-/// The statuses the agent of `pane` reports from now on, its current one first: returns once
-/// herdr-core holds the subscription.
 fn statuses(client: &hc_client::HcClient, pane: &PaneId) -> mpsc::Receiver<AgentStatus> {
     let (client, pane) = (client.clone(), pane.clone());
     let (reported, statuses) = mpsc::channel();
@@ -39,7 +31,6 @@ fn statuses(client: &hc_client::HcClient, pane: &PaneId) -> mpsc::Receiver<Agent
     statuses
 }
 
-/// The lines the agent in `folder` submitted that hold `text`.
 fn lines_with(folder: &std::path::Path, text: &str) -> Vec<String> {
     written(folder, "lines")
         .lines()
@@ -48,7 +39,6 @@ fn lines_with(folder: &std::path::Path, text: &str) -> Vec<String> {
         .collect()
 }
 
-/// The lines of a comment on the change under review.
 fn anchor() -> DiffRangeAnchor {
     DiffRangeAnchor {
         source_checkpoint: "initial".into(),
@@ -87,7 +77,6 @@ fn text_left_in_one_agents_line_holds_its_prompt_but_not_a_wakeup_to_another_age
     let port = review_test_support::TestPort::new();
     let endpoint =
         review_mcp::Endpoint::for_repository(store_folder.path(), Some(port.number())).unwrap();
-    // The review pane's agent is B, as when the user focused it last.
     let worker = Worker::start(
         store,
         client.clone(),
@@ -102,7 +91,6 @@ fn text_left_in_one_agents_line_holds_its_prompt_but_not_a_wakeup_to_another_age
         },
     );
 
-    // A prompt to A, as an Explore turn's, which waits for the text to leave A's line.
     let (to_a, _to_a) = worker
         .prompt_sender()
         .send(PinnedAgent::new(agent_a), "Explore the change".into());
@@ -113,7 +101,6 @@ fn text_left_in_one_agents_line_holds_its_prompt_but_not_a_wakeup_to_another_age
         post: Post::start(anchor(), "+original".into(), "Rename this".into()),
     }));
 
-    // B's agent writes the line it got, then goes working.
     while b_statuses.recv().unwrap() != AgentStatus::Working {}
     assert_eq!(lines_with(folder_b.path(), "get_new_messages").len(), 1);
     assert_eq!(written(folder_a.path(), "lines"), "");

@@ -14,17 +14,13 @@ use super::*;
 
 const UNIT: &str = "review";
 
-/// One service over a temporary store and an in-memory agent host.
 struct Service {
     state: State,
-    /// The outcomes the courier sends back to the worker.
     inputs: std::sync::mpsc::Receiver<Input>,
     agents: InMemoryAgents,
     target: AgentTarget,
     errors: Arc<Mutex<Vec<String>>>,
-    /// The outcome of each wakeup, as the worker published it.
     wakeups: Arc<Mutex<Vec<Option<WakeupNotice>>>>,
-    /// The messages the worker said the reviewer posted in a round's conversation.
     round_messages: Arc<Mutex<Vec<crate::RoundMessage>>>,
     seen_prompts: usize,
     _store: TempDir,
@@ -35,13 +31,10 @@ impl Service {
         Self::start_with(None, |agents| Arc::new(agents))
     }
 
-    /// A service that publishes its new review comments on the herdr-bus file at `bus`.
     fn start_on_bus(bus: &std::path::Path) -> Self {
         Self::start_on(Some(bus), None, |agents| Arc::new(agents))
     }
 
-    /// A service that confirms its prompts through `hooks`, if any, and reaches the agents
-    /// through the port that `port` makes of them.
     fn start_with(
         hooks: Option<Arc<agent_hooks::AgentHooks>>,
         port: impl FnOnce(InMemoryAgents) -> Arc<dyn AgentPort>,
@@ -140,7 +133,6 @@ impl Service {
         });
     }
 
-    /// Run one delivery pass and return the prompts it submitted, once their outcomes are back.
     fn poll(&mut self) -> Vec<SentPrompt> {
         self.state.poll();
         self.state.courier.flush();
@@ -157,8 +149,6 @@ impl Service {
         self.fetch_on(access, None)
     }
 
-    /// Fetches the new messages with `access`, in a call that names the agent's session
-    /// `session` if any, as Codex does.
     fn fetch_on(
         &mut self,
         access: &str,
@@ -197,8 +187,6 @@ impl Service {
             }));
     }
 
-    /// Stops the service once the comments it handed to its bus are published, and returns the
-    /// errors it reported, those of the bus with them.
     fn stop(mut self) -> Vec<String> {
         if let Some(bus) = self.state.bus.take() {
             bus.close();
@@ -209,7 +197,6 @@ impl Service {
         self.errors()
     }
 
-    /// Whether any notification or wakeup is still armed for delivery.
     fn has_armed_wakeups(&self) -> bool {
         !self.state.notifications.is_empty() || !self.state.wakeups.is_empty()
     }
@@ -222,7 +209,6 @@ impl Service {
         self.wakeups.lock().unwrap().clone()
     }
 
-    /// Post a message to the conversation of `round` and return its posted identity.
     fn talk(&mut self, round: &str, text: &str, asked_under: Option<AskedUnder>) -> MessageId {
         let post = Post::to_round(round, text.into(), asked_under, Some("a passage".into()));
         let id = post.message().id.clone();
@@ -234,7 +220,6 @@ impl Service {
     }
 }
 
-/// The messages the worker said the reviewer posted in `round`'s conversation, oldest first.
 fn round_messages(service: &Service, round: &str) -> Vec<MessageId> {
     service
         .round_messages
@@ -246,7 +231,6 @@ fn round_messages(service: &Service, round: &str) -> Vec<MessageId> {
         .collect()
 }
 
-/// The single wakeup a delivery pass sent: its pane and review access value.
 fn only_wakeup(prompts: &[SentPrompt]) -> (String, String) {
     let [prompt] = prompts else {
         panic!("expected exactly one wakeup, got {prompts:?}");
@@ -387,7 +371,6 @@ fn resolving_the_thread_cancels_its_pending_wakeup() {
     service.resolve(&thread, Resolution::Open);
     let (_, access) = only_wakeup(&service.poll());
 
-    // A released agent re-arms its wakeup; resolving first cancels it.
     service.observe_agent("first", true);
     assert!(service.has_armed_wakeups());
     service.resolve(&thread, Resolution::Resolved);
@@ -460,7 +443,6 @@ fn a_notification_the_agent_does_not_start_on_is_reported_and_sent_again_on_retr
     assert_eq!(service.errors().len(), 1);
 }
 
-/// The agents, with an agent that takes until the test releases it to start on a prompt.
 struct SlowAgents {
     agents: InMemoryAgents,
     prompting: std::sync::mpsc::Sender<()>,
@@ -498,13 +480,10 @@ impl AgentPort for SlowAgents {
     }
 }
 
-/// A worker over agents whose agent takes until the test releases it to start on each prompt.
 struct SlowWorker {
     worker: crate::Worker,
     agents: InMemoryAgents,
-    /// One signal for each prompt on its way to the agent.
     prompted: std::sync::mpsc::Receiver<()>,
-    /// Lets the agent start on one prompt.
     release: std::sync::mpsc::Sender<()>,
     events: std::sync::mpsc::Receiver<Event>,
     _store: TempDir,
@@ -545,8 +524,6 @@ impl SlowWorker {
     }
 }
 
-/// The threads the worker loaded next, skipping its other events. The guard fires only when
-/// the worker hangs.
 fn loaded(events: &std::sync::mpsc::Receiver<Event>) -> ui_events::ReviewThreadsLoaded {
     loop {
         match events.recv_timeout(std::time::Duration::from_secs(10)) {
@@ -575,13 +552,10 @@ fn a_prompt_withdrawn_while_it_waits_behind_another_is_not_sent() {
         .recv_timeout(std::time::Duration::from_secs(10))
         .expect("the first prompt is on its way");
     let (second, second_cancellation) = worker.prompt_sender().send(pinned, "Second turn".into());
-    // The worker hands each prompt to the courier before it takes its next input: once it
-    // loads the threads, the second prompt waits behind the first.
     worker.send(Command::Thread(ThreadCommand::Load(UNIT.into())));
     loaded(&events);
 
     drop(second_cancellation);
-    // Released for both, so that a second prompt sent anyway shows instead of waiting.
     release.send(()).unwrap();
     release.send(()).unwrap();
 
@@ -718,7 +692,6 @@ fn a_wakeup_queued_behind_one_that_waits_keeps_saying_why() {
     let (_, access) = only_wakeup(&service.poll());
     let book = &service.state.books[&UNIT.into()];
     let first = book.round_conversation("round-7").unwrap().messages[0].sequence();
-    // The first wakeup's send waits for the text in the agent's line.
     let _ = service.state.input(Input::Notification {
         token: access,
         through: first,
@@ -765,7 +738,6 @@ fn a_wakeup_without_an_agent_to_receive_it_names_the_comments_it_left_waiting() 
 fn each_new_message_in_a_round_s_conversation_is_published_once_with_its_round() {
     let mut service = Service::start();
     let first = service.talk("round-7", "Why a lock here?", None);
-    // A reply typed in the pane names the conversation's thread only.
     let conversation = service.state.books[&ReviewUnit::from(UNIT)]
         .round_conversation("round-7")
         .unwrap()
@@ -777,7 +749,6 @@ fn each_new_message_in_a_round_s_conversation_is_published_once_with_its_round()
         review_unit: UNIT.into(),
         post: reply.clone(),
     });
-    // A repeat of a post the threads hold, and a comment on code, are not new round messages.
     service.thread(ThreadCommand::Post {
         review_unit: UNIT.into(),
         post: reply,
@@ -806,7 +777,6 @@ fn a_vision_turn_log_records_each_comments_wakeup_with_its_access_value() {
     assert_eq!(turn["kind"], "comments");
     assert_eq!(turn["access"], access.as_str());
     assert_eq!(turn["delivered"], true);
-    // The text is the wakeup the agent got.
     assert!(
         turn["text"]
             .as_str()
@@ -835,10 +805,9 @@ fn a_wakeup_to_a_codex_agent_is_confirmed_on_the_session_its_calls_named() {
     });
     let thread = service.start_thread("Rename this");
     let (_, access) = only_wakeup(&service.poll());
-    // Herdr's session for a Codex pane can be another pane's: the call names the agent's own.
+    // Herdr's session for a Codex pane can be another pane's.
     service.fetch_on(&access, Some("thread-1")).unwrap();
     service.comment(&thread, "And document it");
-    // The agent's hook, once the wakeup is typed after text left in its input box.
     let hook = std::thread::spawn(move || {
         let typed: String = typed
             .recv_timeout(Duration::from_secs(30))
@@ -911,9 +880,6 @@ fn the_user_s_own_prompt_goes_on_while_a_host_that_types_whole_waits_to_type_a_w
     );
 }
 
-/// The agents of a host that types each prompt whole, as herdr-core does: while it waits to
-/// type one, the user submits a prompt of their own to the agent, and only then is the prompt
-/// typed. Tells what the hooks answered to each, in that order.
 struct WaitingAgents {
     agents: InMemoryAgents,
     root: agent_hooks::HookRoot,
@@ -921,7 +887,6 @@ struct WaitingAgents {
 }
 
 impl WaitingAgents {
-    /// The agent's hook, for `prompt` submitted to it.
     fn submit(&self, prompt: &str) {
         let report = agent_hooks::Report {
             pane: None,
@@ -971,8 +936,6 @@ impl AgentPort for WaitingAgents {
     }
 }
 
-/// The agents, telling the text of each prompt typed without Herdr's wait, as the reviewer
-/// types the prompts its hooks confirm.
 struct TypedAgents {
     agents: InMemoryAgents,
     typed: Mutex<std::sync::mpsc::Sender<String>>,
@@ -1009,7 +972,6 @@ impl AgentPort for TypedAgents {
     }
 }
 
-/// Save a comment that the review pane of `tab` posted, as a reviewer of another process does.
 fn save_comment_from(service: &Service, tab: &str, text: &str) -> ThreadId {
     let post = Post::start(anchor(), "+original".into(), text.into()).from_tab(tab.into());
     let thread = post.thread_id().clone();
@@ -1060,7 +1022,6 @@ fn a_posted_comment_names_the_tab_of_the_review_pane() {
     );
 }
 
-/// Queues a prompt pinned to the agent on `session-1`, which now reports no session.
 fn queue_prompt_for_a_sessionless_agent(
     service: &mut Service,
 ) -> (crate::PromptReceipt, crate::PromptCancellation) {
@@ -1122,17 +1083,14 @@ fn a_cancelled_prompt_that_waits_for_its_agents_session_is_withdrawn_under_a_hos
         crate::PinnedAgent::new(agent("first", "session-1")),
         "Reviewer turn".into(),
     );
-    // The worker took the prompt, which waits for the agent's session.
     worker.prompt_sender().flush();
 
     drop(cancellation);
 
-    // The worker, which waits for an input, withdraws it at once.
     assert!(matches!(receipt.wait(), Err(crate::PromptError::Cancelled)));
     assert_eq!(agents.prompts(), []);
 }
 
-/// The messages of the `words` output of the bus file at `path`, oldest first.
 fn words_on_bus(path: &std::path::Path) -> Vec<herdr_bus::Message> {
     let mut stored = herdr_bus::Bus::open(path)
         .unwrap()
@@ -1153,7 +1111,6 @@ fn each_new_review_comment_goes_on_the_bus_once_to_the_pane_of_the_agent_it_wake
     let thread = service.start_thread("Rename this");
     only_wakeup(&service.poll());
     let id = service.talk("round-7", "Why a lock here?", None);
-    // A repeat of a post the threads hold is no new comment.
     let conversation = service.state.books[&ReviewUnit::from(UNIT)]
         .round_conversation("round-7")
         .unwrap()
@@ -1223,7 +1180,6 @@ fn a_review_comment_that_wakes_no_agent_goes_on_the_bus_to_no_one() {
 #[test]
 fn a_bus_that_cannot_be_written_is_reported_and_the_comment_still_wakes_the_agent() {
     let directory = tempfile::tempdir().unwrap();
-    // The bus file's folder is a plain file: the bus can never be opened.
     let blocker = directory.path().join("not-a-folder");
     std::fs::write(&blocker, "").unwrap();
     let mut service = Service::start_on_bus(&blocker.join("bus.db"));

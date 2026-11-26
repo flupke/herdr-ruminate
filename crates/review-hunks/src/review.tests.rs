@@ -134,8 +134,6 @@ fn an_open_hunk_changes_base_lines_and_current_lines() {
 
 #[test]
 fn reviewed_lines_edited_away_are_not_base_lines() {
-    // Line 2 was reviewed as "B" and is now "BB": only the new line is a
-    // change from the base, and the hunk rewrites the reviewed "B".
     let reviewed = b"a\nB\nc\nd\ne\nf\ng\nh\ni\nj\n";
     let current = b"a\nBB\nc\nd\ne\nf\ng\nh\ni\nj\n";
     let review = HunkReview::new(BASE, reviewed, current);
@@ -152,7 +150,6 @@ fn reviewed_lines_edited_away_are_not_base_lines() {
 
 #[test]
 fn a_base_line_after_a_reviewed_deletion_is_still_a_base_line() {
-    // Removing "b" was reviewed; the edit now replaces "c", a base line.
     let review = HunkReview::new(b"a\nb\nc\n", b"a\nc\n", b"a\nX\n");
 
     assert_eq!(
@@ -175,7 +172,6 @@ fn accepted_lines_name_their_author_and_keep_it_on_a_new_base() {
     };
     assert_eq!(accepted.attribution.added_by(1), &MarkAuthor::Jev);
     assert_eq!(accepted.attribution.removed_by(1), &MarkAuthor::Jev);
-    // Lines kept from an earlier reviewer mark keep their author.
     let mixed = Reviewed {
         text: b"a\nB\nc\nd\ne\nf\ng\nh\nI\nj\n".to_vec(),
         attribution: Attribution {
@@ -200,7 +196,6 @@ fn accepted_lines_name_their_author_and_keep_it_on_a_new_base() {
 
 #[test]
 fn reopening_a_hunk_drops_its_authors_and_keeps_those_of_the_others() {
-    // Jev accepted "B", the reviewer accepted "I".
     let attribution = Attribution {
         default: MarkAuthor::Jev,
         removed: vec![AuthoredLines {
@@ -227,7 +222,6 @@ fn reopening_a_hunk_drops_its_authors_and_keeps_those_of_the_others() {
 
 #[test]
 fn accepting_a_hunk_keeps_the_authors_of_reviewed_lines_inside_it() {
-    // The reviewer accepted "C"; the open hunk now spans it, between "B" and "D".
     let base = b"a\nb\nc\nd\ne\n";
     let reviewed = b"a\nb\nC\nd\ne\n";
     let current = b"a\nB\nC\nD\ne\n";

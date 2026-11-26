@@ -5,8 +5,6 @@ use review_types::MarkAuthor;
 
 use crate::{ReviewStatus, ReviewTracker};
 
-/// A jj repository with a review tracker over a private state, and the base every change of
-/// a test starts from: `a.txt` and `b.txt`, each three lines.
 struct History {
     jj: JjFixture,
     state: tempfile::TempDir,
@@ -36,7 +34,6 @@ impl History {
         }
     }
 
-    /// A new change on `parent` that writes `files`, as the working copy; its change ID.
     fn change(&self, parent: &str, description: &str, files: &[(&str, &[u8])]) -> String {
         self.jj.jj(["new", parent, "-m", description]);
         for (path, content) in files {
@@ -45,12 +42,10 @@ impl History {
         self.jj.change_id()
     }
 
-    /// The working copy, as the reviewer reads it.
     fn snapshot(&self) -> Snapshot {
         complete_repository_snapshot(&self.repository)
     }
 
-    /// Mark every changed file of the working copy reviewed, as the reviewer does.
     fn mark_all(&self) {
         let snapshot = self.snapshot();
         for file in &snapshot.files {
@@ -60,13 +55,10 @@ impl History {
         }
     }
 
-    /// The review status of each changed file of the working copy, by path.
     fn statuses(&self) -> Vec<(String, ReviewStatus)> {
         self.statuses_of(&self.tracker)
     }
 
-    /// [`Self::statuses`], as a reviewer started again reads them: with a tracker of its own
-    /// over the same state, which searched no commit yet.
     fn statuses_after_restart(&self) -> Vec<(String, ReviewStatus)> {
         let tracker = ReviewTracker::new(
             self.repository.clone(),
@@ -86,7 +78,6 @@ impl History {
             .collect()
     }
 
-    /// Duplicate `change` onto `destination`; the change ID of the copy.
     fn duplicate(&self, change: &str, destination: &str) -> String {
         let before = self.visible_changes();
         self.jj
@@ -405,8 +396,6 @@ fn origins_that_disagree_are_searched_again_once_their_marks_change() {
         .unwrap();
 
     assert!(would_take_marks());
-    // The mark of `second` comes over: it reviewed its lines on top of `first`'s, so they
-    // differ from it on the base of `into`.
     assert_eq!(
         history.statuses(),
         [("a.txt".to_owned(), ReviewStatus::ChangedSinceReview)]

@@ -1,12 +1,9 @@
-//! Keep parallel fixture processes from choosing the same listening port.
-
 use std::fs::{File, OpenOptions};
 use std::net::{Ipv4Addr, TcpListener};
 use std::path::Path;
 
 use fs2::FileExt;
 
-/// A cross-process port lease, retained even while a test restarts its server.
 pub struct TestPort {
     port: u16,
     _lock: File,
@@ -19,7 +16,6 @@ impl Default for TestPort {
 }
 
 impl TestPort {
-    /// Allocate outside the usual ephemeral client range, avoiding live listeners.
     pub fn new() -> Self {
         for offset in 0..20_000 {
             let port = 10_000 + u16::try_from((std::process::id() + offset) % 20_000).unwrap();
@@ -30,7 +26,6 @@ impl TestPort {
         panic!("No free private test port");
     }
 
-    /// Lease a derived endpoint without changing the discovery route under test.
     pub fn reserve(port: u16) -> Option<Self> {
         assert_ne!(port, 0, "A port lease needs a fixed port number");
         let directory = lock_directory();
@@ -59,9 +54,7 @@ impl TestPort {
     }
 }
 
-/// Where every test run on this machine locks its ports. Port numbers are machine-wide, while
-/// `TMPDIR` differs between gates run at once, and `XDG_RUNTIME_DIR` between environments and
-/// sandboxes, so the locks stay out of both.
+// Port numbers are machine-wide, while TMPDIR and XDG_RUNTIME_DIR differ between sandboxes.
 fn lock_directory() -> &'static Path {
     Path::new("/tmp/progressive-reviewer-test-ports")
 }

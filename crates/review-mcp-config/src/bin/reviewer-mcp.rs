@@ -1,5 +1,3 @@
-//! Agent-owned MCP catalogue, forwarding calls to the project reviewer when open.
-
 use review_mcp::Endpoint;
 use review_repository::repository::Repository;
 
@@ -16,6 +14,5 @@ fn main() -> Result<(), String> {
         ),
         _ => return Err("usage: reviewer-mcp [port]".into()),
     };
-    // Discovery still works outside a repository; only tool calls need its endpoint.
     review_mcp::serve_stdio(endpoint)
 }

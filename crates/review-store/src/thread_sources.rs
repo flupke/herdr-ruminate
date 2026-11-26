@@ -1,5 +1,3 @@
-//! Immutable context is compressed once, independently of mutable conversations.
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};

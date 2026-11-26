@@ -1,22 +1,13 @@
-//! The reviewer's `config.toml`, in the folder [`reviewer_dirs::config_dir`] gives. It may hold
-//! a secret, `typesafe_api_key`: its errors name the file, the line and the setting, never a
-//! value, and it has no `Debug`.
-
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-/// The settings of the reviewer's `config.toml`; none when the file is missing.
 pub struct ReviewerConfig {
     path: PathBuf,
     table: toml::Table,
 }
 
 impl ReviewerConfig {
-    /// Reads the reviewer's `config.toml`; empty without a home directory or a file.
-    ///
-    /// # Errors
-    /// Fails when the file cannot be read or is not TOML.
     pub fn from_env() -> eyre::Result<Self> {
         match reviewer_dirs::config_dir() {
             Some(directory) => Self::from_dir(&directory),
@@ -27,10 +18,6 @@ impl ReviewerConfig {
         }
     }
 
-    /// Reads `config.toml` in `directory`; empty without the file.
-    ///
-    /// # Errors
-    /// Fails when the file cannot be read or is not TOML.
     pub fn from_dir(directory: &Path) -> eyre::Result<Self> {
         let path = directory.join("config.toml");
         let source = match fs::read_to_string(&path) {
@@ -54,15 +41,10 @@ impl ReviewerConfig {
         Ok(Self { path, table })
     }
 
-    /// The file's path.
     pub fn path(&self) -> &Path {
         &self.path
     }
 
-    /// The string setting `name`, if the file has it.
-    ///
-    /// # Errors
-    /// Fails when the setting is not a string.
     pub fn string(&self, name: &str) -> eyre::Result<Option<&str>> {
         self.table
             .get(name)
@@ -74,10 +56,6 @@ impl ReviewerConfig {
             .transpose()
     }
 
-    /// The table `name`, such as `[linear]`, if the file has it.
-    ///
-    /// # Errors
-    /// Fails when the setting is not a table.
     pub fn table(&self, name: &str) -> eyre::Result<Option<&toml::Table>> {
         self.table
             .get(name)

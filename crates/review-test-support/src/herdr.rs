@@ -14,8 +14,6 @@ use review_explore_page_settings::ExplorePageSettings;
 
 use crate::detection_rules::DetectionRules;
 
-/// Writes the reviewer settings file of the state directory `state` with the Explore page
-/// `settings`, as the reviewer saves them, and the defaults of the other settings.
 pub fn write_reviewer_settings(state: &Path, settings: &ExplorePageSettings) {
     let saved = serde_json::json!({ "explore_page": settings });
     fs::write(
@@ -25,13 +23,8 @@ pub fn write_reviewer_settings(state: &Path, settings: &ExplorePageSettings) {
     .unwrap();
 }
 
-/// What Herdr prints once its API socket accepts requests.
 const READY_LINE: &str = "herdr server running";
 
-/// A real Herdr server with private sockets, configuration, and state.
-///
-/// Its private directory goes once the server stops: when it drops, and also when the test
-/// process dies without dropping it.
 pub struct PrivateHerdrServer {
     directory: tempfile::TempDir,
     binary: PathBuf,
@@ -43,7 +36,6 @@ pub struct PrivateHerdrServer {
 }
 
 impl PrivateHerdrServer {
-    /// Start an isolated server, and return once its API socket accepts requests.
     pub fn start(repository_root: &Path) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let config_directory = config_directory(directory.path());
@@ -55,7 +47,6 @@ impl PrivateHerdrServer {
         fs::create_dir_all(&herdr_config_directory).unwrap();
         fs::create_dir_all(&runtime_directory).unwrap();
         fs::create_dir_all(&state_directory).unwrap();
-        // Detect agents with the repository's rules, and never download others.
         fs::write(
             &config_path,
             "onboarding = false\n[update]\nversion_check = false\nmanifest_check = false\n",
@@ -80,20 +71,17 @@ impl PrivateHerdrServer {
                 state_directory.clone().into_os_string(),
             ),
             ("SHELL".into(), "/bin/sh".into()),
-            // The reviewer publishes its review comments on this bus, never on the user's.
             (
                 "HERDR_BUS_DB".into(),
                 directory.path().join("bus.db").into_os_string(),
             ),
         ]);
-        // A test reviewer serves its Explore page on this machine only.
         let mut settings = ExplorePageSettings::default();
         settings.network.enabled = false;
         write_reviewer_settings(&state_directory, &settings);
         let mut server = Self {
             directory,
-            // The dev shell pins this release. HERDR_BIN_PATH is not used:
-            // Herdr sets it to its own binary in every pane.
+            // HERDR_BIN_PATH is not used: Herdr sets it to its own binary in every pane.
             binary: std::env::var_os("TEST_HERDR_BIN_PATH")
                 .map_or_else(|| PathBuf::from("herdr"), PathBuf::from),
             repository_root: repository_root.to_owned(),
@@ -119,43 +107,34 @@ impl PrivateHerdrServer {
         server
     }
 
-    /// Return the private fixture directory.
     pub fn root(&self) -> &Path {
         self.directory.path()
     }
 
-    /// Return the configured Herdr executable.
     pub fn binary(&self) -> &Path {
         &self.binary
     }
 
-    /// Return the private state directory.
     pub fn state_directory(&self) -> &Path {
         &self.state_directory
     }
 
-    /// Give the reviewers this server starts the Explore page `settings`, in place of the
-    /// default of the tests, which keeps the page off the network.
     pub fn set_explore_page_settings(&self, settings: &ExplorePageSettings) {
         write_reviewer_settings(&self.state_directory, settings);
     }
 
-    /// Return the environment for processes connected to this server.
     pub fn environment(&self) -> &BTreeMap<OsString, OsString> {
         &self.environment
     }
 
-    /// Follow the events the reviewer follows: focus and agent detection.
     pub fn events(&self) -> crate::HerdrEventWatch {
         crate::HerdrEventWatch::start(&self.client())
     }
 
-    /// Follow the status of the agent of `pane`, which this reports first.
     pub fn agent_statuses(&self, pane: &PaneId) -> crate::AgentStatusWatch {
         crate::AgentStatusWatch::start(&self.client(), pane)
     }
 
-    /// Connect a reviewer client to this server.
     pub fn client(&self) -> HerdrClient {
         HerdrClient::new(
             self.socket_path.clone(),
@@ -164,7 +143,6 @@ impl PrivateHerdrServer {
         )
     }
 
-    /// Run a CLI command against this server and require success.
     pub fn run_cli(&self, arguments: &[&str]) -> Output {
         let output = self.command().args(arguments).output().unwrap();
         assert!(
@@ -176,7 +154,6 @@ impl PrivateHerdrServer {
         output
     }
 
-    /// Run a CLI command and decode its JSON response.
     pub fn run_cli_json(&self, arguments: &[&str]) -> serde_json::Value {
         serde_json::from_slice(&self.run_cli(arguments).stdout).unwrap()
     }
@@ -190,18 +167,8 @@ impl PrivateHerdrServer {
         command
     }
 
-    /// Run the server under a shell that stops it once this process lets go
-    /// of the shell's stdin: on drop, and also when this process dies without
-    /// dropping anything, since the system then closes the pipe. A server
-    /// that ignores SIGTERM gets SIGKILL five seconds later, and one that
-    /// stops by itself takes its watcher with it. Once the server stopped
-    /// because this process let go, the shell removes the server's private
-    /// directory, which a killed test would leave behind.
     fn lifetime_command(&self) -> Command {
-        // A background job reads /dev/null unless told otherwise, so the
-        // watcher reads the pipe through a saved descriptor. The watcher
-        // writes nothing to stderr, which this process reads until the
-        // server and the shell close it.
+        // A shell's background job reads /dev/null unless told otherwise.
         const SCRIPT: &str = r#"exec 3<&0
 "$0" server </dev/null &
 server=$!
@@ -232,9 +199,6 @@ exit "$status""#;
     }
 }
 
-/// Copies what the server writes to its stderr to `log`, on another thread, and says on the
-/// channel it returns once the server's API socket accepts requests. The channel disconnects
-/// without a word when the server stops first.
 fn copy_until_ready(stderr: ChildStderr, mut log: File) -> mpsc::Receiver<()> {
     let (ready, said) = mpsc::channel();
     thread::spawn(move || {
@@ -254,13 +218,10 @@ fn copy_until_ready(stderr: ChildStderr, mut log: File) -> mpsc::Receiver<()> {
     said
 }
 
-/// The configuration directory (`XDG_CONFIG_HOME`) of the server whose files
-/// are in `root`.
 fn config_directory(root: &Path) -> PathBuf {
     root.join("config")
 }
 
-/// Herdr's own configuration directory, inside [`config_directory`].
 fn herdr_config_directory(root: &Path) -> PathBuf {
     config_directory(root).join("herdr")
 }
@@ -270,8 +231,6 @@ impl Drop for PrivateHerdrServer {
         let Some(child) = self.child.as_mut() else {
             return;
         };
-        // Closing the shell's stdin stops the server, at the latest with SIGKILL five seconds
-        // later; the shell then exits.
         drop(child.stdin.take());
         let _ = child.wait();
     }

@@ -114,7 +114,6 @@ fn a_post_interrupted_before_its_draft_is_discarded_never_brings_the_draft_back(
     let kept = draft("Still composing");
     save(&store, &unit, &posted);
     save(&store, &unit, &kept);
-    // Posting writes the thread document first. Crash before the draft store is updated.
     store
         .update_threads(&unit, |book| book.post(posted.post()))
         .unwrap();
@@ -141,7 +140,6 @@ fn a_post_interrupted_before_its_draft_is_discarded_never_brings_the_draft_back(
     assert_eq!(store.read_drafts(&unit).unwrap().drafts(), [kept]);
 }
 
-/// A thread document written by a build that kept drafts inside it.
 struct EmbeddedFixture {
     unit: ReviewUnit,
     new_thread: Draft,
@@ -187,7 +185,6 @@ impl EmbeddedFixture {
         draft
     }
 
-    /// Put the embedded drafts back, as if the migration stopped before rewriting it.
     fn restore(&self, store: &ReviewStore) {
         store.write_json_fixture(&store.threads_fixture_path(), &self.document.to_string());
     }
@@ -244,8 +241,6 @@ fn drafts_saved_inside_the_thread_document_move_to_the_draft_store_on_first_load
         fixture.document["conversations"]["threads"]
     );
 
-    // Loading again, or after the migration stopped before rewriting the thread
-    // document, neither loses nor duplicates a draft.
     let reopened = open(&directory);
     assert_eq!(
         reopened.load_drafts(&fixture.unit).unwrap().drafts(),
@@ -279,7 +274,6 @@ fn a_draft_an_earlier_build_saved_after_migration_replaces_the_stored_one() {
             Ok(())
         })
         .unwrap();
-    // An earlier build rewrites the thread document with the drafts it knows.
     fixture.restore(&store);
 
     let mut texts = store

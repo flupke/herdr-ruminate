@@ -35,14 +35,13 @@ impl LanguageServer {
 
     pub(super) fn initialization_options(self) -> Option<serde_json::Value> {
         (self == Self::TypeScript).then(|| {
-            // The syntax server can return import aliases before project loading finishes.
+            // TypeScript's syntax server can return import aliases before the project loads.
             serde_json::json!({ "tsserver": { "useSyntaxServer": "never" } })
         })
     }
 
-    /// Whether the server's index misses `path` once it changes on disk outside an open
-    /// document. Expert reindexes a file only when an open document changes, as in an editor;
-    /// it reads the others again when it restarts.
+    // Expert reindexes a file only when an open document changes; it reads the others again
+    // when it restarts.
     pub(super) fn misses_disk_change(self, path: &Path) -> bool {
         self == Self::Expert
             && path

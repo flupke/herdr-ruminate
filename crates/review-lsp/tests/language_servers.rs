@@ -130,8 +130,7 @@ impl Fixture {
                 Event::Hover { markdown, .. } => markdown.is_none(),
                 _ => false,
             };
-            // Expert indexes the project after replying to initialize: ask again once it
-            // answered, until it finds something. The deadline guards against a hang.
+            // Expert indexes the project after replying to initialize.
             if !empty || Instant::now() >= deadline {
                 return event;
             }
@@ -151,9 +150,6 @@ fn expert_navigation() {
     Fixture::elixir().verify();
 }
 
-/// An umbrella project whose function `Orchestrator.Service.start_container/2` is called through
-/// an alias, from its own app, from its tests and from another app, while other modules define
-/// functions of the same name.
 struct Umbrella {
     directory: tempfile::TempDir,
 }
@@ -193,8 +189,6 @@ impl Umbrella {
         fs::write(path, text).unwrap();
     }
 
-    /// The references of `start_container/2`, as `path:line` from the umbrella root, and the
-    /// files the server has not indexed.
     fn references(&self, worker: &Worker) -> (Vec<String>, usize) {
         worker
             .request(
@@ -209,7 +203,6 @@ impl Umbrella {
                 },
             )
             .unwrap();
-        // A restarted server reports its startup first.
         let event = worker
             .event_receiver()
             .iter()
@@ -233,9 +226,7 @@ impl Umbrella {
         (locations, unindexed_files)
     }
 
-    /// Asks for the references until `done` holds, each answer pacing the next request:
-    /// Expert reports no event when it has indexed a file. The deadline guards against a
-    /// hang.
+    // Expert reports no event when it has indexed a file.
     fn references_until(
         &self,
         worker: &Worker,
@@ -279,7 +270,6 @@ fn expert_finds_aliased_callers_and_reports_the_changes_it_has_not_indexed() {
     );
     assert_eq!(unindexed, 0);
 
-    // An agent adds a caller in a new file and another in the open document.
     umbrella.write("apps/web/lib/late.ex", "defmodule Web.Late do\n  alias Orchestrator.Service\n  def run(name), do: Service.start_container(name, [])\nend\n");
     umbrella.write("apps/web/lib/page.ex", "defmodule Web.Page do\n  alias Orchestrator.Service\n  def show(name), do: name\n  def again(name), do: Service.start_container(name, [])\nend\n");
     worker.file_change_sender().send(vec![
@@ -292,8 +282,8 @@ fn expert_finds_aliased_callers_and_reports_the_changes_it_has_not_indexed() {
             kind: FileChangeKind::Changed,
         },
     ]);
-    // Expert reindexes the open document, which changed through the editor's protocol, and
-    // misses the new file until it restarts: the list says so.
+    // Expert reindexes only an open document that changed, and misses a new file until it
+    // restarts.
     let (references, unindexed) = umbrella.references_until(&worker, |references| {
         references
             .iter()

@@ -12,17 +12,14 @@ use crate::source::{changed_path_uri, uri_path};
 
 const METHOD: &str = "workspace/didChangeWatchedFiles";
 
-/// The files a language server asked to hear about through `workspace/didChangeWatchedFiles`.
-///
-/// Expert registers its watchers whether or not the client offers the capability, and relies
-/// on them to index the files that change after its first build.
+// Expert registers its watchers whether or not the client offers the capability, and relies
+// on them to index the files that change after its first build.
 pub(super) struct WatchedFiles {
     root: PathBuf,
     registrations: HashMap<String, Vec<Watcher>>,
 }
 
 struct Watcher {
-    /// The directory a relative pattern matches from; `None` for a plain pattern.
     base: Option<PathBuf>,
     glob: GlobMatcher,
     kind: WatchKind,
@@ -80,7 +77,6 @@ impl WatchedFiles {
         }
     }
 
-    /// The events to send for `changes`: those a registered watcher matches.
     pub(super) fn events(&self, changes: &[FileChange]) -> Vec<FileEvent> {
         changes
             .iter()
@@ -105,8 +101,8 @@ impl WatchedFiles {
                     .path
                     .strip_prefix(base)
                     .is_ok_and(|path| watcher.glob.is_match(path)),
-                // A plain pattern such as `**/*.ex` matches the absolute path; one such as
-                // `lib/**` matches from the project root.
+                // Language servers send base-less globs meant for the absolute path or the
+                // project root.
                 None => {
                     watcher.glob.is_match(&change.path)
                         || change
@@ -118,7 +114,6 @@ impl WatchedFiles {
     }
 }
 
-/// The watch kind that hears a change of `kind`, and the type of its event.
 fn lsp_kinds(kind: FileChangeKind) -> (WatchKind, FileChangeType) {
     match kind {
         FileChangeKind::Created => (WatchKind::Create, FileChangeType::CREATED),

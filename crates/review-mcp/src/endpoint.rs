@@ -3,7 +3,6 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-/// A stable, loopback-only endpoint for a project, with an explicit port override.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Endpoint {
     port: u16,

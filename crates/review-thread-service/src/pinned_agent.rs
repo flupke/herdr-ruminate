@@ -6,13 +6,11 @@ use crate::agent_identity::{AgentIdentity, Change, IdentityRules, Verdict};
 
 const PROCESS_CHANGED: &str = "The selected agent process changed; retry the interrupted turn";
 
-/// A conversation identity shared by queued delivery and subsequent MCP access checks.
 #[derive(Clone, Debug)]
 pub struct PinnedAgent(Arc<Mutex<Pin>>);
 
 #[derive(Debug)]
 struct Pin {
-    /// The latest live agent that matched the identity.
     agent: Agent,
     identity: AgentIdentity,
 }
@@ -27,13 +25,11 @@ impl PinnedAgent {
         Self::pin(agent, identity)
     }
 
-    /// Follow the chosen pane until the queued prompt actually begins delivery.
     pub fn for_selected_prompt(agent: Agent) -> Self {
         let identity = AgentIdentity::new(&agent, IdentityRules::PINNED_AGENT).following();
         Self::pin(agent, identity)
     }
 
-    /// A Retry without a native session may target only the current foreground process.
     pub fn for_retry(agent: Agent, port: &dyn AgentPort) -> Result<Self, String> {
         let identity = AgentIdentity::new(&agent, IdentityRules::PINNED_AGENT)
             .following()
@@ -44,7 +40,6 @@ impl PinnedAgent {
         Ok(Self::pin(agent, identity))
     }
 
-    /// The attempt has selected its recipient; later MCP access uses that identity.
     pub fn seal_attempt(&self) -> Result<(), String> {
         self.0
             .lock()
@@ -58,7 +53,6 @@ impl PinnedAgent {
         self.0.lock().ok().map(|pin| pin.agent.clone())
     }
 
-    /// Missing native identity is transient; a known replacement is an error.
     pub fn current(&self, port: &dyn AgentPort) -> Result<Option<Agent>, String> {
         let mut pin = self
             .0

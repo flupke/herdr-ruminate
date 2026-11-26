@@ -1,12 +1,9 @@
 use herdr_client::protocol::PromptWait;
 
-/// Track which posted comments have already triggered a notification attempt.
 #[derive(Default)]
 pub(super) struct Wakeup {
     requested_through: u64,
     notified_through: u64,
-    /// Why a notification on its way waits before the agent's host types it, while it does: the
-    /// notifications after it wait behind it.
     holding: Option<PromptWait>,
 }
 
@@ -26,27 +23,19 @@ impl Wakeup {
         self.notified_through = 0;
     }
 
-    /// Record that the notification for the requested comments is on its way, and return the
-    /// sequence it covers.
     pub(super) fn sent(&mut self) -> u64 {
         self.notified_through = self.requested_through;
         self.notified_through
     }
 
-    /// Whether nothing requested or re-armed this wakeup since a notification `sent` through
-    /// that sequence.
     pub(super) fn unchanged_since(&self, sent: u64) -> bool {
         self.requested_through == sent && self.notified_through == sent
     }
 
-    /// A notification on its way waits for `wait` before the agent's host types it, or no longer
-    /// waits.
     pub(super) fn hold(&mut self, wait: Option<PromptWait>) {
         self.holding = wait;
     }
 
-    /// Why a notification on its way waits, if it does, and the latest comment that waits
-    /// behind it, by its sequence.
     pub(super) fn held(&self) -> Option<(&PromptWait, u64)> {
         self.holding
             .as_ref()

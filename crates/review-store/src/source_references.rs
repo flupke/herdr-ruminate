@@ -1,8 +1,3 @@
-//! Stored documents reference each thread source by its context file instead of carrying
-//! it. The domain types serialize their sources inline, so the store swaps each source for
-//! a stand-in before it serializes a value, then writes a reference where each stand-in
-//! was. Loading reverses the swap, and equal sources keep sharing one loaded copy.
-
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
@@ -15,35 +10,26 @@ use serde_json::{Map, Value};
 use super::thread_sources::StoredSource;
 use super::{Error, Result, ReviewStore};
 
-/// Where a stored record keeps its source: merged into the record's own fields, as a
-/// thread does, or under a field of its own, as a draft does.
 #[derive(Clone, Copy)]
 pub(super) enum SourceSlot {
     Merged,
     Field(&'static str),
 }
 
-/// Whether a stored document carries each source inline, as thread documents before
-/// version 4 did, or a reference to the source's context file.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum SourceForm {
     Inline,
     Referenced,
 }
 
-/// A domain value whose sources the store keeps in context files.
 pub(super) trait WithSources: Clone + Serialize + DeserializeOwned {
     const SLOT: SourceSlot;
 
-    /// Every source the value serializes, in the order it serializes them.
     fn sources_mut(&mut self) -> impl Iterator<Item = &mut Arc<ThreadSource>>;
 
-    /// The records that may hold a source, within the value's JSON, in source order.
     fn records(json: &mut Value) -> Vec<&mut Value>;
 }
 
-/// Takes a source's place while a document is converted. Stored documents never contain
-/// it: the conversion replaces it with a reference, or a loaded source replaces it.
 struct StandIn {
     source: Arc<ThreadSource>,
     fields: Map<String, Value>,
@@ -78,17 +64,13 @@ static STAND_IN: LazyLock<StandIn> = LazyLock::new(|| {
 });
 
 impl SourceSlot {
-    /// The bytes a record's source, serialized as the object `object`, occupies in it.
     fn bytes(self, object: &[u8]) -> &[u8] {
         match self {
-            // A merged source contributes its fields, without its own braces.
             Self::Merged => &object[1..object.len() - 1],
             Self::Field(_) => object,
         }
     }
 
-    /// Whether `record` holds a source reference. A merged slot may hold none: a round
-    /// conversation is a thread on no code. A record with a field of its own always holds one.
     fn holds_reference(self, record: &Value) -> bool {
         match self {
             Self::Merged => StoredSource::deserialize(record).is_ok(),
@@ -96,7 +78,6 @@ impl SourceSlot {
         }
     }
 
-    /// Replace the reference that `record` holds with the stand-in.
     fn take_reference(self, record: &mut Value) -> serde_json::Result<StoredSource> {
         let invalid = || serde::de::Error::custom("a stored record is not an object");
         match self {
@@ -125,16 +106,12 @@ impl SourceSlot {
     }
 }
 
-/// A copy of a value with each source swapped for the stand-in, and the reference to each
-/// swapped source's context file, in source order.
 pub(super) struct Detached<T> {
     pub(super) value: T,
     references: Vec<StoredSource>,
 }
 
 impl<T: WithSources> Detached<T> {
-    /// The JSON of `document`, which serializes this value once, with each stand-in
-    /// replaced by the reference to the source it took the place of.
     fn json(&self, document: &impl Serialize) -> serde_json::Result<Vec<u8>> {
         let json = serde_json::to_vec(document)?;
         let stand_in = T::SLOT.bytes(&STAND_IN.json);
@@ -164,8 +141,6 @@ impl<T: WithSources> Detached<T> {
 }
 
 impl ReviewStore {
-    /// Copy `value` with its sources swapped for the stand-in, saving each source's
-    /// context file.
     pub(super) fn detach<T: WithSources>(&self, value: &T) -> Result<Detached<T>> {
         let mut value = value.clone();
         let references = value
@@ -179,8 +154,6 @@ impl ReviewStore {
         Ok(Detached { value, references })
     }
 
-    /// Atomically write `document`, which serializes `detached.value`, with a reference in
-    /// place of each detached source.
     pub(super) fn atomic_referencing_json<T: WithSources>(
         &self,
         target: &Path,
@@ -194,7 +167,6 @@ impl ReviewStore {
         self.atomic_compressed_bytes(target, &json, operation)
     }
 
-    /// Decode a value from its stored JSON, restoring every source it references.
     pub(super) fn attach<T: WithSources>(
         &self,
         mut json: Value,

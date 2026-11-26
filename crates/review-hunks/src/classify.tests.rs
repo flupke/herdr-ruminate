@@ -5,7 +5,6 @@ use super::*;
 use crate::hunks::LineCount;
 use crate::unified_diff;
 
-/// Twenty numbered lines with some of them rewritten.
 fn text(edits: &[(u32, &str)]) -> Vec<u8> {
     (1..=20)
         .map(|line| {
@@ -18,7 +17,6 @@ fn text(edits: &[(u32, &str)]) -> Vec<u8> {
         .into_bytes()
 }
 
-/// The hunks of a file edited after its mark.
 fn hunks(base: &[u8], reviewed: &[u8], current: &[u8]) -> FileHunks {
     hunks_aged(base, reviewed, current, MarkAge::Outdated)
 }
@@ -74,7 +72,6 @@ fn accepted_hunks_leave_the_open_diff_and_stay_listed_as_reviewed() {
     );
     assert_eq!(
         hunks.count(),
-        // Each hunk replaces one line: two changed lines apiece.
         Some(LineCount {
             reviewed: 4,
             total: 6
@@ -154,7 +151,6 @@ fn a_reviewed_change_between_two_new_edits_of_one_hunk_is_not_rewritten() {
 #[test]
 fn lines_a_partial_mark_left_open_change_since_review_only_after_an_edit() {
     let base = b"";
-    // The mark reviewed every added line but the middle one.
     let reviewed = b"a\nb\nd\ne\n";
     let current = b"a\nb\nc\nd\ne\n";
 

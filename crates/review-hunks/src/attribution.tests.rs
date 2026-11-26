@@ -27,7 +27,6 @@ fn only_changed_lines_keep_an_author_and_runs_merge() {
             author: MarkAuthor::Jev,
         }]
     );
-    // Base line 0 is still there, so only the removal of line 1 counts.
     assert_eq!(
         reviewed.attribution.removed,
         [AuthoredLines {

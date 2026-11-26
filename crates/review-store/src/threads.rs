@@ -18,22 +18,16 @@ mod storage_tests;
 #[path = "thread_formats.tests.rs"]
 mod format_tests;
 
-/// Version 4 stays the written version: builds that predate the separate draft store
-/// still load this document, and simply see no drafts in it.
 const VERSION: u8 = 4;
 
-/// The thread document: the conversations are borrowed to write it, and stay JSON until
-/// they are migrated and their sources restored when reading it.
 #[derive(Deserialize, Serialize)]
 struct StoredThreads<Conversations> {
     version: u8,
     conversations: Conversations,
 }
 
-/// A thread document version this build reads.
 #[derive(Clone, Copy)]
 enum StoredVersion {
-    /// Versions 2 and 3 carry sources inline and track delivery per recipient.
     Legacy(u8),
     Current,
 }
@@ -66,7 +60,6 @@ impl StoredVersion {
     }
 }
 
-/// The review a stored thread document belongs to.
 #[derive(Deserialize)]
 struct Owner {
     review_unit: ReviewUnit,
@@ -88,7 +81,6 @@ impl WithSources for ReviewThreads {
     }
 }
 
-/// A decoded thread document, with any drafts it still carries from earlier builds.
 pub(super) struct ThreadDocument {
     pub(super) threads: ReviewThreads,
     pub(super) embedded_drafts: SavedDrafts,
@@ -109,7 +101,6 @@ impl ReviewStore {
         self.atomic_write(target, &bytes, operation)
     }
 
-    /// Apply a change to the latest history under a lock shared by reviewer processes.
     pub fn update_threads<T>(
         &self,
         review_unit: &ReviewUnit,
@@ -120,9 +111,6 @@ impl ReviewStore {
         let document = self.read_thread_document(review_unit)?;
         let migrating = !document.embedded_drafts.is_empty();
         if migrating {
-            // The draft store is written first: an interruption before the thread document
-            // is rewritten leaves the drafts in both places, and the next load merges the
-            // same drafts again.
             self.adopt_embedded_drafts(review_unit, document.embedded_drafts)?;
         }
         let mut book = document.threads;
@@ -134,7 +122,6 @@ impl ReviewStore {
         Ok((result, book))
     }
 
-    /// Persist all conversations for a logical review independently of its current diff.
     fn save_threads(&self, conversations: &ReviewThreads) -> Result<()> {
         let path = self.threads_path(&conversations.review_unit)?;
         let detached = self.detach(conversations)?;
@@ -149,15 +136,11 @@ impl ReviewStore {
         )
     }
 
-    /// Restore conversations even when their original paths no longer exist. The first
-    /// load of a document that still carries drafts moves them to the draft store.
     pub fn load_threads(&self, review_unit: &ReviewUnit) -> Result<ReviewThreads> {
         let document = self.read_thread_document(review_unit)?;
         if document.embedded_drafts.is_empty() {
             return Ok(document.threads);
         }
-        // A draft store this build cannot read must not hide the threads. The drafts stay
-        // in the thread document, and changing the threads reports the problem instead.
         Ok(self
             .update_threads(review_unit, |_| Ok(()))
             .map_or(document.threads, |((), threads)| threads))
@@ -181,7 +164,6 @@ impl ReviewStore {
         if &owner.review_unit != review_unit {
             return Err(version.foreign_review_unit());
         }
-        // Earlier builds kept drafts inside the thread document, in the same source form.
         let embedded = conversations
             .as_object_mut()
             .and_then(|fields| fields.remove("drafts"));

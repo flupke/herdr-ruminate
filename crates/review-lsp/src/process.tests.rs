@@ -88,7 +88,6 @@ fn typescript_prefers_tsgo_and_falls_back_when_it_is_absent() {
 #[test]
 fn typescript_uses_project_node_modules_from_a_parent_directory() {
     let mut fixture = Fixture::for_server(LanguageServer::TypeScript);
-    // The project root sits below the directory that owns node_modules.
     let bin = fixture.directory.path().join("node_modules/.bin");
     fs::create_dir_all(&bin).unwrap();
     executable(

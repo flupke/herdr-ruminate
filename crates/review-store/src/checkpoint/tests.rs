@@ -94,7 +94,6 @@ fn a_review_takes_the_valid_mark_of_each_path_that_one_origin_marked() {
     let only_second = store
         .mark(&second, b"broken-in-first.rs", "bb", &MarkAuthor::Jev)
         .unwrap();
-    // A partial mark that lost its versions: `load` reads it as unreviewed.
     fs::write(
         store.record_path(&first, b"broken-in-first.rs"),
         r#"{"schema_version":2,"review_unit":"first","path_encoding":"utf8","path":"broken-in-first.rs","baseline_commit_id":"aa","reviewed_at":"2026-01-01T00:00:00Z"}"#,

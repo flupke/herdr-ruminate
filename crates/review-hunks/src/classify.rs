@@ -1,5 +1,3 @@
-//! Telling a file's open hunks from its reviewed ones.
-
 use std::ops::Range;
 
 use review_repository::diff::DiffRow;
@@ -8,17 +6,12 @@ use crate::hunks::{FileHunks, HunkSpan, ReviewedHunk, open_hunks};
 use crate::review::HunkReview;
 use crate::text::{CONTEXT, Change, Lines, changes, overlaps, translate};
 
-/// Whether the current file changed after its review mark was saved.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MarkAge {
-    /// The mark was saved for the current file: lines it left open are
-    /// simply not reviewed yet.
     Current,
-    /// The file changed after the mark.
     Outdated,
 }
 
-/// A reviewed change placed on all three versions.
 struct Placed {
     base: Range<u32>,
     reviewed: Range<u32>,
@@ -26,13 +19,6 @@ struct Placed {
 }
 
 impl HunkReview<'_> {
-    /// Which hunks are open and which are reviewed, given the parsed open diff
-    /// (reviewed version to current file). An open hunk that replaces lines
-    /// of a change of the reviewed version rewrites reviewed lines; one that
-    /// only adds lines next to such a change does when the file changed after
-    /// the mark (`age`). A change of the reviewed version that no open change
-    /// touches is a reviewed hunk, and nearby ones join into one hunk as Git
-    /// joins hunks.
     pub fn hunks(&self, open_rows: &[DiffRow], age: MarkAge) -> FileHunks {
         if open_rows
             .iter()
@@ -90,10 +76,6 @@ impl HunkReview<'_> {
     }
 }
 
-/// Whether one of the open hunk's own changes replaces lines of a reviewed
-/// change, or, after the file changed, meets one; the unchanged lines between
-/// its changes may hold reviewed lines untouched. A mark that covers only some
-/// lines leaves open changes beside its reviewed ones without rewriting them.
 fn rewrites_reviewed_lines(
     span: &HunkSpan,
     open: &[Change],
@@ -112,7 +94,6 @@ fn rewrites_reviewed_lines(
         })
 }
 
-/// The base and current lines a reviewed hunk's rows show.
 struct HunkRows<'a> {
     base: Lines<'a>,
     current: Lines<'a>,
@@ -154,7 +135,6 @@ impl HunkRows<'_> {
     }
 }
 
-/// A diff row's text: its marker and the line without its terminator.
 fn row_text(marker: char, line: Option<&[u8]>) -> String {
     let line = line.unwrap_or_default();
     let line = line.strip_suffix(b"\n").unwrap_or(line);

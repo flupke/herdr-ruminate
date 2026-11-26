@@ -1,5 +1,3 @@
-//! Review status derived from repository snapshots and stored baselines.
-
 mod open_rows;
 mod progress;
 mod review;

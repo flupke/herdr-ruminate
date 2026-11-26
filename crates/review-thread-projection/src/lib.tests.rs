@@ -32,7 +32,6 @@ impl Review {
             .unwrap();
     }
 
-    /// Start a thread on `path` and load the review's threads.
     fn start(&mut self, path: &str) -> ThreadId {
         let post = Post::start(anchor(path), String::new(), "Why?".into());
         let id = post.thread_id().clone();

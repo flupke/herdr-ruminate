@@ -1,7 +1,3 @@
-//! The review marks a change takes from the changes jj made it from: the change a
-//! `jj duplicate` copied, the one a `jj split` cut it from, those squashed into it. A review
-//! continues across such rewrites, though they give the code a new change ID.
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -10,8 +6,6 @@ use review_types::ReviewUnit;
 
 use super::ReviewTracker;
 
-/// The evolutions of the commits read so far, by commit ID: an evolution never changes, so
-/// each is walked once, and the walk of a later commit ends where it reaches one of them.
 #[derive(Debug, Default)]
 pub(super) struct Evolutions(Mutex<HashMap<String, Arc<ChangeEvolution>>>);
 
@@ -29,8 +23,6 @@ impl Evolutions {
     }
 }
 
-/// The searches that found origins but took no mark, by commit, with the stamps the origins'
-/// marks had: the search is not run again until one of them changes.
 #[derive(Debug, Default)]
 pub(super) struct Fruitless(Mutex<HashMap<String, Vec<Option<String>>>>);
 
@@ -41,17 +33,10 @@ impl Fruitless {
 }
 
 impl ReviewTracker {
-    /// Give the change of `snapshot`, when it never had a review mark, the marks of its
-    /// origins ([`ReviewStore::take_marks`](review_store::ReviewStore::take_marks) says which
-    /// marks a path takes). The marks a change takes are a help on top of its own: a search that
-    /// fails, such as while jj has two operation heads, leaves the change as it is, and the next
-    /// read of it searches again.
     pub(super) fn take_origin_marks(&self, snapshot: &Snapshot) {
         let _ = self.search_origins(snapshot);
     }
 
-    /// Whether the change of `snapshot` would take marks at its next read, as its origins'
-    /// marks are now: false once it has marks of its own, or before its evolution was read.
     pub fn would_take_marks(&self, review_unit: &ReviewUnit, commit: &str) -> bool {
         self.store
             .marks_stamp(review_unit)
@@ -73,8 +58,6 @@ impl ReviewTracker {
         if origins.is_empty() || self.was_fruitless(commit, &origins) {
             return Ok(());
         }
-        // Read before the take: a mark made meanwhile changes them, and the next read searches
-        // again.
         let stamps = self.stamps(&origins);
         let units = origins
             .iter()
@@ -87,7 +70,6 @@ impl ReviewTracker {
         Ok(())
     }
 
-    /// Whether a search of `commit` found `origins` with their marks as they are, and took none.
     fn was_fruitless(&self, commit: &str, origins: &[ChangeId]) -> bool {
         self.fruitless.lock().get(commit) == Some(&self.stamps(origins))
     }
@@ -112,9 +94,6 @@ impl ReviewTracker {
         Ok(evolution)
     }
 
-    /// On each line of `evolution`, the nearest change with marks, past the changes that never
-    /// had any. A change whose marks were cleared, or cannot be read, ends its line: marks the
-    /// reviewer reopened do not come back from further down.
     fn origins(&self, evolution: &ChangeEvolution) -> Vec<ChangeId> {
         evolution.origins(|change| {
             let review_unit = change.review_unit();

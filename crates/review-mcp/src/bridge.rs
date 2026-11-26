@@ -15,7 +15,6 @@ use rmcp::{
 
 use crate::{Endpoint, handler::Handler};
 
-/// Keep tool discovery independent of the lifetime of the reviewer pane.
 pub fn serve_stdio(endpoint: Result<Endpoint, String>) -> Result<(), String> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -49,14 +48,13 @@ impl Bridge {
             .map_err(|_| {
                 "The reviewer is closed or unavailable; open it and retry the same call".to_owned()
             })?;
-        // Never replay tool calls automatically: a reply may already have been saved.
         let result = client
             .call_tool(request)
             .await
             .map_err(|error| error.to_string());
         let _ = client.cancel().await;
-        // The reviewer answers over an earlier protocol revision, which omits the
-        // discriminator that the agent's revision requires on every result.
+        // The agent's MCP revision requires a discriminator on every result, which earlier
+        // revisions omit.
         result.map(|mut result| {
             result.result_type = Some(ResultType::COMPLETE);
             result
@@ -74,7 +72,7 @@ impl ServerHandler for Bridge {
         _: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        // Protocol 2026-07-28 requires cache hints; clients reject a catalog without them.
+        // MCP protocol 2026-07-28 requires cache hints; clients reject a catalog without them.
         let mut catalog = ListToolsResult::with_all_items(Handler::tools());
         catalog.ttl_ms = Some(0);
         catalog.cache_scope = Some(CacheScope::Private);
@@ -97,9 +95,7 @@ impl ServerHandler for Bridge {
     }
 }
 
-/// The agent's own metadata of a call, such as the session Codex names in `threadId`, which
-/// the reviewer reads, without what belongs to the agent's connection to the bridge: the
-/// protocol's keys and the progress token.
+// Codex names its session in the call's `threadId` metadata.
 fn agent_meta(meta: RequestMetaObject) -> Option<RequestMetaObject> {
     let mut meta = meta;
     meta.0

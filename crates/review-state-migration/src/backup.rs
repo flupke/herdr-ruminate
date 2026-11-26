@@ -1,10 +1,3 @@
-//! The backup taken before per-workspace states are merged: a copy of the folders a merge
-//! reads or changes, beside the state root, that no reviewer deletes or reads again.
-//!
-//! The first merge copies every per-workspace state at once, and records it in
-//! `migration.json` at the state root. A later merge copies again only a state changed since,
-//! which a reviewer of an earlier build still running can do, with the shared folder it changes.
-
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -16,21 +9,16 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
-/// The record, at the state root, of the backup of every per-workspace state.
 const MIGRATION_RECORD: &str = "migration.json";
-/// What a backup tells its reader to do.
 const RESTORE: &str = "RESTORE.md";
 
 #[derive(Deserialize, Serialize)]
 struct MigrationRecord {
     version: u8,
     backup: PathBuf,
-    /// When the backup started, in RFC 3339: what changed later is not in it.
     started: String,
 }
 
-/// Back up what merging `ours` reads or changes, unless an earlier backup holds it already.
-/// When nothing was backed up yet, it copies every state of `all`.
 pub(super) fn before_merge(
     store: &ReviewStore,
     all: &[WorkspaceState],
@@ -72,9 +60,6 @@ pub(super) fn before_merge(
     Ok(())
 }
 
-/// Copy the `folders` of `state_root` into a new folder of `<state root>.backups`, named by the
-/// UTC time `started`, keeping their paths relative to the state root; return its path. The
-/// copy is synced, then renamed from its `.partial` name once complete.
 fn copy<'a>(
     state_root: &Path,
     folders: impl Iterator<Item = &'a Path>,
@@ -114,8 +99,8 @@ fn copy<'a>(
             partial.join(RESTORE),
             restore_steps(state_root, &target, first).as_bytes(),
         )?;
-        // One sync of the file system writes every copied file, where syncing each would take
-        // seconds for the few thousand files of a state directory.
+        // One sync of the file system writes every copied file; syncing each takes seconds for
+        // thousands of files.
         sync_file_system(&partial)?;
         fs::rename(&partial, &target)
     })();
@@ -127,7 +112,6 @@ fn copy<'a>(
     Ok(target)
 }
 
-/// Copy the folder `from` to `to`, files dated as the originals.
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::create_dir_all(to)?;
     for entry in fs::read_dir(from)? {
@@ -183,7 +167,6 @@ fn read_record(path: &Path) -> std::io::Result<Option<MigrationRecord>> {
     }
 }
 
-/// Write `migration.json` atomically: its presence says the backup is complete.
 fn write_record(path: &Path, record: &MigrationRecord) -> std::io::Result<()> {
     let mut bytes = serde_json::to_vec_pretty(record).map_err(std::io::Error::other)?;
     bytes.push(b'\n');

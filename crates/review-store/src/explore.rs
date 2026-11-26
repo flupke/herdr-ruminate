@@ -1,10 +1,3 @@
-//! The Explore record format and exclusive, locked access to one review's records.
-//!
-//! Each review keeps a history index, one file per round, one editor view per round, the
-//! record of the run-ahead forks of each round that had some, and the record of the change
-//! references each round found.
-//! The store only reads, writes and removes them; what a change means belongs to the
-//! Explore session.
 use super::{Error, Result, ReviewStore, StateKey};
 use change_references::ChangeReferences;
 use fs2::FileExt;
@@ -20,20 +13,12 @@ use std::{
     time::SystemTime,
 };
 
-/// Version 1 records had coverage, inspections, deferrals and corrections;
-/// they are no longer loaded, as if absent.
 const VERSION: u32 = 2;
-// A round grows across many valid 1 MiB submissions. This is not a source archive.
 const MAX_DOMAIN: u64 = 256 * 1024 * 1024;
 pub(super) const MAX_VIEW: u64 = 16 * 1024 * 1024;
-// The forks of a round: a few small records per question.
 const MAX_FORKS: u64 = 16 * 1024 * 1024;
-/// What the name of a round's run-ahead record adds to the round's identity.
 const FORKS_SUFFIX: &str = ".forks.json";
-/// What the name of the record of the pull request and tickets a round's change names adds to
-/// the round's identity.
 const REFERENCES_SUFFIX: &str = ".references.json";
-// A pull request's title and a few tickets.
 const MAX_REFERENCES: u64 = 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
@@ -42,16 +27,11 @@ struct Stored<T> {
     value: T,
 }
 
-/// Only the version of a stored record, read before its value.
 #[derive(Deserialize)]
 struct StoredVersion {
     version: u32,
 }
 
-/// One review's Explore records, exclusively locked until this value is dropped.
-///
-/// Every read-modify-write of a review's records happens through one of these, so
-/// callers never save a stale copy over a concurrent change.
 pub struct ExploreRecords<'a> {
     store: &'a ReviewStore,
     unit: ReviewUnit,
@@ -73,8 +53,6 @@ impl ExploreRecords<'_> {
         self.store.load_explore(&self.unit, instance)
     }
 
-    /// Save a round that has no record yet. A saved round only changes through
-    /// [`Self::update_round`], so no caller writes a stale whole-round copy.
     pub fn create_round(&self, round: &ExploreRound) -> Result<()> {
         if self.round(&round.exploration.instance)?.is_some() {
             return Err(Error::Explore("round already exists".into()));
@@ -95,7 +73,6 @@ impl ExploreRecords<'_> {
         )
     }
 
-    /// Change a saved round, writing it with the next revision only when it changed.
     pub fn update_round<T>(
         &self,
         instance: &str,
@@ -131,14 +108,10 @@ impl ExploreRecords<'_> {
         )
     }
 
-    /// The run-ahead forks of the round `instance`; none when it never had any.
     fn round_forks(&self, instance: &str) -> Result<RoundForks> {
         self.store.load_round_forks(&self.unit, instance)
     }
 
-    /// Change the record of the run-ahead forks of the round `instance`, whether or not the
-    /// round is still the editable latest one: forks are processes and files to clean up, not
-    /// decisions of the round.
     pub fn update_round_forks<T>(
         &self,
         instance: &str,
@@ -157,9 +130,6 @@ impl ExploreRecords<'_> {
         Ok((result, forks))
     }
 
-    /// Save the pull request and the tickets of the change that the round `instance` reviewed,
-    /// beside the round: finding them never changes the round's record, which the session owns,
-    /// nor when it was saved. Refused once the round is removed, so that no record outlives it.
     pub fn save_change_references(
         &self,
         instance: &str,
@@ -175,53 +145,41 @@ impl ExploreRecords<'_> {
         )
     }
 
-    /// Remove a round file and the record of its change's pull request and tickets; a missing
-    /// file is already removed.
     pub fn remove_round(&self, instance: &str) -> Result<()> {
         ReviewStore::remove_explore_file(&self.store.explore_path(&self.unit, instance)?)?;
         ReviewStore::remove_explore_file(&self.store.change_references_path(&self.unit, instance)?)
     }
 
-    /// Remove the record of a round's run-ahead forks; a missing file is already removed.
     pub fn remove_round_forks(&self, instance: &str) -> Result<()> {
         ReviewStore::remove_explore_file(&self.store.round_forks_path(&self.unit, instance)?)
     }
 
-    /// Remove an editor view file; a missing file is already removed.
     pub fn remove_view(&self, instance: &str) -> Result<()> {
         ReviewStore::remove_explore_file(&self.store.explore_view_path(&self.unit, instance)?)
     }
 
-    /// Make earlier removals durable.
     pub fn sync(&self) -> Result<()> {
         self.store.sync_parent(&self.directory.join("index.json"))
     }
 
-    /// The identity and modification time of every round file, readable or not.
     pub fn round_files(&self) -> Result<Vec<(String, SystemTime)>> {
         ReviewStore::round_files_in(&self.directory)
     }
 }
 
-/// Every round saved for one repository, read without changing anything.
 #[derive(Debug, Default)]
 pub struct SavedRounds {
     pub rounds: Vec<SavedRound>,
-    /// Round files saved in an earlier format, or damaged.
     pub unreadable: usize,
 }
 
-/// A saved round, when its file was last written, and what run-ahead did in it.
 #[derive(Debug)]
 pub struct SavedRound {
     pub round: ExploreRound,
     pub saved_at: SystemTime,
-    /// The round's run-ahead record; empty when the round never had run-ahead, as every round
-    /// saved before it existed, or when the record cannot be read.
     pub run_ahead: RoundForks,
 }
 
-/// The file of a saved round, and when it was last written.
 #[derive(Clone, Debug)]
 pub struct SavedRoundFile {
     path: PathBuf,
@@ -229,7 +187,6 @@ pub struct SavedRoundFile {
 }
 
 impl SavedRoundFile {
-    /// Where the round is saved: it names one round of one review.
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -240,14 +197,10 @@ impl SavedRoundFile {
 }
 
 impl ReviewStore {
-    /// Watch this namespace with the existing filesystem event infrastructure.
     pub fn explore_directory(&self) -> PathBuf {
         self.repository_dir.join("explore-v1")
     }
 
-    /// Read every saved round of every review of this repository, with its run-ahead record.
-    /// It takes no lock: a round file is replaced atomically, so each read sees one whole
-    /// version. A missing Explore directory holds no rounds.
     pub fn saved_explore_rounds(&self) -> Result<SavedRounds> {
         let mut saved = SavedRounds::default();
         let directory = self.explore_directory();
@@ -279,9 +232,6 @@ impl ReviewStore {
         Ok(saved)
     }
 
-    /// The file of every saved round of every review of this repository, readable or not, read
-    /// without a lock as [`Self::saved_explore_rounds`] reads them. A missing Explore directory
-    /// holds no rounds.
     pub fn saved_explore_round_files(&self) -> Result<Vec<SavedRoundFile>> {
         let mut files = Vec::new();
         let directory = self.explore_directory();
@@ -303,15 +253,10 @@ impl ReviewStore {
         Ok(files)
     }
 
-    /// The heading of the round `file` holds; `None` for a round saved in an earlier format, or
-    /// one that cannot be read.
     pub fn read_round_heading(&self, file: &SavedRoundFile) -> Option<RoundHeading> {
         Self::read_explore(&file.path, MAX_DOMAIN).ok().flatten()
     }
 
-    /// The review and the identity of every round of every review of this repository whose
-    /// run-ahead forks `wanted` picks, such as forks a stopped reviewer left. It takes no lock,
-    /// as [`Self::saved_explore_rounds`]; a record it cannot read is left out.
     pub fn rounds_with_forks(
         &self,
         wanted: impl Fn(&RoundForks) -> bool,
@@ -354,8 +299,6 @@ impl ReviewStore {
         Ok(rounds)
     }
 
-    /// The identity and modification time of every round file in one review's
-    /// directory, readable or not.
     pub(super) fn round_files_in(directory: &Path) -> Result<Vec<(String, SystemTime)>> {
         let mut rounds = Vec::new();
         for entry in Self::explore_entries(directory)? {
@@ -410,7 +353,6 @@ impl ReviewStore {
         self.lock_explore_review(&self.explore_review(unit)?)
     }
 
-    /// Lock the Explore records of the review whose folder is `directory`.
     pub(super) fn lock_explore_review(&self, directory: &Path) -> Result<std::fs::File> {
         self.create_dir(directory)?;
         let path = directory.join("lock");
@@ -488,7 +430,6 @@ impl ReviewStore {
         Ok(round)
     }
 
-    /// Lock one review's Explore records for a read-modify-write.
     pub fn lock_explore(&self, unit: &ReviewUnit) -> Result<ExploreRecords<'_>> {
         let lock = self.explore_lock(unit)?;
         Ok(ExploreRecords {
@@ -520,9 +461,6 @@ impl ReviewStore {
             .join(format!("{instance}{REFERENCES_SUFFIX}")))
     }
 
-    /// The pull request and the tickets of the change that the round `instance` of `unit`
-    /// reviewed; `None` for a round saved before they were looked for, or still being looked
-    /// for.
     pub fn load_change_references(
         &self,
         unit: &ReviewUnit,
@@ -534,7 +472,6 @@ impl ReviewStore {
         )
     }
 
-    /// The run-ahead forks of the round `instance`; none when it never had any.
     pub fn load_round_forks(&self, unit: &ReviewUnit, instance: &str) -> Result<RoundForks> {
         Ok(
             Self::read_explore(&self.round_forks_path(unit, instance)?, MAX_FORKS)?

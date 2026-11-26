@@ -63,8 +63,6 @@ impl Manager {
         }
     }
 
-    /// Send each running server the changes under its project root. A server that has not
-    /// started reads the files when it starts.
     fn files_changed(&self, changes: &[FileChange]) {
         for (project, server) in &self.servers {
             let changes: Vec<_> = changes

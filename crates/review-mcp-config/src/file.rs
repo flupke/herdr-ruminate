@@ -18,7 +18,6 @@ impl ConfigFile {
         path: &Path,
         configuration: &Configuration<'_>,
     ) -> Result<bool, String> {
-        // Coordinate installers without adding a lock file to the user's configuration.
         let lock = fs::File::open(root).map_err(|error| error.to_string())?;
         lock.lock_exclusive().map_err(|error| error.to_string())?;
         let config = Self::read(path)?;

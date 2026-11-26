@@ -4,7 +4,6 @@ use tempfile::TempDir;
 
 use super::*;
 
-/// The folders of an environment whose variables are `set`.
 fn dirs(set: &[(&str, &Path)]) -> Dirs {
     Dirs::from_vars(|name| {
         set.iter()
@@ -13,7 +12,6 @@ fn dirs(set: &[(&str, &Path)]) -> Dirs {
     })
 }
 
-/// Herdr's state folder for the plugin under `state_home`, holding one file.
 fn herdr_state(state_home: &Path) -> PathBuf {
     let herdr = state_home.join("herdr/plugins/herdr.progressive-reviewer");
     fs::create_dir_all(&herdr).unwrap();
@@ -34,7 +32,6 @@ fn herdr_s_plugin_folders_win_when_herdr_gives_them() {
 
     assert_eq!(dirs.state_root().unwrap(), given);
     assert_eq!(dirs.config_dir(), Some(PathBuf::from("/herdr/config")));
-    // Under Herdr, the state Herdr kept stays where it is.
     assert!(herdr.join("settings.json").is_file());
 }
 
@@ -158,7 +155,6 @@ fn a_state_that_cannot_move_stays_the_state_root_where_herdr_kept_it() {
     let home = TempDir::new().unwrap();
     let state_home = home.path().join(".local/state");
     let herdr = herdr_state(&state_home);
-    // Nothing can be made in the state home: the rename to the reviewer's folder fails.
     fs::set_permissions(&state_home, fs::Permissions::from_mode(0o555)).unwrap();
 
     let root = dirs(&[("HOME", home.path())]).state_root();
@@ -193,7 +189,6 @@ fn a_link_left_by_the_move_to_a_removed_own_folder_starts_a_new_state_there() {
     herdr_state(&state_home);
     let dirs = dirs(&[("HOME", home.path())]);
     let own = dirs.state_root().unwrap();
-    // The user removes the reviewer's state to start over; Herdr's path still links to it.
     fs::remove_dir_all(&own).unwrap();
 
     assert_eq!(dirs.create_state_root().unwrap(), own);

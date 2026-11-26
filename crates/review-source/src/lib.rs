@@ -1,5 +1,3 @@
-//! Source positions and anchors shared by Explore, diff views, and review threads.
-
 use std::ops::Range;
 
 use gix_imara_diff::{Algorithm, Diff, InternedInput};
@@ -26,18 +24,17 @@ impl ReviewCheckpoint {
     }
 }
 
-/// One source location in a displayed diff.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum DiffTarget {
-    /// One line range on either or both sides of a text diff.
     Lines {
         path: String,
         old: Option<SourceLineRange>,
         new: Option<SourceLineRange>,
     },
-    /// A changed file that has no text hunk.
-    File { path: String },
+    File {
+        path: String,
+    },
 }
 
 impl DiffTarget {
@@ -56,7 +53,6 @@ pub struct SourceLineRange {
 }
 
 impl SourceLineRange {
-    /// The one-based range of zero-based `lines`.
     pub fn from_zero_based(lines: Range<u32>) -> Self {
         Self {
             first_line: lines.start + 1,
@@ -64,13 +60,11 @@ impl SourceLineRange {
         }
     }
 
-    /// How many lines the range holds.
     pub fn count(&self) -> u32 {
         (self.last_line + 1).saturating_sub(self.first_line)
     }
 }
 
-/// `7`, or `7-9` for several lines.
 impl std::fmt::Display for SourceLineRange {
     fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.first_line == self.last_line {
@@ -81,7 +75,6 @@ impl std::fmt::Display for SourceLineRange {
     }
 }
 
-/// A file frozen at one exact review checkpoint.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FrozenFile {
     pub path: String,
@@ -94,14 +87,12 @@ pub struct FrozenFile {
     pub diff_hash: String,
 }
 
-/// The two half-open line intervals in one frozen text hunk.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FrozenHunk {
     pub old: Option<Range<u32>>,
     pub new: Option<Range<u32>>,
 }
 
-/// An immutable source range used to map a thread through later edits.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DiffRangeAnchor {
     pub source_checkpoint: String,
@@ -118,7 +109,6 @@ pub struct DiffRangeAnchor {
 }
 
 impl DiffRangeAnchor {
-    /// Map only the new-side interval into a current working-tree file.
     pub fn map_new_lines(&self, content: &[u8]) -> Option<Range<u32>> {
         map_side(
             self.new_lines.clone(),
@@ -129,7 +119,6 @@ impl DiffRangeAnchor {
         .flatten()
     }
 
-    /// Map both source intervals through edits, retaining only unchanged anchored code.
     pub fn map_lines(
         &self,
         old_content: Option<&[u8]>,
@@ -152,7 +141,6 @@ impl DiffRangeAnchor {
     }
 }
 
-/// Whether a source anchor targets full hunks or a narrower line range.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AnchorKind {

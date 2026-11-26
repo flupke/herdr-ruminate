@@ -10,7 +10,6 @@ fn the_server_stops_when_its_owner_is_killed() {
     let repository = tempfile::tempdir().unwrap();
     let mut server = PrivateHerdrServer::start(repository.path());
     let child = server.child.as_mut().unwrap();
-    // Hand the only writing end of the server's pipe to a stand-in owner.
     let mut owner = Command::new("sleep")
         .arg("60")
         .stdout(Stdio::from(child.stdin.take().unwrap()))
@@ -20,7 +19,6 @@ fn the_server_stops_when_its_owner_is_killed() {
     owner.kill().unwrap();
     owner.wait().unwrap();
 
-    // The server's shell stops it, with SIGKILL at the latest, then exits.
     child.wait().unwrap();
     assert!(UnixStream::connect(&server.socket_path).is_err());
     assert!(
@@ -68,7 +66,6 @@ fn a_dropped_server_stops_answering() {
 }
 
 impl PrivateHerdrServer {
-    /// A pane in a new workspace labelled `label`.
     fn pane(&self, label: &str) -> PaneId {
         let workspace = self.run_cli_json(&[
             "workspace",
@@ -87,13 +84,11 @@ impl PrivateHerdrServer {
         )
     }
 
-    /// Start a process named `agent` in `pane` that shows `title` and its prompt.
     fn run_fake_agent(&self, pane: &PaneId, agent: &str, title: &str) {
         let script = self.root().join(agent);
         fs::write(
             &script,
-            // The shell keeps running, so the foreground process keeps the
-            // agent's name.
+            // Herdr names the agent after the terminal's foreground process.
             format!(
                 "#!/bin/sh\nprintf '\\033]0;{title}\\007\\033[2J\\033[H> '\n\
                  while :; do read -r line || sleep 1; done\n"
@@ -104,7 +99,6 @@ impl PrivateHerdrServer {
         self.run_cli(&["pane", "run", &pane.0, &script.to_string_lossy()]);
     }
 
-    /// Herdr's explanation of the agent it detects in `pane`.
     fn explain_agent(&self, pane: &PaneId) -> serde_json::Value {
         let output = self
             .command()
@@ -113,7 +107,6 @@ impl PrivateHerdrServer {
             .unwrap();
         let mut explanation: serde_json::Value =
             serde_json::from_slice(&output.stdout).unwrap_or_default();
-        // Keep failure messages short: every rule's evidence is long.
         if let Some(fields) = explanation.as_object_mut() {
             fields.remove("evaluated_rules");
         }

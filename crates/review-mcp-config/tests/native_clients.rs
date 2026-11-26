@@ -1,5 +1,3 @@
-//! Installed-client compatibility checks with private configuration and a local model fixture.
-
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::sync::Arc;

@@ -1,17 +1,8 @@
-//! Decides whether a live agent is still the agent session a grant or prompt was bound to.
-//!
-//! Review access and the pinned agent share this decision. Their remaining
-//! differences are the named [`IdentityRules`] and the follow mode of a
-//! [`SessionBinding`]; each caller maps a [`Verdict`] to its own errors.
-
 use herdr_client::protocol::{Agent, AgentPort, AgentSession, PaneId, TabId};
 
-/// How a native session reported now is compared with the bound one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionComparison {
-    /// Every field, including the reporting `source`, must be equal.
     Exact,
-    /// The agent, kind and value must be equal; the reporting `source` may differ.
     IgnoringSource,
 }
 
@@ -28,16 +19,12 @@ impl SessionComparison {
     }
 }
 
-/// What happens to a foreground process group binding once a native session appears.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProcessBinding {
-    /// The process group stays part of the identity for its whole life.
     KeptAfterSession,
-    /// The first observed native session replaces the process group check.
     ReleasedBySession,
 }
 
-/// The rules that differ between the callers of [`AgentIdentity`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct IdentityRules {
     session: SessionComparison,
@@ -45,61 +32,45 @@ pub(crate) struct IdentityRules {
 }
 
 impl IdentityRules {
-    /// Review access values are bearer tokens: every recorded identity stays checked.
     pub(crate) const REVIEW_ACCESS: Self = Self {
         session: SessionComparison::Exact,
         process: ProcessBinding::KeptAfterSession,
     };
-    /// A pinned prompt recipient may resume its native session in a new process.
     pub(crate) const PINNED_AGENT: Self = Self {
         session: SessionComparison::IgnoringSource,
         process: ProcessBinding::ReleasedBySession,
     };
 }
 
-/// The native session an identity accepts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum SessionBinding {
-    /// Accept any session and remember the latest one until [`AgentIdentity::seal`].
     Following(Option<AgentSession>),
-    /// No session is known yet; the first one observed becomes bound.
     Unbound,
     Bound(AgentSession),
 }
 
-/// Why a live agent is not the same agent session.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Change {
-    /// The pane or the agent implementation differs.
     Agent,
-    /// The pane moved to another tab.
     Tab,
-    /// The pane's foreground process group differs.
     ProcessGroup,
-    /// The pane reports a different native session.
     Session,
 }
 
-/// The outcome of comparing a live agent with an identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Verdict {
     Same,
-    /// A session is bound but the pane reports none right now.
     SessionMissing,
     Changed(Change),
 }
 
-/// Herdr could not answer an identity question.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum IdentityError {
-    /// The port request itself failed.
     Port(String),
-    /// Herdr reported no usable foreground process group for the pane.
     ProcessUnidentified,
 }
 
 impl IdentityError {
-    /// The caller's message, naming what an unidentified process means to it.
     pub(crate) fn into_message(self, process_unidentified: &str) -> String {
         match self {
             Self::Port(error) => error,
@@ -108,12 +79,9 @@ impl IdentityError {
     }
 }
 
-/// The agent session one grant or prompt is bound to.
 #[derive(Clone, Debug)]
 pub(crate) struct AgentIdentity {
     pane_id: PaneId,
-    /// A pane moved to another tab works on something else: the reviewer prompts only an
-    /// agent of its own tab.
     tab_id: TabId,
     agent: Option<String>,
     session: SessionBinding,
@@ -122,7 +90,6 @@ pub(crate) struct AgentIdentity {
 }
 
 impl AgentIdentity {
-    /// Bind to `agent`'s reported native session, or to none when it reports none.
     pub(crate) fn new(agent: &Agent, rules: IdentityRules) -> Self {
         Self {
             pane_id: agent.pane_id.clone(),
@@ -137,7 +104,6 @@ impl AgentIdentity {
         }
     }
 
-    /// Accept any native session until [`Self::seal`].
     pub(crate) fn following(mut self) -> Self {
         self.session = SessionBinding::Following(match self.session {
             SessionBinding::Bound(session) => Some(session),
@@ -147,7 +113,6 @@ impl AgentIdentity {
         self
     }
 
-    /// Without a native session, bind to the pane's current foreground process group.
     pub(crate) fn bind_process_without_session(
         mut self,
         port: &dyn AgentPort,
@@ -161,7 +126,6 @@ impl AgentIdentity {
         Ok(self)
     }
 
-    /// Stop following: the latest observed session, if any, becomes bound.
     pub(crate) fn seal(&mut self) {
         if let SessionBinding::Following(session) = &mut self.session {
             self.session = session
@@ -170,7 +134,6 @@ impl AgentIdentity {
         }
     }
 
-    /// Compare `current` with this identity, adopting what a match reveals.
     pub(crate) fn check(
         &mut self,
         port: &dyn AgentPort,

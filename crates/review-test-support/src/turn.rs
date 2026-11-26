@@ -1,17 +1,8 @@
-//! An Explore prompt as an agent reads it: the prompt names its turn's index, and the agent
-//! reads the turn's files beside it.
-
 use std::path::Path;
 
-/// The names `review-explore-runner` gives a turn's index, the round's data and the turn's: that
-/// crate stays out of this one, which the pane's e2e tests build too.
 const INDEX: &str = "index.md";
 const DATA: [&str; 2] = ["round.md", "turn.md"];
 
-/// `prompt` followed by the round's data and the turn's, `round.md` then `turn.md`, when it
-/// names a turn's index: the change, identity, unreviewed lines and answer that a test reads
-/// from what the agent got. Any other prompt, and one whose turn's files are gone, comes back as
-/// it is. Call it when the prompt arrives: a turn's files live until the next prompt.
 pub fn with_turn(prompt: &str) -> String {
     let Some(directory) = prompt
         .split_whitespace()

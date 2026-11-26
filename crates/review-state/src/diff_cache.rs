@@ -1,5 +1,3 @@
-//! Bounded reuse of immutable diff data, keyed by snapshot and saved review mark.
-
 use std::collections::HashMap;
 
 use review_repository::repository::{RepoPath, SnapshotIdentity};
@@ -47,7 +45,6 @@ impl DiffCache {
         record: LoadResult,
         diff: &ReviewDiff,
     ) {
-        // A slow read from an older snapshot must not replace newer cached data.
         if self.snapshot.as_ref() != Some(snapshot) {
             return;
         }

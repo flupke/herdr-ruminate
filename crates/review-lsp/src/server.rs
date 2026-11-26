@@ -124,8 +124,6 @@ impl Server {
         }
     }
 
-    /// Pass the changes to the running session at once: a session that starts later reads
-    /// the files then.
     fn files_changed(&mut self, changes: &[FileChange]) {
         let Some(session) = self.session.as_mut() else {
             return;

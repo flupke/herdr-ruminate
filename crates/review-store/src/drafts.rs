@@ -1,6 +1,3 @@
-//! Drafts live in a small document of their own, apart from the posted thread document.
-//! Saving one never rewrites posted messages.
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -18,8 +15,6 @@ mod tests;
 
 const VERSION: u8 = 1;
 
-/// The draft document: `Unit` and `Drafts` are borrowed to write it, and the drafts stay
-/// JSON until their sources are restored when reading it.
 #[derive(Deserialize, Serialize)]
 struct StoredDrafts<Unit, Drafts> {
     version: u8,
@@ -40,8 +35,6 @@ impl WithSources for SavedDrafts {
 }
 
 impl ReviewStore {
-    /// The drafts saved for a review. A draft whose post reached the threads is never
-    /// returned, including when posting was interrupted before it discarded the draft.
     pub fn load_drafts(&self, review_unit: &ReviewUnit) -> Result<SavedDrafts> {
         let threads = self.load_threads(review_unit)?;
         let mut drafts = self.read_drafts(review_unit)?;
@@ -49,14 +42,11 @@ impl ReviewStore {
         Ok(drafts)
     }
 
-    /// Apply a change to the saved drafts under a lock shared by reviewer processes.
-    /// The threads are read to check the change and are never written.
     pub fn update_drafts<T>(
         &self,
         review_unit: &ReviewUnit,
         update: impl FnOnce(&mut SavedDrafts, &ReviewThreads) -> std::result::Result<T, String>,
     ) -> Result<(T, SavedDrafts)> {
-        // Loading the threads can migrate drafts, which takes the draft lock itself.
         let threads = self.load_threads(review_unit)?;
         let _lock = self.drafts_lock(review_unit)?;
         let mut drafts = self.read_drafts(review_unit)?;
@@ -69,9 +59,6 @@ impl ReviewStore {
         Ok((result, drafts))
     }
 
-    /// Move drafts that an earlier build saved inside the thread document into the draft
-    /// store. Only such a build writes them there, so they replace the stored draft of the
-    /// same thread. Adopting the same drafts again changes nothing.
     pub(super) fn adopt_embedded_drafts(
         &self,
         review_unit: &ReviewUnit,

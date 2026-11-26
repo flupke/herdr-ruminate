@@ -1,5 +1,3 @@
-//! Atomic storage for review records and global settings.
-
 use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -33,59 +31,37 @@ mod workspace_state;
 pub use checkpoint::{LoadResult, MarksLock, PartialReview, ReviewRecord};
 pub use workspace_state::WorkspaceState;
 
-/// A result from review storage.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// An error that does not include repository file content.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// A conversation change could not be applied to the latest stored history.
     #[error("{0}")]
     ThreadUpdate(String),
-    /// Explore storage or a mutation cannot safely continue.
     #[error("Explore storage: {0}")]
     Explore(String),
-    /// The latest stored Explore round refused a change, for the reason given.
     #[error("{0}")]
     ExploreRefused(String),
-    /// State could not be read or changed.
     #[error("{operation} failed for review state at {path:?}: {source}")]
     StateIo {
-        /// The storage operation that failed.
         operation: &'static str,
-        /// The state path.
         path: PathBuf,
-        /// The operating-system error.
         #[source]
         source: std::io::Error,
     },
-    /// A state JSON value was invalid.
     #[error("{operation} found invalid review state at {path:?}: {source}")]
     StateJson {
-        /// The storage operation that failed.
         operation: &'static str,
-        /// The state path.
         path: PathBuf,
-        /// The JSON error.
         #[source]
         source: serde_json::Error,
     },
-    /// A value cannot be used as a safe state key.
     #[error("invalid review-state {field}")]
-    InvalidStateKey {
-        /// The invalid field.
-        field: &'static str,
-    },
-    /// Two repository paths produced the same state key.
+    InvalidStateKey { field: &'static str },
     #[error("review-state path hash collision at {path:?}")]
-    StateCollision {
-        /// The record path that must not be replaced.
-        path: PathBuf,
-    },
+    StateCollision { path: PathBuf },
 }
 
 impl Error {
-    /// Report invalid JSON found at `path` by `operation`.
     fn json(operation: &'static str, path: &Path) -> impl Fn(serde_json::Error) -> Self {
         move |source| Self::StateJson {
             operation,
@@ -95,7 +71,6 @@ impl Error {
     }
 }
 
-/// Persistent global reviewer settings.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 struct Settings {
@@ -105,10 +80,8 @@ struct Settings {
     explore_round: ExploreRoundSettings,
 }
 
-/// The file beside the settings that holds what the reviewer asks of every Explore round.
 const EXPLORE_REVIEWER_NOTES: &str = "explore-reviewer-notes.md";
 
-/// Review state for one repository, shared by its workspaces.
 #[derive(Clone, Debug)]
 pub struct ReviewStore {
     state_root: PathBuf,
@@ -120,9 +93,6 @@ pub struct ReviewStore {
 struct StateKey(String);
 
 impl ReviewStore {
-    /// Open the review state of one repository, which every workspace of the repository
-    /// shares: `store` is the store the workspaces share, the directory `.jj/repo` resolves to
-    /// in a jj repository, or a Git repository's common directory.
     pub fn open(state_root: impl AsRef<Path>, store: impl AsRef<Path>) -> Result<Self> {
         let shared = layout::SharedStore::canonical(store.as_ref())?;
         let store = Self::at(state_root, &shared);
@@ -141,7 +111,6 @@ impl ReviewStore {
         }
     }
 
-    /// Get the saved file-pane width in terminal columns.
     pub fn file_pane_width(&self) -> Result<Option<u16>> {
         Ok(self.settings()?.file_pane_width)
     }
@@ -150,35 +119,28 @@ impl ReviewStore {
         Ok(Self::read_json(&self.settings_path(), "read settings")?.unwrap_or_default())
     }
 
-    /// Save the file-pane width in terminal columns.
     pub fn save_file_pane_width(&self, columns: u16) -> Result<()> {
         self.update_settings(|settings| settings.file_pane_width = Some(columns))
     }
 
-    /// Save the settings with the change `update` makes, keeping the others as saved.
     fn update_settings(&self, update: impl FnOnce(&mut Settings)) -> Result<()> {
         let mut settings = self.settings()?;
         update(&mut settings);
         self.atomic_json(&self.settings_path(), &settings, "write settings")
     }
 
-    /// Get the keymap shared by every text editor.
     pub fn editor_keymap(&self) -> Result<review_types::EditorKeymap> {
         Ok(self.settings()?.editor_keymap)
     }
 
-    /// Save the keymap shared by every text editor.
     pub fn save_editor_keymap(&self, keymap: review_types::EditorKeymap) -> Result<()> {
         self.update_settings(|settings| settings.editor_keymap = keymap)
     }
 
-    /// Get the settings of the Explore page.
     pub fn explore_page_settings(&self) -> Result<ExplorePageSettings> {
         Ok(self.settings()?.explore_page)
     }
 
-    /// Save one setting of the Explore page, keeping the others as saved, and return the
-    /// settings of the Explore page as they are now saved.
     pub fn save_explore_page_setting(
         &self,
         setting: ExplorePageSetting,
@@ -191,13 +153,10 @@ impl ReviewStore {
         Ok(saved)
     }
 
-    /// Get the settings for the next Explore round.
     pub fn explore_round_settings(&self) -> Result<ExploreRoundSettings> {
         Ok(self.settings()?.explore_round)
     }
 
-    /// Save the writing style of the next Explore round, keeping the other settings as saved,
-    /// and return the settings for the next round as they are now saved.
     pub fn save_explore_writing_style(
         &self,
         writing: WritingStyle,
@@ -205,14 +164,10 @@ impl ReviewStore {
         self.update_round_settings(|round| round.writing = writing)
     }
 
-    /// Save which choices run-ahead prepares, keeping the other settings as saved, and return
-    /// the settings for the rounds as they are now saved.
     pub fn save_explore_run_ahead(&self, run_ahead: RunAhead) -> Result<ExploreRoundSettings> {
         self.update_round_settings(|round| round.run_ahead = run_ahead)
     }
 
-    /// Change the settings for the Explore rounds with `change`, keeping the other settings as
-    /// saved, and return them as they are now saved.
     fn update_round_settings(
         &self,
         change: impl FnOnce(&mut ExploreRoundSettings),
@@ -229,7 +184,6 @@ impl ReviewStore {
         Self::read_json_within(target, operation, Some(MAX_STATE_FILE_BYTES))
     }
 
-    /// Read JSON state no larger than `maximum_bytes`, when given.
     fn read_json_within<T: DeserializeOwned>(
         target: &Path,
         operation: &'static str,
@@ -345,7 +299,6 @@ impl ReviewStore {
         result
     }
 
-    /// The compressed record of `kind` (a directory) for one logical review.
     fn review_record_path(
         &self,
         kind: &str,
@@ -362,7 +315,6 @@ impl ReviewStore {
         )))
     }
 
-    /// Hold an exclusive lock, shared by reviewer processes, until the file is dropped.
     fn exclusive_lock(&self, path: &Path, operation: &'static str) -> Result<File> {
         let parent = path.parent().ok_or(Error::InvalidStateKey {
             field: "lock parent",
@@ -389,8 +341,6 @@ impl ReviewStore {
         Ok(lock)
     }
 
-    /// What the reviewer asks of every Explore round, from `explore-reviewer-notes.md` beside
-    /// the settings; `None` when the file is missing or blank.
     pub fn explore_reviewer_notes(&self) -> Result<Option<String>> {
         let path = self.state_root.join(EXPLORE_REVIEWER_NOTES);
         match std::fs::read_to_string(&path) {

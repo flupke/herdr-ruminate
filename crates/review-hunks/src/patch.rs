@@ -1,10 +1,5 @@
-//! Git-style unified diffs: writing one between two versions, and recovering
-//! the old version from a diff and the new one.
-
 use crate::text::{CONTEXT, Change, Lines, changes, hunk_groups};
 
-/// The Git-style unified diff from `before` to `after` for one path, or no
-/// bytes when the versions are equal.
 pub fn unified_diff(path: &str, before: &[u8], after: &[u8]) -> Vec<u8> {
     let changes = changes(before, after);
     if changes.is_empty() {
@@ -21,8 +16,6 @@ pub fn unified_diff(path: &str, before: &[u8], after: &[u8]) -> Vec<u8> {
     diff.text
 }
 
-/// The old version of a file, rebuilt from its Git-style unified diff and its
-/// new version, or `None` when the diff does not describe `after`.
 pub fn reverse_apply(diff: &[u8], after: &[u8]) -> Option<Vec<u8>> {
     let mut patch = ReversePatch {
         after: Lines::new(after),
@@ -93,7 +86,7 @@ impl UnifiedDiff<'_> {
     }
 }
 
-/// A hunk header range: Git names the line before an empty range.
+// Git names the line before an empty range.
 fn header_range(start: u32, count: u32) -> String {
     match count {
         0 => format!("{start},0"),
@@ -102,7 +95,6 @@ fn header_range(start: u32, count: u32) -> String {
     }
 }
 
-/// The zero-based first new-side line of a hunk header.
 fn hunk_new_start(line: &[u8]) -> Option<u32> {
     let line = std::str::from_utf8(line.strip_prefix(b"@@ -")?).ok()?;
     let (_, rest) = line.split_once(" +")?;

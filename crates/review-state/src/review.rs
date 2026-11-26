@@ -1,5 +1,3 @@
-//! Review state derived from stored repository baselines.
-
 #[path = "carried_marks.rs"]
 mod carried_marks;
 #[path = "diff_cache.rs"]
@@ -21,50 +19,35 @@ use review_repository::repository::{
 use review_store::{LoadResult, PartialReview, ReviewRecord, ReviewStore};
 use review_types::{MarkAuthor, ReviewUnit};
 
-/// The review state of one changed path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReviewStatus {
-    /// The path has no usable review mark.
     Unreviewed,
-    /// The path is unchanged from its review baseline.
     Reviewed,
-    /// The path changed after its review baseline.
     ChangedSinceReview,
-    /// Some of the path's hunks are reviewed and others are not.
     PartiallyReviewed,
 }
 
 impl ReviewStatus {
-    /// Return true when the file needs review work.
     pub fn needs_review(self) -> bool {
         self != Self::Reviewed
     }
 }
 
-/// A non-fatal warning found while deriving review state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReviewWarning {
-    /// The stored record uses an unknown schema.
     UnknownSchema,
-    /// The stored baseline commit no longer exists.
     BaselineExpired,
 }
 
-/// Derived state and its optional storage warning.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReviewState {
-    /// The path review state.
     pub status: ReviewStatus,
-    /// A non-fatal warning that the UI must show.
     pub warning: Option<ReviewWarning>,
-    /// Statistics for changes after the stored review baseline.
     pub current_diff_statistics: DiffStatistics,
-    /// How many changed lines are reviewed, for a partially reviewed path.
     pub lines: Option<LineCount>,
 }
 
 impl ReviewState {
-    /// Create state for a path without a usable review baseline.
     pub fn unreviewed(
         current_diff_statistics: DiffStatistics,
         warning: Option<ReviewWarning>,
@@ -77,7 +60,6 @@ impl ReviewState {
         }
     }
 
-    /// Create state for a path that did not change after review.
     pub fn reviewed() -> Self {
         Self {
             status: ReviewStatus::Reviewed,
@@ -87,7 +69,6 @@ impl ReviewState {
         }
     }
 
-    /// Create state for a path that changed after review.
     pub fn changed_since_review(current_diff_statistics: DiffStatistics) -> Self {
         Self {
             status: ReviewStatus::ChangedSinceReview,
@@ -97,7 +78,6 @@ impl ReviewState {
         }
     }
 
-    /// Create state for a path with some hunks left to review.
     pub fn partially_reviewed(
         current_diff_statistics: DiffStatistics,
         lines: Option<LineCount>,
@@ -111,31 +91,21 @@ impl ReviewState {
     }
 }
 
-/// A unified diff and the complete files on both sides.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewDiff {
-    /// The open diff: from the reviewed version, or from the base when
-    /// nothing is reviewed, to the current file.
     pub unified: Vec<u8>,
-    /// The complete file before the change, when available.
     pub old_content: Option<Vec<u8>>,
-    /// The complete file after the change, when available.
     pub new_content: Option<Vec<u8>>,
-    /// Which hunks of the file are open and which are reviewed.
     pub hunks: FileHunks,
 }
 
-/// One path's changed lines by review state. A path without hunks to mark
-/// line by line (binary and other non-text changes) has none.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileLines {
-    /// The open hunks, in the order of the open diff.
     pub open: Vec<OpenLines>,
     pub reviewed: ReviewedLines,
 }
 
 impl FileLines {
-    /// Every open line.
     pub fn open_selection(&self) -> LineSelection {
         let mut selection = LineSelection::default();
         for open in &self.open {
@@ -146,22 +116,16 @@ impl FileLines {
     }
 }
 
-/// The lines one open hunk changes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OpenLines {
     pub lines: ChangedLines,
-    /// The hunk rewrites lines that were reviewed.
     pub since_review: bool,
 }
 
-/// The result of a request to mark one path as reviewed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MarkResult {
-    /// The review mark was stored.
     Marked,
-    /// The user moved to a different change before the mark.
     ChangeChanged,
-    /// The lines to mark were not open (or, to reopen, not reviewed).
     NothingToMark,
 }
 
@@ -172,8 +136,6 @@ enum ReviewComparison {
         baseline_commit_id: String,
         diff: Vec<u8>,
     },
-    /// Some lines are reviewed: the reviewed version, moved onto the current
-    /// base, and the open diff from it.
     Partial {
         reviewed: Reviewed,
         current: Option<Vec<u8>>,
@@ -205,20 +167,16 @@ impl ReviewComparison {
     }
 }
 
-/// Review operations for one repository.
 #[derive(Debug)]
 pub struct ReviewTracker {
     repository: Repository,
     store: ReviewStore,
     diffs: Mutex<DiffCache>,
-    /// The evolutions of the commits read so far, which a copy of the tracker shares.
     evolutions: Arc<carried_marks::Evolutions>,
-    /// The searches for origins that took no mark.
     fruitless: carried_marks::Fruitless,
 }
 
 impl ReviewTracker {
-    /// Connect a repository to its on-disk review store.
     pub fn new(repository: Repository, store: ReviewStore) -> Self {
         Self {
             repository,
@@ -229,8 +187,6 @@ impl ReviewTracker {
         }
     }
 
-    /// A tracker of the same repository over a copy of the review marks of `review_unit`, kept
-    /// under `state_root`: what it marks changes no mark of this tracker.
     pub fn copy_into(&self, review_unit: &ReviewUnit, state_root: &Path) -> eyre::Result<Self> {
         Ok(Self {
             evolutions: Arc::clone(&self.evolutions),
@@ -241,7 +197,6 @@ impl ReviewTracker {
         })
     }
 
-    /// Mark one path at the current exact commit.
     pub fn mark(
         &self,
         snapshot: &Snapshot,
@@ -262,13 +217,10 @@ impl ReviewTracker {
         Ok(MarkResult::Marked)
     }
 
-    /// Derive the current review state of one changed path.
     pub fn status(&self, snapshot: &Snapshot, file: &ChangedFile) -> eyre::Result<ReviewState> {
         Ok(self.compare(snapshot, file)?.state(file))
     }
 
-    /// Derive all path states with comparisons grouped by stored baseline. A change that never
-    /// had a review mark first takes those of the changes jj made it from.
     pub fn statuses(&self, snapshot: &Snapshot) -> eyre::Result<Vec<ReviewState>> {
         self.take_origin_marks(snapshot);
         let review_unit = snapshot.identity.review_unit();
@@ -308,7 +260,6 @@ impl ReviewTracker {
             .collect()
     }
 
-    /// Resolve one path's state now, or add it to the grouped baseline comparison.
     fn plan_state(
         &self,
         snapshot: &Snapshot,
@@ -347,7 +298,6 @@ impl ReviewTracker {
         )
     }
 
-    /// Accept or reopen one hunk of a path at the current exact commit.
     pub fn mark_hunk(
         &self,
         snapshot: &Snapshot,
@@ -374,7 +324,6 @@ impl ReviewTracker {
         })
     }
 
-    /// Who marked a path whole, when a whole-file mark covers it.
     pub fn whole_file_author(
         &self,
         snapshot: &Snapshot,
@@ -391,8 +340,6 @@ impl ReviewTracker {
         )
     }
 
-    /// The open and reviewed lines of one path. A path whose change has no text lines has
-    /// none, even when a whole-file mark's content reads as lines.
     pub fn lines(&self, snapshot: &Snapshot, file: &ChangedFile) -> eyre::Result<FileLines> {
         if !file.changes_text_lines() {
             return Ok(FileLines::default());
@@ -423,8 +370,6 @@ impl ReviewTracker {
         })
     }
 
-    /// Accept the open lines `selection` names, as `author`. A hunk the
-    /// selection covers only in part splits.
     pub fn accept_lines(
         &self,
         snapshot: &Snapshot,
@@ -439,7 +384,6 @@ impl ReviewTracker {
         })
     }
 
-    /// Reopen the reviewed lines `selection` names.
     pub fn reopen_lines(
         &self,
         snapshot: &Snapshot,
@@ -453,8 +397,6 @@ impl ReviewTracker {
         })
     }
 
-    /// Store the reviewed version `edit` makes of one path at the current
-    /// exact commit; `edit` gets the path's diff and its three versions.
     fn edit(
         &self,
         snapshot: &Snapshot,
@@ -465,8 +407,6 @@ impl ReviewTracker {
         if identity.review_unit() != snapshot.identity.review_unit() {
             return Ok(MarkResult::ChangeChanged);
         }
-        // The read of the reviewed version and the write of the new one run under one lock,
-        // so a reviewer of another workspace never writes between them.
         let _lock = self.store.lock_marks(identity.review_unit())?;
         let diff = self.diff(snapshot, file)?;
         let versions = self.versions(snapshot, file, &diff)?;
@@ -477,11 +417,6 @@ impl ReviewTracker {
         Ok(MarkResult::Marked)
     }
 
-    /// Accept the open hunks of a path whose changed lines `accept` approves,
-    /// and return how many were accepted. Unless `may_review_file`, it
-    /// accepts none when every open hunk passes, because the path changes
-    /// more than its hunks (a mode or type change) and only a whole-file
-    /// review covers that.
     pub fn review_hunks_where(
         &self,
         snapshot: &Snapshot,
@@ -519,7 +454,6 @@ impl ReviewTracker {
         Ok(accepted.len())
     }
 
-    /// The base, the reviewed version and the current file behind one path's diff.
     pub(crate) fn versions(
         &self,
         snapshot: &Snapshot,
@@ -535,9 +469,6 @@ impl ReviewTracker {
         })
     }
 
-    /// Store the reviewed version a hunk or line mark left. A file one
-    /// author reviewed whole gets a whole-file mark; with several authors,
-    /// a partial mark that reviews every line keeps who reviewed which.
     fn store_version(
         &self,
         snapshot: &Snapshot,
@@ -577,7 +508,6 @@ impl ReviewTracker {
         Ok(())
     }
 
-    /// The reviewed version of one path on its current base.
     fn reviewed_version(
         &self,
         snapshot: &Snapshot,
@@ -610,8 +540,6 @@ impl ReviewTracker {
         }
     }
 
-    /// Compare a mark that covers only some lines, saved at `baseline`, with
-    /// the current file.
     fn compare_partial(
         &self,
         snapshot: &Snapshot,
@@ -621,7 +549,6 @@ impl ReviewTracker {
     ) -> eyre::Result<ReviewComparison> {
         let base = self.base_text(snapshot, file)?;
         let reviewed = replay(&partial.base, &partial.reviewed, &base);
-        // A rebase can drop every reviewed change.
         if reviewed.text == base {
             return Ok(ReviewComparison::Unreviewed(None));
         }
@@ -644,8 +571,6 @@ impl ReviewTracker {
         })
     }
 
-    /// Whether the file changed after a mark saved at `baseline`: other
-    /// files changing in between does not age it.
     fn mark_age(
         &self,
         file: &ChangedFile,
@@ -668,7 +593,6 @@ impl ReviewTracker {
             .unwrap_or_default())
     }
 
-    /// Load the diff and both complete file versions for one changed path.
     pub fn diff(&self, snapshot: &Snapshot, file: &ChangedFile) -> eyre::Result<ReviewDiff> {
         let record = self.store.load(
             snapshot.identity.review_unit(),
@@ -828,7 +752,6 @@ impl ReviewTracker {
             .interdiff(&record.baseline_commit_id, snapshot, file.review_path())?
         {
             Interdiff::MissingBaseline => {
-                // A read path reaches this without the marks lock, which a caller may hold.
                 self.store
                     .unreview_expired(review_unit, path, &record.reviewed_at)?;
                 Ok(ReviewComparison::Unreviewed(Some(
@@ -842,7 +765,6 @@ impl ReviewTracker {
         }
     }
 
-    /// Remove the review mark for one path.
     pub fn unreview(&self, snapshot: &Snapshot, file: &ChangedFile) -> eyre::Result<()> {
         let _lock = self.store.lock_marks(snapshot.identity.review_unit())?;
         self.store.unreview(
@@ -853,7 +775,6 @@ impl ReviewTracker {
     }
 }
 
-/// The three versions of one file a hunk or line mark works on.
 pub(crate) struct Versions {
     base: Vec<u8>,
     reviewed: Reviewed,
@@ -867,8 +788,6 @@ impl Versions {
     }
 }
 
-/// The reviewed version behind a whole-file mark's open diff, which runs from
-/// that version moved onto the current base.
 fn whole_file_reviewed_version(diff: &ReviewDiff) -> Option<Vec<u8>> {
     reverse_apply(
         &diff.unified,

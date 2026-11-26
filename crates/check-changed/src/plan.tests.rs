@@ -7,9 +7,6 @@ fn set(names: &[&str]) -> BTreeSet<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
 }
 
-/// `core` is used by `ui` and `server`; `ui` by `app`, which the pane runs; `server` is the
-/// page's server; `markdown` is vendored, outside the members; `serde`, from the registry, is
-/// used by `core`.
 fn workspace() -> Workspace {
     Workspace {
         packages: BTreeMap::from([
@@ -80,7 +77,6 @@ fn a_crate_change_tests_it_and_its_dependents_and_the_suites_that_build_one_of_t
 
 #[test]
 fn a_file_belongs_to_the_innermost_package_whatever_its_kind() {
-    // A client asset or a prompt in Markdown is the crate's, as its sources are.
     assert_eq!(
         checks(&["crates/server/assets/client/page.js"]),
         [
