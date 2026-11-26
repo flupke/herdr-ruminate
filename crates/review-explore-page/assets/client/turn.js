@@ -1,10 +1,3 @@
-// The previous turn, in one quiet block above the stage it led to: what the reviewer answered,
-// beside what the agent recorded of it and replied, then, when run-ahead watched the question,
-// whether it prepared the turn or why not, the follow-ups the agent noted and Cancel this
-// answer, behind its confirmation. Cancel answer takes the answer back, as in the reviewer's
-// Explore tab: the round goes back to its question, and the review marks the answer led to are
-// given back.
-
 /** @import { KeptAnswer, LatestAnswer, ResponseView } from "./types.ts" */
 
 import { NOTHING_ANSWERED, marksProblemLine } from './answer-card.js';
@@ -13,23 +6,16 @@ import { codeSpans, h, markdown } from './dom.js';
 
 /**
  * @typedef {object} Turn
- * @property {LatestAnswer | null} answer the reviewer's latest answer, when the page offers to
- *   cancel it
- * @property {KeptAnswer | null} [kept] the reviewer's latest answer as the round kept it, when it
- *   can no longer be cancelled
- * @property {ResponseView | null} response what the agent's turn said back to it
- * @property {number | null} number the number of the question the answer answered, when known
+ * @property {LatestAnswer | null} answer
+ * @property {KeptAnswer | null} [kept]
+ * @property {ResponseView | null} response
+ * @property {number | null} number
  */
 
-/**
- * The block, or `null` when the turn has nothing to show.
- * @param {Turn} turn
- */
+/** @param {Turn} turn */
 export function turnStrip({ answer, kept = null, response, number }) {
   if (!answer && !response) return null;
   const followUps = response ? followUpsLine(response, 'turn-follow-ups') : null;
-  // One quiet line: a fork took the turn while the reviewer thought about the answer, or why the
-  // agent took it itself.
   const path = response?.path_line ? h('p', { class: 'turn-path' }, response.path_line) : null;
   const shown = answer ?? kept;
   return h(
@@ -51,7 +37,6 @@ export function turnStrip({ answer, kept = null, response, number }) {
 }
 
 /**
- * What the reviewer answered: the choice, then the comment.
  * @param {LatestAnswer | KeptAnswer} answer
  * @param {number | null} number
  */
@@ -72,8 +57,6 @@ function answered(answer, number) {
 }
 
 /**
- * "Follow-ups · …", the follow-ups the agent noted of the answer, or `null` when it noted none: in
- * the previous turn, and on the screen of an earlier question.
  * @param {ResponseView} response
  * @param {string} className
  */
@@ -85,10 +68,8 @@ export function followUpsLine(response, className) {
 }
 
 /**
- * What the agent recorded of the answer, its recap, then its reply: in the previous turn, and on
- * the screen of an earlier question.
  * @param {ResponseView} response
- * @param {string} [id] the ID of its eyebrow, which names it
+ * @param {string} [id]
  */
 export function recorded(response, id = 'turn-record-title') {
   const recaps = response.interpretations.flatMap((interpretation) =>
@@ -109,11 +90,8 @@ export function recorded(response, id = 'turn-record-title') {
 }
 
 /**
- * Cancel this answer, behind its confirmation: in the previous turn, in the panel of the answer
- * the agent's turn carries, and on an earlier question's screen, where it takes back the answers
- * after it too.
- * @param {string} answer the answer's identity
- * @param {number} later how many answers came after it
+ * @param {string} answer
+ * @param {number} later
  */
 export function cancelAnswer(answer, later) {
   const after =

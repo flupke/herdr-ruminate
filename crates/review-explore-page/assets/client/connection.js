@@ -1,7 +1,3 @@
-// The quiet line above the page that says when the page cannot reach the review tool: while it
-// reconnects, the page's actions wait; once its address opens no round any more, it says how to
-// open the round again.
-
 /** @import { LinkState } from "./socket.js" */
 
 const WORDS = {

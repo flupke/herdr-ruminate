@@ -1,11 +1,3 @@
-/* The chat: the round's conversation with the agent (docs/design/explore-page/README.md, "Agent
-   chat"), drawn by client/chat.js, with "Add to chat" from client/chat-quote.js. It stands in the
-   column at the window's left (left-column.css), which it shares with the list of past rounds.
-   Beside the page it widens to fit its widest message, and the reviewer can drag its right edge
-   (layout.css, `--chat-width`). */
-
-/* The bubble in the masthead (at its left on a desktop, beside the ⋯ menu below the desk's two
-   columns): a speech bubble drawn with a border, with the unread count. */
 :root { --bubble-width: 30px; }
 .chat-bubble {
   position: relative;
@@ -52,10 +44,7 @@
 }
 .chat-bubble[hidden], .chat-bubble [hidden] { display: none; }
 
-/* The chat in the column at the window's left (left-column.css): its head, the messages and the
-   composer. The agent's messages stand apart from the column's surface. */
 .chat {
-  /* Its own width, even while the list of past rounds that takes its place opens (layout.css). */
   --left-width: var(--chat-width);
   --chat-card: light-dark(var(--canvas), var(--panel));
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -63,13 +52,9 @@
 @media (min-width: 70rem) {
   .chat { --chat-card: var(--canvas); }
 }
-/* While the reviewer drags its edge, the chat and the page follow the pointer at once. */
 .chat.resizing { transition: none; }
 body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead { transition: none; }
 
-/* The chat's right edge, beside the page: a drag sets its width, the arrow keys move it, and a
-   double click or Enter brings back the width that fits the messages (client/chat-width.js). A line
-   in the accent shows it under the pointer and the focus. */
 .chat-edge { display: none; }
 @media (min-width: 89rem) {
   .chat-edge {
@@ -96,9 +81,6 @@ body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead 
   .chat-edge:focus-visible { outline: none; }
 }
 
-/* The messages: the reviewer's as a label and bold text, the agent's on the panel's surface.
-   The list never scrolls sideways: prose wraps, and a table or a block of code wider than the
-   chat scrolls in its own frame (markdown.css). */
 .chat-log {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -110,15 +92,11 @@ body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead 
 }
 .chat-empty { margin: 0; }
 .chat-message { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
-/* While client/chat-width.js measures the width the messages need, their tables and blocks of code
-   take the width of their content. */
 .chat.measuring .chat-message :is(.table-frame, pre) { width: max-content; max-width: none; }
 .chat.measuring .chat-message table { width: max-content; }
 .chat-message .markdown > :first-child { margin-top: 0; }
 .chat-message .markdown > :last-child { margin-bottom: 0; }
 .chat-message.mine .chat-text-shown { font-weight: 600; }
-/* A diagram stays inside its message on a phone too, where the reading column's runs from edge
-   to edge (diagrams.css). */
 .chat-message .markdown .diagram { margin-inline: 0; padding-inline: 12px; border-width: 1px; border-radius: var(--radius); }
 .chat-message.agent {
   gap: 4px;
@@ -126,7 +104,6 @@ body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead 
   border-radius: var(--radius);
   background: var(--chat-card);
 }
-/* A quote: in a message, and in the composer. */
 .chat-quote-shown, .chat-quote {
   margin: 0;
   padding: 6px 10px;
@@ -162,7 +139,6 @@ body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead 
 .chat-pending-time { font-variant-numeric: tabular-nums; }
 .chat-log .status-card { max-width: none; }
 
-/* The composer: the quote, the text box, Send with its hint. */
 .chat-composer {
   display: grid;
   align-content: start;
@@ -208,7 +184,6 @@ body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead 
 .chat-send .button { padding-inline: 18px; font-size: 15px; font-weight: 600; }
 .chat-send .hint { font-size: 12px; }
 
-/* "Not ready? Reply to the agent instead", on the conclusion: a muted line, as a fold's. */
 .chat-opener {
   justify-self: start;
   padding: 0;
@@ -222,12 +197,10 @@ body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead 
 }
 .chat-opener::before { content: "▸" / ""; display: inline-block; width: 1.1em; font-size: 11px; }
 .chat-opener:hover { color: var(--ink); }
-/* On a phone, centred under the panel's full-width action, as the folds beside it are. */
 @media (max-width: 40rem) {
   .chat-opener { justify-self: center; text-align: center; }
 }
 
-/* "Add to chat", above the selected passage. */
 .chat-pick {
   position: absolute;
   z-index: var(--layer-quote);
@@ -246,7 +219,6 @@ body:has(> .chat.open.resizing) main, body:has(> .chat.open.resizing) .masthead 
 .chat-pick[hidden] { display: none; }
 main ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 
-/* Below the desk's two columns: the bottom sheet (left-column.css). */
 @media (max-width: 69.99rem) {
   .chat { grid-template-rows: auto auto minmax(0, 1fr) auto; }
   .chat-send { flex-wrap: wrap; }

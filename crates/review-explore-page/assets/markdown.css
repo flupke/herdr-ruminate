@@ -1,5 +1,3 @@
-/* The agent's Markdown, rendered by the tool (crates/markdown-html): explanations, the Door and
-   Blast radius sections, and the conclusion. Its colours are the tokens of tokens.css. */
 .markdown { overflow-wrap: anywhere; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
@@ -8,25 +6,16 @@
 .markdown li + li { margin-top: 2px; }
 .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-size: 1em; margin: 16px 0 6px; }
 .markdown code, .inline-code { font: 0.9em/1.4 var(--mono); background: var(--code-bg); border-radius: 4px; padding: 1px 4px; }
-/* The code spans of the agent's plain texts (a choice, its reason, a follow-up; client/dom.js
-   `codeSpans`) look like the Markdown's, keep the weight of the text around them, and wrap as
-   one chip per line. */
 .inline-code { font-weight: inherit; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .markdown pre { box-sizing: border-box; max-width: var(--figure); background: var(--code-bg); border-radius: var(--radius); padding: 10px 12px; overflow-x: auto; }
 .markdown pre code { background: none; padding: 0; font-size: 0.85em; overflow-wrap: normal; }
 .markdown blockquote { border-left: 3px solid var(--line); padding-left: 12px; opacity: 0.85; }
 .markdown a { color: var(--accent); }
 
-/* Tables (README, "1. Design screen"; design review, finding 16): hairlines between rows and
-   under the header, no vertical borders, the width of the column up to 820 pixels. A table
-   wider than its column scrolls sideways in its own frame (client/dom.js wraps each table), with
-   shadows at the edges that hide more; on a phone its columns keep a readable width and its
-   first column stays in view. */
 .markdown .table-frame { max-width: var(--figure); margin: 0 0 12px; overflow-x: auto; }
 .markdown > .table-frame:last-child { margin-bottom: 0; }
 .markdown table { width: 100%; margin: 0; border-collapse: collapse; font-size: 15px; }
 .markdown th, .markdown td { padding: 8px 10px; text-align: left; vertical-align: middle; overflow-wrap: normal; }
-/* Names in a table cell read as plain mono, without the chip of code in prose. */
 .markdown td code { padding: 0; background: none; }
 .markdown th { border-bottom: 1px solid var(--line-strong); font-weight: 600; }
 .markdown td { border-bottom: 1px solid var(--line); }
@@ -45,7 +34,6 @@
   .markdown tr > :first-child { position: sticky; left: 0; z-index: 1; min-width: 7em; background: var(--canvas); }
 }
 
-/* A table cell's status: a round mark, and a tint of the same color. */
 .markdown .status { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-right: 2px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: -3px; }
 .markdown .status-good { background: color-mix(in srgb, var(--good) 10%, transparent); }
 .markdown .status-bad { background: color-mix(in srgb, var(--bad) 10%, transparent); }
@@ -54,7 +42,6 @@
 .markdown .status-bad .status { background: var(--bad); }
 .markdown .status-warning .status { background: var(--warn); }
 
-/* Callouts: a colored bar and title, by kind. */
 .markdown .callout { --kind: var(--accent); border-left: 4px solid var(--kind); background: color-mix(in srgb, var(--kind) 8%, transparent); border-radius: 0 6px 6px 0; padding: 8px 12px; margin: 0 0 12px; }
 .markdown .callout > :last-child { margin-bottom: 0; }
 .markdown .callout-title { color: var(--kind); font-weight: 650; margin: 0 0 4px; }
@@ -67,5 +54,4 @@
 .markdown .callout-error { --kind: var(--bad); }
 .markdown .callout-error .callout-title::before { content: "✕"; }
 
-/* The explanation above the choices. */
 .explanation { margin: 0 0 16px; }

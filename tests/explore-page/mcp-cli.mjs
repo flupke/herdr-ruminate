@@ -1,15 +1,8 @@
-// Drives `e2e mcp` from a shell, for an agent that has no e2e MCP server registered: it starts
-// the server over stdio, runs the tool calls given as arguments in one session, prints each
-// result's text, then closes the session. It runs mcp.sh, from any directory:
-//
-//   node tests/explore-page/mcp-cli.mjs '{"tool":"open_session","args":{"target":"desktop"}}' \
-//     '{"tool":"call","args":{"tool":"locate","args":{"role":"radio","name":"Keep the draft"}}}'
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-// The same server that `claude mcp add e2e` registers: this project's e2e, with its config.
 const here = dirname(fileURLToPath(import.meta.url));
 const server = spawn(join(here, 'mcp.sh'), [], { stdio: ['pipe', 'pipe', 'inherit'] });
 const pending = new Map();

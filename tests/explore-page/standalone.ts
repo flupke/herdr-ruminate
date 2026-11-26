@@ -1,25 +1,16 @@
-// The standalone page server and a headless Chromium, started outside the e2e runner, with the
-// themes and window sizes they shoot the page in: for the screenshot gallery (gallery/gallery.ts)
-// and throwaway scripts (script.ts).
 import { type ChildProcess, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { type Browser, chromium, type Page } from 'playwright';
 import { startChromium, stopChromium } from './nix-chromium.ts';
 import { SERVER } from './server.ts';
 
-/** The page's themes, in the order of the gallery's contact sheet. */
 export const THEMES = ['light', 'dark'] as const;
 export type Theme = (typeof THEMES)[number];
 
-/**
- * The height of a window `width` CSS pixels wide: a phone's below 600 pixels. A full-page
- * screenshot extends it to the whole page.
- */
 export function windowHeight(width: number): number {
   return width < 600 ? 844 : 900;
 }
 
-/** The standalone page server, on a free port. */
 export class StandaloneServer {
   private readonly child: ChildProcess;
   readonly baseUrl: string;
@@ -29,7 +20,6 @@ export class StandaloneServer {
     this.baseUrl = baseUrl;
   }
 
-  /** Starts the server with `args` besides its port (`--data rich`, `--fixed-clock`). */
   static async start(args: string[]): Promise<StandaloneServer> {
     const child = spawn(SERVER, ['--port', '0', ...args], {
       stdio: ['ignore', 'pipe', 'inherit'],
@@ -52,7 +42,6 @@ export class StandaloneServer {
   }
 }
 
-/** The headless Chromium: the dev shell's when it names one, attached over CDP. */
 export async function launch(): Promise<{ browser: Browser; close: () => Promise<void> }> {
   const executable = process.env.E2E_CHROMIUM;
   if (!executable) {
@@ -70,16 +59,10 @@ export async function launch(): Promise<{ browser: Browser; close: () => Promise
   };
 }
 
-/**
- * Waits until the client has drawn the round, with its fonts loaded and every diagram drawn or
- * failed. Moves of the round leave the page showing the round's latest view: the page was opened
- * after the round moved, or the action it sent has its reply, which follows the view.
- */
 export async function settle(page: Page): Promise<void> {
   await page.waitForFunction(drawn);
 }
 
-/** In the page: whether the client drew a view, its fonts and diagrams included. */
 function drawn(): boolean {
   const sources = document.querySelectorAll('.markdown pre > code.language-mermaid').length;
   const failed = document.querySelectorAll('figure.diagram.failed').length;

@@ -1,10 +1,5 @@
 import type { Register } from 'claude-code'
 
-// The first lines of the reviewer's own prompts (crate review-explore-runner): a round's turn, its
-// Implement and its Post review, whole, as the reviewer writes them. Only these switch the model:
-// words a person types, a report, a pasted log or a message between agents that quotes the line
-// switch nothing, since leads and workers load this plugin too. `round-prompts.ts`, which a test
-// of the runner writes from its prompts, holds them to what the reviewer sends.
 const ROUND_TURN =
   /^Explore round \S+: read .+ and follow it\. The turn ends in one call to submit_question or submit_conclusion, tools of the \S+ MCP server\.$/
 const IMPLEMENT =
@@ -17,17 +12,12 @@ const isReviewersPrompt = (text: string) => {
   return ROUND_TURN.test(first) || first === IMPLEMENT || first === POST_REVIEW
 }
 
-// The line those prompts carry, on a line of its own, when the reviewer knows the model and the
-// effort the round runs on, herdr-bowtie's reviewer's (crate review-explore-model), before the
-// text the reviewer wrote, which may quote it.
 const REVIEWERS_TEXT = /\n(?:Tasks|Review) from the reviewer:\n/
 const ROUND_MODEL = /^Explore runs on (\S+) at (low|medium|high|xhigh|max) effort\.$/m
 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
-// The model and the effort of the last round prompt this Claude Code read. Its main loop runs
-// on them from then on, until the process ends or a later round names others, whatever the
-// prompts in between. Claude Code's own /model and /effort would save them as the user's
+// Claude Code's own /model and /effort would save a round's model and effort as the user's
 // defaults for new sessions.
 let round: { model: string; effort: Effort } | undefined
 
@@ -42,7 +32,6 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // A subagent keeps its own model and effort: the one that implements runs on the worker's.
   on('turn.step', async function* ($, e, next) {
     if (e.agentId !== undefined || round === undefined) {
       return yield* next(e)

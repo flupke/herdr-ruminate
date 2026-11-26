@@ -1,19 +1,9 @@
-/* The masthead: one row above every screen (docs/design/explore-page/README.md, "Masthead"),
-   drawn by client/masthead.js: the product's name, the review's title, the round rail with the
-   design map behind "Design ▾", the chat's place, and the ⋯ menu. Its content lines up with the
-   page's column, whatever the window's width. Its bottom hairline is an element of its own,
-   `.masthead-line`, across the whole window: the meter draws on it. */
 :root {
-  /* The row's height, under which the column at the window's left begins on a desktop
-     (left-column.css). */
   --masthead-height: 57px;
-  /* The chat's bubble's room at the left of the row on a desktop: its width (chat.css) and the
-     space after it. */
   --bubble-room: calc(var(--bubble-width) + 14px);
 }
 .masthead {
   position: relative;
-  /* Its popovers open over the page's sticky panel. */
   z-index: var(--layer-masthead);
   box-sizing: border-box;
   display: flex;
@@ -28,8 +18,6 @@
   height: 1px;
   background: var(--line);
 }
-/* The product's name, then the review's revision and its title on one line, in the row's free
-   space: the rail and the menu sit at the right. */
 .masthead .identity {
   flex: 1 1 auto;
   display: flex;
@@ -48,7 +36,6 @@
   text-overflow: ellipsis;
 }
 .masthead .review code, .menu-review code { font-size: 13px; }
-/* The Linear issues the change names, after the title, which gives way before them. */
 .masthead .issues {
   flex: none;
   display: flex;
@@ -67,15 +54,7 @@
 .menu-review .issue:hover, .menu-review .issue:focus-visible,
 .past-references .issue:hover, .past-references .issue:focus-visible { text-decoration: underline; }
 .menu-review .issue + .issue { margin-left: 8px; }
-/* A wider gap after the revision than between words, as the pane's header leaves before the
-   title. */
 .masthead .review .revision, .menu-review .revision { margin-right: 0.3em; }
-/* The chat's bubble, once there is one: beside the menu, and on a desktop at the left of the
-   row, at the window's gutter, above the chat it opens (left-column.css), which stands there too.
-   masthead.js puts it first in the row there, so that it is first to the keyboard as well. The
-   product's name then begins after it, or where the page's column begins when that is further:
-   with the chat or the list of past rounds open beside the page (from 89rem, layout.css), where
-   the reading column begins. */
 .masthead-chat:empty { display: none; }
 @media (min-width: 70rem) {
   .masthead-chat {
@@ -89,7 +68,6 @@
     padding-left: max(calc(var(--gutter) + var(--bubble-room)), var(--column-start));
   }
 }
-/* It moves with the column at the window's left only, never when the bubble first shows. */
 @media (min-width: 89rem) {
   body:has(> .left-column:not([hidden])) .masthead { transition: padding-left var(--drawer-out) ease; }
   body:has(> .left-column.open) .masthead {
@@ -101,8 +79,6 @@
   body:has(> .left-column:not([hidden])) .masthead, body:has(> .left-column.open) .masthead { transition: none; }
 }
 
-/* The round rail: done steps with a green check, the current step in accent and underlined,
-   later steps muted. */
 .rail { flex: none; font-size: 13px; }
 .rail > ol { display: flex; align-items: center; gap: 22px; margin: 0; padding: 0; list-style: none; }
 .rail .step { position: relative; white-space: nowrap; }
@@ -114,14 +90,10 @@
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 .rail .step.later { color: var(--muted); opacity: 0.7; }
-/* While another screen shows, the round's own step is the next one: ink, no underline. */
 .rail .step.next { color: var(--ink); }
-/* A step that leads to a screen: a done question to its earlier question, the next step back
-   to the round. */
 .rail .step-link { color: inherit; text-decoration: none; }
 .rail .step-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-/* "Design ▾": a step that opens the design map. */
 .design-toggle {
   margin: -4px -8px;
   padding: 4px 8px;
@@ -138,10 +110,8 @@
 }
 .design-toggle .caret { margin-left: 5px; color: var(--muted); font-size: 10px; }
 
-/* The popovers of the masthead: the design map and the menu. */
 .design-map, .menu-popover {
   position: absolute;
-  /* Over the masthead's hairline and the meter drawn on it (tokens.css, the stacking order). */
   z-index: var(--layer-popover);
   box-sizing: border-box;
   border: 1px solid var(--line);
@@ -156,8 +126,6 @@
 }
 .design-map[hidden], .menu-popover[hidden] { display: none; }
 
-/* The design map: the change's thesis, its four parts with their gist, and a link to the
-   design. */
 .design-map {
   top: calc(100% + 10px);
   right: -8px;
@@ -212,7 +180,6 @@
 }
 .design-map .map-open:hover { text-decoration: underline; }
 
-/* The ⋯ menu: Copy the round's link, then Reset, which turns into its confirmation in place. */
 .menu { position: relative; flex: none; }
 .menu-toggle {
   display: grid;
@@ -259,7 +226,6 @@
   cursor: pointer;
 }
 .menu-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-/* An entry the browser does not allow: it stays in the tab order for its note. */
 .menu-item[aria-disabled="true"] { color: var(--muted); cursor: default; }
 .menu-item[aria-disabled="true"]:hover { background: none; }
 .menu-note { color: var(--muted); font-size: 13px; }
@@ -276,21 +242,15 @@
 .menu-popover .reset, .menu-popover .drawing-board { display: grid; gap: 12px; margin: 0; padding: 10px; }
 .menu-popover .reset .hint, .menu-popover .drawing-board .hint { margin: 0; }
 .menu-popover .reset .button, .menu-popover .drawing-board .button { justify-self: start; }
-/* The review's title, in the menu on a phone only. */
 .menu-review { display: none; }
 
-/* Phone: the rail shows two chips, the design and the current step; the review's title moves
-   into the menu. */
 @media (max-width: 40rem) {
   .masthead { gap: 8px; }
   .masthead .review, .masthead .issues { display: none; }
   .rail { font-size: 12px; font-weight: 650; }
   .rail > ol { gap: 6px; }
-  /* Too little room beside the product's name (masthead.js `fit`): the chips of the screens
-     beside the one shown give way, and one comes back while a swipe heads there (swipe.css). */
   .masthead.crowded .rail .step.near:not(.current):not(.target):not(.design-step) { display: none; }
   .rail .step.done:not(.design-step), .rail .step.later { display: none; }
-  /* The popovers open under the masthead, across the screen. */
   .rail .step, .menu { position: static; }
   .rail .step.current, .design-toggle {
     margin: 0;
@@ -308,7 +268,6 @@
     border-radius: var(--radius-pill);
     line-height: 1.5;
   }
-  /* The design viewed: its own chip takes the accent. */
   .rail .step.design-step.current:has(.design-toggle) { padding: 0; border: 0; }
   .rail .step.design-step.current .design-toggle { border-color: var(--accent); }
   .design-map, .menu-popover {

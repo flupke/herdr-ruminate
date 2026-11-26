@@ -1,7 +1,3 @@
-// Back to the drawing board: in place of an answer, the reviewer sends the agent back to the
-// drawing board from the design screen, the answer's panel or the masthead's menu, behind a
-// confirmation; the agent then concludes with the changes the design needs. The comment typed in
-// the answer's box goes with it, from each of the three, as the reviewer's reason.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
@@ -16,21 +12,18 @@ test('the reviewer sends the agent back to the drawing board from the design scr
   await explore.askQuestion();
   const design = screen.getByRole('region', 'Design of the change');
 
-  // The first click turns the button into its confirmation, and sends nothing yet.
   await design.getByRole('button', 'Back to the drawing board…').tap();
   await expect(design.getByRole('button', 'Back to the drawing board…')).toHaveCount(0);
   expect(await explore.answers()).toEqual([]);
   await design.getByRole('button', 'Confirm: back to the drawing board').tap();
   await expect(screen.getByRole('status')).toContainText('The agent is working on your answer to question 1');
   await expect(screen.getByRole('region', 'Your answer to question 1')).toContainText('Back to the drawing board');
-  // With no comment typed, it sends none.
   expect(await explore.answers()).toEqual([SENT_BACK]);
 
   await explore.conclude();
   await expect(screen.getByRole('textbox', 'To be implemented')).toBeVisible();
   await expect(screen.getByRole('region', 'Your decisions')).toContainText('Back to the drawing board');
 
-  // Cancel answer takes it back, as any answer: the question waits again.
   await screen.getByRole('button', 'Cancel this answer…').tap();
   await screen.getByRole('button', 'Confirm: cancel my answer').tap();
   await expect(screen.getByRole('button', 'Send answer')).toBeVisible();
@@ -47,7 +40,6 @@ test('the comment typed in the answer goes to the agent from the design screen',
   await design.getByRole('button', 'Back to the drawing board…').tap();
   await design.getByRole('button', 'Confirm: back to the drawing board').tap();
 
-  // The page stays on the design screen, whose rail shows the agent at work.
   await expect(screen.getByRole('link', 'Q1 · working')).toBeVisible();
   expect(await explore.answers()).toEqual([{ ...SENT_BACK, comment: REASON }]);
   await screen.getByRole('link', 'Q1 · working').tap();
@@ -62,7 +54,6 @@ test('the reviewer sends the agent back to the drawing board from the menu, with
   await explore.askQuestion();
   await screen.getByRole('link', 'Go to question 1').tap();
   const question = screen.getByRole('region', 'Question 1');
-  // Under the answer, Escape takes the confirmation back.
   await question.getByRole('button', 'Back to the drawing board…').tap();
   await question.getByRole('button', 'Confirm: back to the drawing board').press('Escape');
   await expect(question.getByRole('button', 'Back to the drawing board…')).toBeVisible();

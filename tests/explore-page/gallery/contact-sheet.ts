@@ -1,37 +1,26 @@
-// The contact sheet of a gallery, `index.html`: each state with its screenshots side by side,
-// and, given an earlier gallery to compare with, before and after for each image that differs.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Theme } from '../standalone.ts';
 import type { GalleryState } from './states.ts';
 
-/** One screenshot of a gallery. */
 export interface Shot {
   state: string;
   width: number;
   theme: Theme;
-  /** The file's name in the gallery's folder. */
   file: string;
 }
 
-/** How a screenshot compares with the one of the same name in the earlier gallery. */
 type Change = 'same' | 'changed' | 'new';
 
 const escape = (text: string) =>
   text.replace(/[&<>"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]!);
 
-/** The width a screenshot is shown at on the sheet: a phone's larger, to stay readable. */
 const shownWidth = (width: number) => Math.round(width >= 600 ? width * 0.35 : width * 0.6);
 
-/** A screenshot as a link to the full-size file. */
 function image(source: string, shot: Shot, label: string): string {
   return `<a href="${escape(source)}"><img src="${escape(source)}" width="${shownWidth(shot.width)}" alt="${escape(label)}" loading="lazy"></a>`;
 }
 
-/**
- * The contact sheet of the `shots` of `states`, written to `output`, compared with the gallery
- * in `compare` when given, and a summary of the comparison for the run's output.
- */
 export function contactSheet(
   states: GalleryState[],
   shots: Shot[],

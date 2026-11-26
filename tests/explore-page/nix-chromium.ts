@@ -1,14 +1,11 @@
-// Lease the dev shell's Chromium (E2E_CHROMIUM, from nixpkgs) as a "hosted"
-// browser. Playwright's downloaded build is linked against an FHS system and does not run on
-// NixOS, and the web engine has no option for a browser executable, so the engine attaches to
-// this one over CDP instead. One headless Chromium per worker slot, killed on release.
+// Playwright's downloaded Chromium does not run on NixOS, and e2e's web engine takes no browser
+// executable: the engine attaches to the dev shell's Chromium over CDP.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserProvider } from '@e2e-dev/web';
 
-/** A headless Chromium this file started, which `stopChromium` stops. */
 export interface LocalLease {
   id: string;
   cdpEndpoint: string;
@@ -16,9 +13,8 @@ export interface LocalLease {
   profile: string;
 }
 
-// What Playwright passes when it launches Chromium itself (playwright-core 1.63,
-// chromiumSwitches), minus what only matters for a headed or a persistent browser. Without
-// them Chromium talks to Google services in the background.
+// Playwright's switches for Chromium (playwright-core 1.63, chromiumSwitches): without them
+// Chromium talks to Google services in the background.
 const SWITCHES = [
   '--headless',
   '--remote-debugging-port=0',
@@ -38,7 +34,7 @@ const SWITCHES = [
   '--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,' +
     'DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,' +
     'PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,OptimizationHints,' +
-    // Not in Playwright's list: stops the secure DNS probe to a public resolver.
+    // Chromium: stops the secure DNS probe to a public resolver.
     'DnsOverHttps',
   '--enable-automation',
   '--disable-domain-reliability',
@@ -70,13 +66,11 @@ function alive(pid: number): boolean {
   }
 }
 
-// Stops the browser's process group, then removes its profile.
 async function stop(pid: number | undefined, profile: string): Promise<void> {
   if (pid !== undefined) {
     try {
       process.kill(-pid, 'SIGTERM');
     } catch {
-      // Already gone.
     }
     for (let waited = 0; alive(pid) && waited < 5_000; waited += 50) {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -84,17 +78,11 @@ async function stop(pid: number | undefined, profile: string): Promise<void> {
     try {
       if (alive(pid)) process.kill(-pid, 'SIGKILL');
     } catch {
-      // Gone in between.
     }
   }
   rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-/**
- * Starts a headless Chromium from `executable` with a profile of its own, and gives the address
- * to attach to it over CDP; `signal`, when given, cancels the start. The screenshot gallery uses
- * it directly.
- */
 export async function startChromium(executable: string, signal?: AbortSignal): Promise<LocalLease> {
   const profile = mkdtempSync(join(tmpdir(), 'e2e-chromium-'));
   const child = spawn(executable, [...SWITCHES, `--user-data-dir=${profile}`, 'about:blank'], {
@@ -130,7 +118,6 @@ export async function startChromium(executable: string, signal?: AbortSignal): P
   }
 }
 
-/** Stops a Chromium `startChromium` started, and removes its profile. */
 export async function stopChromium(lease: LocalLease): Promise<void> {
   await stop(lease.pid, lease.profile);
 }

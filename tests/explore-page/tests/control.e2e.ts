@@ -1,6 +1,3 @@
-// The reviewer controls the round from the page, as from the reviewer's Explore tab: Stop
-// waiting, Retry, Cancel answer, Reset. `explore.actions()` lists the actions the page sent, as
-// the session took them.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
@@ -35,7 +32,6 @@ test('the reviewer cancels the last answer, and its question waits again', async
   await explore.answerInPane();
   await expect(screen.getByRole('region', 'Your answer to question 1').getByRole('radio', 'Keep the draft')).toBeChecked();
 
-  // Cancel this answer asks for a confirmation first, and takes nothing back yet.
   await screen.getByText('Cancel this answer…').tap();
   expect(await explore.actions()).toEqual([]);
   await screen.getByRole('button', 'Confirm: cancel my answer').tap();

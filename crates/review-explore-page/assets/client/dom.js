@@ -8,10 +8,6 @@
  */
 
 /**
- * An element: `h('p', { class: 'hint' }, 'Text')`. A prop that is `false`, `null` or `undefined`
- * is left out, `true` sets an empty attribute, and a function prop starting with `on` listens to
- * the event. Children that are strings become text nodes; `false`, `null` and `undefined` are
- * skipped, and arrays, nested or not, are flattened.
  * @template {keyof HTMLElementTagNameMap} K
  * @param {K} tag
  * @param {Props} [props]
@@ -45,11 +41,6 @@ function append(element, children) {
 }
 
 /**
- * The agent's plain `text`, such as a choice or its reason, with each Markdown code span
- * (`` `name` ``) drawn as code: text nodes and `<code class="inline-code">` elements, never
- * HTML. A span follows Markdown's rule: a run of backticks opens it and the next run of as many
- * closes it, a line break inside is a space, and one space inside each end goes when both ends
- * have one. A run that nothing closes stays as it is written, and so does other Markdown.
  * @param {string} text
  * @returns {(string | HTMLElement)[]}
  */
@@ -74,19 +65,21 @@ export function codeSpans(text) {
   return nodes;
 }
 
-/** How many backticks run from `at`, a run's length.
+/**
  * @param {string} text
- * @param {number} at */
+ * @param {number} at
+ */
 function runLength(text, at) {
   let end = at;
   while (text[end] === '`') end += 1;
   return end - at;
 }
 
-/** Where the first run of exactly `width` backticks from `from` starts, or -1.
+/**
  * @param {string} text
  * @param {number} from
- * @param {number} width */
+ * @param {number} width
+ */
 function closingRun(text, from, width) {
   for (let at = text.indexOf('`', from); at >= 0; ) {
     const run = runLength(text, at);
@@ -96,24 +89,18 @@ function closingRun(text, from, width) {
   return -1;
 }
 
-/** The text of a code span between its backticks.
- * @param {string} inside */
+/** @param {string} inside */
 function spanText(inside) {
   const line = inside.replace(/\r\n|\r|\n/g, ' ');
   return line.startsWith(' ') && line.endsWith(' ') && /[^ ]/.test(line) ? line.slice(1, -1) : line;
 }
 
 /**
- * The one place where HTML goes into the page: the agent's Markdown, which the tool rendered
- * (and which shows raw HTML as text). A `<script>` inserted this way never runs, and the content
- * security policy forbids inline scripts anyway. Each table is put in a frame that scrolls.
  * @param {Element} element
  * @param {string} html
  */
 export function setRenderedMarkdown(element, html) {
   element.innerHTML = html;
-  // Each table in a frame of its own, which scrolls sideways when the table is wider than its
-  // column (markdown.css).
   for (const table of element.querySelectorAll('table')) {
     const frame = document.createElement('div');
     frame.className = 'table-frame';
@@ -123,8 +110,6 @@ export function setRenderedMarkdown(element, html) {
 }
 
 /**
- * The other place where HTML goes into the page: the SVG that Mermaid drew from a diagram's
- * source, in its strict mode, which encodes the agent's labels and turns click directives off.
  * @param {Element} figure
  * @param {string} svg
  */
@@ -132,9 +117,9 @@ export function setDiagramDrawing(figure, svg) {
   figure.innerHTML = svg;
 }
 
-/** A `div.markdown` holding the agent's rendered Markdown.
+/**
  * @param {string} html
- * @param {string} [extra] more classes
+ * @param {string} [extra]
  */
 export function markdown(html, extra) {
   const element = h('div', { class: extra ? `markdown ${extra}` : 'markdown' });
@@ -142,15 +127,10 @@ export function markdown(html, extra) {
   return element;
 }
 
-/**
- * A region of a parent element: the nodes it shows sit just before its anchor, a comment, so
- * that regions keep their order and the stylesheet's sibling selectors still see the nodes as
- * siblings. `show` rebuilds the nodes only when the key changed.
- */
 export class Region {
   /**
    * @param {Element} parent
-   * @param {string} name names the anchor, for a reader of the page's DOM
+   * @param {string} name
    */
   constructor(parent, name) {
     this.anchor = document.createComment(name);
@@ -159,16 +139,14 @@ export class Region {
     this.nodes = [];
     /** @type {string | undefined} */
     this.key = undefined;
-    /** @type {unknown} the component the region shows, when it shows one */
+    /** @type {unknown} */
     this.current = undefined;
   }
 
   /**
-   * Shows what `build` makes for `key`, unless the region shows that key already. A `null` key
-   * empties the region.
    * @param {string | null} key
    * @param {() => Node | Node[] | null} build
-   * @returns {boolean} whether the region was rebuilt
+   * @returns {boolean}
    */
   show(key, build) {
     if (key === null) {
@@ -187,8 +165,6 @@ export class Region {
   }
 
   /**
-   * Shows the component that `create` makes for `key`, unless the region shows that key
-   * already, then returns it, so that the caller updates its parts in place.
    * @template {{ element: Node }} C
    * @param {string} key
    * @param {() => C} create
@@ -211,19 +187,12 @@ export class Region {
   }
 }
 
-/** The key of a region that shows `data`: it changes whenever the data does.
- * @param {unknown} data
- */
+/** @param {unknown} data */
 export function keyOf(data) {
   return JSON.stringify(data);
 }
 
-/**
- * Runs `change`, which may replace the node that has the focus, and gives the focus back to the
- * text box of the same draft (its `data-draft`), with its selection and scroll, or to the control
- * of the same `data-focus-key` unless it is disabled now.
- * @param {() => void} change
- */
+/** @param {() => void} change */
 function keepingFocus(change) {
   const focused = document.activeElement;
   const key = focused instanceof HTMLElement ? focused.dataset.focusKey : undefined;

@@ -1,52 +1,28 @@
-// The swipe between screens, on a phone (docs/design/explore-page/README.md, "Swipe between
-// screens"; prototype SwipeDemo.dc.html): the design, each earlier question and the round's
-// current stage sit side by side in the rail's order. A sideways drag moves the screen with the
-// finger, its neighbour beside it; past the threshold (48 pixels), the neighbour's chip on the
-// rail fills, a 3-pixel accent edge lights on the side the reviewer heads to, and the phone ticks
-// where it can. Released past the threshold, or flicked faster than 0.5 pixels a millisecond,
-// the page turns to the neighbour in 280 milliseconds; released before, it springs back. At either
-// end, the screen follows the finger at 0.35 of its pace. A frame that scrolls sideways (a
-// table, a diagram) keeps the gesture for its own scroll.
-//
-// The turn changes the address (route.js), so the browser's Back returns to the screen before.
-
 /**
- * One screen of the track: the address that shows it, its element, and the step of the rail
- * that names it (masthead.js, `data-screen`).
  * @typedef {{ address: string, element: HTMLElement, step: string }} Screen
  * @typedef {{ screens: Screen[], shown: number }} Track
  */
 
-/** How far a drag goes before it turns the page, in pixels. */
 const THRESHOLD = 48;
-/** How fast a flick goes to turn the page, in pixels per millisecond. */
 const FLICK = 0.5;
-/** How far a pointer moves before the gesture is a swipe or a scroll. */
 const SLOP = 8;
-/** How much of the drag the screen follows at either end of the track. */
 const RUBBER_BAND = 0.35;
-/** How long the turn and the spring back take, in milliseconds. */
 const SNAP = 280;
 const EASING = 'cubic-bezier(.2, .8, .2, 1)';
-/** The page's phone layout, the only one that swipes. */
 const PHONE = matchMedia('(max-width: 40rem)');
 
 export class Swipe {
   /**
-   * @param {HTMLElement} main the page's `main`, which holds the screens
+   * @param {HTMLElement} main
    * @param {{ track: () => Track, settled: (address: string | null, top: number) => void,
-   *   chip: (step: string, on: boolean) => void }} page what the page tells and does: its track,
-   *   the end of a swipe, which turned to the screen at `address`, whose top it left at `top` in
-   *   the window, or sprang back (`null`), and the fill of a step's chip
+   *   chip: (step: string, on: boolean) => void }} page
    */
   constructor(main, page) {
     this.main = main;
     this.page = page;
-    /** The gesture under way, from its first pointer down. @type {Gesture | null} */
+    /** @type {Gesture | null} */
     this.gesture = null;
-    /** Whether a turn or a spring back is playing. */
     this.settling = false;
-    /** Whether the click that ends a drag is to be swallowed. */
     this.swallowClick = false;
     this.edges = {
       left: edge('left'),
@@ -57,7 +33,6 @@ export class Swipe {
     main.addEventListener('pointermove', (event) => this.move(event));
     main.addEventListener('pointerup', (event) => this.up(event));
     main.addEventListener('pointercancel', () => this.cancel());
-    // A drag that turned or sprang back is not a click on what it started on.
     main.addEventListener(
       'click',
       (event) => {
@@ -70,7 +45,6 @@ export class Swipe {
     );
   }
 
-  /** Whether a swipe moves the screens: the page leaves them as they are until it ends. */
   get active() {
     return this.settling || Boolean(this.gesture?.drag);
   }
@@ -100,7 +74,6 @@ export class Swipe {
     const dy = event.clientY - gesture.y0;
     if (!gesture.drag) {
       if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
-      // A vertical gesture is the page's scroll.
       if (Math.abs(dy) >= Math.abs(dx)) {
         this.gesture = null;
         return;
@@ -129,12 +102,11 @@ export class Swipe {
     const drag = gesture.drag;
     if (!drag) return;
     this.swallowClick = true;
-    // A touch drag fires no click: the next activation is not this drag's.
+    // The browser fires no click after a touch drag.
     setTimeout(() => {
       this.swallowClick = false;
     });
     const { dx } = gesture;
-    // A finger that held still before it let go flicks nothing.
     const velocity = event.timeStamp - gesture.lastT > 100 ? 0 : gesture.velocity;
     const forward = (dx <= -THRESHOLD || velocity < -FLICK) && drag.next !== null;
     const backward = (dx >= THRESHOLD || velocity > FLICK) && drag.previous !== null;
@@ -148,15 +120,12 @@ export class Swipe {
     if (drag) this.settle(drag, null, 0);
   }
 
-  /** The drag of the screen that shows, with its neighbours beside it, or `null` when the page
-   * shows a single screen. @returns {Drag | null} */
+  /** @returns {Drag | null} */
   startDrag() {
     const { screens, shown } = this.page.track();
     const current = screens[shown];
     if (!current || screens.length < 2) return null;
     const box = current.element.getBoundingClientRect();
-    // The neighbours show from their top, where the screen's top is, or at the window's top once
-    // the reviewer scrolled past it.
     const top = Math.max(box.top, 0);
     const drag = {
       current,
@@ -187,8 +156,6 @@ export class Swipe {
   }
 
   /**
-   * Moves the screens with the finger, `dx` pixels from where the drag started, and arms the
-   * turn past the threshold.
    * @param {Drag} drag
    * @param {number} dx
    */
@@ -210,7 +177,6 @@ export class Swipe {
   }
 
   /**
-   * Puts the screen `offset` pixels from its place, its neighbours beside it.
    * @param {Drag} drag
    * @param {number} offset
    * @param {boolean} animate
@@ -230,8 +196,6 @@ export class Swipe {
   }
 
   /**
-   * Turns to `to`, sliding the screens by one width in `direction` (-1 to the next, 1 to the
-   * previous), or springs back when `to` is `null`; then leaves the screens as the address says.
    * @param {Drag} drag
    * @param {Screen | null} to
    * @param {number} direction
@@ -253,7 +217,6 @@ export class Swipe {
       }
       this.main.classList.remove('swiping');
       if (!to) for (const screen of [drag.previous, drag.next]) if (screen) screen.element.hidden = true;
-      // The page shows the screen it turns to before the browser paints again.
       this.page.settled(to ? to.address : null, drag.top);
     };
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) done();
@@ -262,15 +225,13 @@ export class Swipe {
 }
 
 /**
- * A gesture from its pointer down: where it started, the latest move and its velocity, and the
- * drag once it is a sideways one.
  * @typedef {{ pointer: number, x0: number, y0: number, lastX: number, lastT: number,
  *   velocity: number, dx: number, drag: Drag | null }} Gesture
  * @typedef {{ current: Screen, previous: Screen | null, next: Screen | null, width: number,
  *   top: number, box: DOMRect, armed: Screen | null }} Drag
  */
 
-/** The edge that lights on one side of the screen. @param {'left' | 'right'} side */
+/** @param {'left' | 'right'} side */
 function edge(side) {
   const element = document.createElement('div');
   element.className = `swipe-edge ${side}`;
@@ -279,8 +240,6 @@ function edge(side) {
 }
 
 /**
- * Whether a gesture that starts on `target` belongs to it rather than to the swipe: a text box,
- * or a frame that scrolls sideways (a table, a diagram).
  * @param {Element} target
  * @param {Element} main
  */

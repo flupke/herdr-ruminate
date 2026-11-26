@@ -1,15 +1,8 @@
-/* The stages of the round, each in its own block. The tokens and the type scale are in
-   tokens.css, the buttons in buttons.css, the status card in status.css, the masthead in
-   masthead.css, and the page's frame with the desk-and-panel grid in layout.css. No stage has a
-   border: space, hairlines and type weight group things; only what the reviewer acts on or
-   reads as one object (a choice, a text box, code, a table, a figure) has a frame. */
 .question, .conclusion, .quiz { margin: 0 0 32px; }
 .text { font-weight: 600; }
 
-/* Phone: a long word or address wraps instead of widening the page. */
 .text { overflow-wrap: anywhere; }
 
-/* A text box and its label: a comment, the list to be implemented. */
 .comment-label { font-weight: 600; }
 .comment, .tasks {
   padding: 8px 10px;
@@ -20,16 +13,10 @@
   font: inherit;
   resize: vertical;
 }
-/* Revision, wherever the page names the review (the start cover, the masthead, its menu): the
-   prefix that names it in the ink, bold, then the rest of the abbreviation dimmed, as jj sets
-   them apart in the pane's header (client/revision.js). Without a prefix, it shows plain. */
 .revision .revision-prefix { color: var(--ink); font-weight: 700; }
 .revision .revision-prefix + .revision-rest { color: var(--muted); }
-/* The start cover, when no round is running: the review's title as the headline, a muted line
-   that says where it is, then Start and Start with Challenger, each with one line under it. */
 .start-cover { max-width: calc(var(--measure) + 34px); padding-top: 24px; }
 .start-cover > .eyebrow { margin-bottom: 8px; }
-/* Status cards above the cover (a failed start, nothing left to review) stand in for its eyebrow. */
 .status-card ~ .start-cover { padding-top: 0; }
 .start-cover h1 { max-width: 20em; margin: 0 0 8px; overflow-wrap: anywhere; }
 .start-cover .meta { margin: 0 0 24px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
@@ -37,7 +24,6 @@
 .start { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; }
 .start-choice { display: grid; gap: 8px; align-content: start; }
 .start-choice .hint { margin: 0; }
-/* Whose change: across the start form, above its buttons. */
 .start-whose { grid-column: 1 / -1; display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
 .start-whose legend { padding: 0; margin-bottom: 4px; }
 .start-whose-option { display: flex; gap: 8px; align-items: center; }
@@ -45,23 +31,15 @@
 .start-name[hidden] { display: none; }
 .start-name input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--canvas); color: inherit; max-width: 24rem; }
-/* Both start buttons have the height of the primary one, side by side. */
 .start .button { min-height: 44px; }
 @media (max-width: 40rem) {
   .start .button { min-height: 48px; }
 }
 
-/* Controlling the round, as in the reviewer's Explore tab: Cancel answer in the previous turn
-   (turn.css), the saved implementation request, and Back to the drawing board under the answer
-   and on the design screen; Reset is in the masthead's menu, with Back to the drawing board. Stop
-   waiting, Retry and the cancel of an implementation request sit in the actions of their
-   status card. */
 .cancel-answer, .resend-implementation, .drawing-board { display: grid; gap: 12px; margin: 12px 0; }
 .cancel-answer .hint, .drawing-board .hint { margin: 0; }
 .cancel-answer button, .resend-implementation button, .drawing-board button { justify-self: start; }
 
-/* The quiet line that says when the page cannot reach the review tool, and the line that says
-   the page needs JavaScript. */
 .connection, .no-script {
   box-sizing: border-box;
   max-width: var(--page);

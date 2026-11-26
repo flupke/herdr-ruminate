@@ -1,11 +1,3 @@
-// The design screen: the design of the change as a screen of its own, which opens the round and
-// which the reviewer opens again from any later stage (route.js has its addresses). The reading
-// column holds the change's thesis and its four parts, each led by its thesis, then the glossary
-// of the change, for reference; the panel, the design map, marks the part in view and ends on
-// the way back to the round. On a phone the map
-// sits under the thesis, each part's header stays at the top of the screen while the part
-// scrolls, and a bar pinned to the bottom of the screen holds the way back.
-
 /** @import { DesignView, DesignPartView, QuestionView } from "./types.ts" */
 
 import { DOORS, doorChip } from './chips.js';
@@ -15,7 +7,6 @@ import { glossaryList } from './glossary.js';
 import { designPart, STAGE } from './route.js';
 
 /**
- * The step the round stands at, which the way back from the design goes to.
  * @typedef {{ kind: 'question', number: number, working: boolean } | { kind: 'quiz' }
  *   | { kind: 'conclusion' }} Current
  */
@@ -34,8 +25,8 @@ export class DesignScreen {
   /**
    * @param {DesignView} design
    * @param {Current | null} current
-   * @param {QuestionView | null} question the question the round waits for, if any
-   * @param {{ [term in string]?: string }} glossary the terms of the change with their definitions
+   * @param {QuestionView | null} question
+   * @param {{ [term in string]?: string }} glossary
    */
   update(design, current, question, glossary) {
     const asked = current?.kind === 'question' && question !== null ? question : null;
@@ -58,8 +49,7 @@ export class DesignScreen {
     if (map || parts) this.spy.watch();
   }
 
-  /** Scrolls to part `number` of the design, or to its top, and marks that part as the one in
-   * view. @param {number | null} number */
+  /** @param {number | null} number */
   scrollTo(number) {
     const target = number === null ? null : document.getElementById(designPart(number).slice(1));
     if (target) target.scrollIntoView();
@@ -72,10 +62,10 @@ export class DesignScreen {
   }
 }
 
-/** The change's thesis as the headline, and how long the design is. `before` is the question
- * the round waits for, which the design is read before, if any.
+/**
  * @param {DesignView} design
- * @param {number | null} before */
+ * @param {number | null} before
+ */
 function head(design, before) {
   const thesis = h('h2', { id: 'design-title' });
   setRenderedMarkdown(thesis, design.thesis_html);
@@ -91,10 +81,11 @@ function head(design, before) {
   );
 }
 
-/** The design map: a link to each part with its thesis, then where the round stands.
+/**
  * @param {DesignPartView[]} parts
  * @param {Current | null} current
- * @param {QuestionView | null} question */
+ * @param {QuestionView | null} question
+ */
 function designMap(parts, current, question) {
   return h(
     'nav',
@@ -104,7 +95,6 @@ function designMap(parts, current, question) {
       'ol',
       {},
       parts.map((part, index) => {
-        // The link is named by the part's title, and described by its gist.
         const gist = h('span', { class: 'gist', id: `design-gist-${index + 1}`, 'aria-hidden': 'true' });
         setRenderedMarkdown(gist, part.thesis_html);
         return h(
@@ -124,9 +114,10 @@ function designMap(parts, current, question) {
   );
 }
 
-/** Under the map, where the round stands: the question it waits for, and the way to it.
+/**
  * @param {Current} current
- * @param {QuestionView | null} question */
+ * @param {QuestionView | null} question
+ */
 function next(current, question) {
   return h(
     'div',
@@ -135,15 +126,14 @@ function next(current, question) {
     question ? markdown(question.text_html, 'next-text') : null,
     question ? h('p', { class: 'hint' }, 'Its choices and evidence open on the next screen.') : null,
     goTo(current),
-    // A design that is wrong from the start needs no answer to its first question.
     question?.answerable ? drawingBoard(question) : null,
   );
 }
 
-/** The bar pinned to the bottom of a phone's screen: where the round stands, with the Door of
- * the question it waits for, and the way to it.
+/**
  * @param {Current} current
- * @param {import('./types.ts').Door | null} door */
+ * @param {import('./types.ts').Door | null} door
+ */
 function bar(current, door) {
   const name = stepName(current);
   const state = [`Current · ${name.charAt(0).toUpperCase()}${name.slice(1)}`];
@@ -152,8 +142,7 @@ function bar(current, door) {
   return h('div', { class: 'design-bar' }, h('p', {}, state.join(' · ')), goTo(current));
 }
 
-/** The way to the step the round stands at, from the design or from an earlier question.
- * @param {Current} current */
+/** @param {Current} current */
 export function goTo(current) {
   return h(
     'a',
@@ -163,7 +152,7 @@ export function goTo(current) {
   );
 }
 
-/** "question 2", "the quiz", "the conclusion". @param {Current} current */
+/** @param {Current} current */
 function stepName(current) {
   switch (current.kind) {
     case 'question':
@@ -175,10 +164,11 @@ function stepName(current) {
   }
 }
 
-/** One part: its number, its name and "2 / 4", its thesis, then its text.
+/**
  * @param {DesignPartView} part
  * @param {number} index
- * @param {DesignPartView[]} parts */
+ * @param {DesignPartView[]} parts
+ */
 function partSection(part, index, parts) {
   const number = index + 1;
   const id = designPart(number).slice(1);
@@ -204,27 +194,18 @@ function partSection(part, index, parts) {
   );
 }
 
-/**
- * Marks the part in view, in the map and in its header, and the parts above it as read: the
- * part in view is the last one whose top passed the upper third of the window (at most 240
- * pixels down), or the last part
- * once the page is scrolled to its end. The observer only says when to look again; the links of
- * the map work without it.
- */
 class PartSpy {
   /** @param {HTMLElement} screen */
   constructor(screen) {
     this.screen = screen;
     /** @type {IntersectionObserver | null} */
     this.parts = null;
-    // The end of the design coming into view.
     this.ending = new IntersectionObserver(() => this.mark());
     this.onResize = () => this.watch();
-    /** The part the page scrolls to, until when. @type {{ number: number, until: number } | null} */
+    /** @type {{ number: number, until: number } | null} */
     this.reached = null;
   }
 
-  /** Observes the parts' tops crossing the line, which moves with the window's height. */
   watch() {
     this.parts?.disconnect();
     this.ending.disconnect();
@@ -238,12 +219,7 @@ class PartSpy {
     this.mark();
   }
 
-  /**
-   * Marks part `number` as the one in view while the page scrolls to it: a part near the end
-   * of the design may not reach the top of the window, and the scroll the page makes to it does
-   * not count as the reviewer's.
-   * @param {number} number
-   */
+  /** @param {number} number */
   reach(number) {
     this.reached = { number, until: performance.now() + 300 };
     this.mark();
@@ -279,8 +255,6 @@ class PartSpy {
   }
 }
 
-/** The line a part's top passes to be the part in view: the upper third of the window, at most
- * 240 pixels down. */
 function line() {
   return Math.min(window.innerHeight / 3, 240);
 }

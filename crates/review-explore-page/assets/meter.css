@@ -1,10 +1,4 @@
-/* The meter on the masthead's hairline (docs/design/explore-page/README.md, "Meter"), drawn by
-   client/meter.js inside `.masthead-line`: at rest a 2px green bar, the marked share of the
-   changed lines; hovered, focused or open, an 8px bar split by who marked the lines, and a
-   window with the numbers. */
 .meter {
-  /* Every colour of the grown bar is opaque, mixed against the canvas, so that the masthead's
-     hairline never shows through it. */
   --meter-track: color-mix(in srgb, var(--ink) 8%, var(--canvas));
   --meter-others: color-mix(in srgb, var(--good) 70%, var(--canvas));
   --meter-jev: color-mix(in srgb, var(--good) 40%, var(--canvas));
@@ -16,7 +10,6 @@
 }
 .meter[hidden] { display: none; }
 
-/* The bar: 2px at rest, 8px (3px below the masthead's edge to 5px above) once grown. */
 .meter-bar, .meter-glow {
   position: absolute;
   left: 0;
@@ -24,7 +17,6 @@
   height: 2px;
   transition: height 180ms ease, bottom 180ms ease, background-color 180ms ease;
 }
-/* The bar only shows: the strip below owns the pointer and the focus. */
 .meter-bar { right: 0; pointer-events: none; }
 .meter.grown .meter-bar, .meter.grown .meter-glow {
   bottom: -3px;
@@ -34,8 +26,6 @@
   background: var(--meter-track);
 }
 
-/* The segments: every marked line in green at rest, so that the bar reads as one share; split
-   by who marked them once grown. The green edge advances over 800ms. */
 .meter-segment {
   position: absolute;
   top: 0;
@@ -46,14 +36,12 @@
 }
 .meter-segment.pending { background: var(--meter-hatch); opacity: 0; }
 .meter.grown .meter-segment {
-  /* A canvas-coloured separator at the end of each part. */
   box-shadow: inset -1px 0 var(--canvas);
 }
 .meter.grown .meter-segment.others { background: var(--meter-others); }
 .meter.grown .meter-segment.jev { background: var(--meter-jev); }
 .meter.grown .meter-segment.pending[data-lines] { opacity: 1; }
 
-/* A one-shot glow on the marked share when an answer marked more lines. */
 .meter-glow { opacity: 0; pointer-events: none; }
 .meter-glow.glowing {
   background: var(--good);
@@ -66,10 +54,6 @@
   100% { opacity: 0; }
 }
 
-/* What the pointer and the keyboard reach: a 16px strip across the window, the same at rest and
-   grown, which holds the grown bar (3px below the masthead's edge to 5px above) with 4px to
-   spare on each side: growing the bar never moves the pointer in or out of the target. It stays
-   clear of the masthead's controls above and of the page below. */
 .meter-strip {
   position: absolute;
   left: 0;
@@ -85,12 +69,6 @@
 }
 .meter-strip:focus-visible { outline-offset: 3px; }
 
-/* The window: under the pointer, 15px below the masthead, after a 120ms grace so that a pointer
-   passing by does not flash it. The handoff's 520px is its least width; it grows as its longest
-   path needs, within the room client/meter.js gives it (`--meter-room`: up to `--meter-most`,
-   and never past the viewport's gutters or over the panel), and keeps the width it opened with
-   (`--meter-width`). Past the viewport's height, the list of files scrolls under the totals and
-   the legend. */
 .meter-window {
   position: absolute;
   top: 15px;
@@ -148,8 +126,6 @@
   background: repeating-linear-gradient(135deg, var(--accent) 0 3px, color-mix(in srgb, var(--accent) 35%, transparent) 3px 6px);
 }
 .meter-swatch.left { background: var(--meter-track); }
-/* One row for each file, on shared columns: the path takes the room the longest path needs,
-   the bar a fixed width, the state its content, against the window's right edge. */
 .meter-files {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 160px max-content;
@@ -167,9 +143,6 @@
   grid-template-columns: subgrid;
   align-items: center;
 }
-/* A path that does not fit loses its start to an ellipsis, so that its file's name and the
-   nearest directories stay: its box runs right to left, and its text sits in a left-to-right
-   isolate (client/meter.js), so that punctuation such as the dot of `.github/` stays in place. */
 .meter-path { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; }
 .meter-file-bar {
   display: flex;
@@ -182,8 +155,6 @@
 .meter-file-state { justify-self: end; color: var(--muted); white-space: nowrap; }
 .meter-file-state .cited { color: var(--accent); }
 
-/* The size of a change, in the window and on the start cover (client/change-size.js):
-   "+125 −10". */
 .change-size .added { color: var(--good); }
 .change-size .removed { color: var(--bad); }
 

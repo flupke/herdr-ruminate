@@ -1,13 +1,9 @@
-// The blind first pick: a question that is hard to reverse hides the agent's recommendation until
-// the reviewer's first Send, which records the pick and sends no answer; Confirm answer then
-// sends it.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
 const RECOMMENDATION = 'Renaming keeps every file, and the new names stay readable.';
 const COMMENT = 'Renaming hides which file the user meant to keep.';
 
-/** A one-way question, which recommends renaming. */
 const ONE_WAY = (() => {
   const consequence = (summary: string) => ({ summary, evidence: [], unknowns: ['No caller was checked.'] });
   return {
@@ -46,8 +42,6 @@ test('the first Send shows the recommendation and keeps the comment, then the re
   await comment.fill(COMMENT);
   await question.getByRole('radio', 'Overwrite the older file').check();
   await question.getByRole('button', 'Send answer').tap();
-  // The first Send records the pick and sends no answer: the recommendation shows, and the
-  // button now confirms; the comment waits in its box.
   await expect(screen.getByText(RECOMMENDATION, { exact: false })).toBeVisible();
   await expect(screen.getByText('The agent recommends another choice.')).toBeVisible();
   await expect(comment).toHaveValue(COMMENT);

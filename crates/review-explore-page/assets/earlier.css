@@ -1,12 +1,6 @@
-/* An earlier question, read only (client/earlier.js): the question on the desk as the question
-   screen draws it (question.css, citations.css), and in the panel what the reviewer answered,
-   what it marked and what the agent recorded, then the way back to the round. The answer card
-   and the line of what it marked are in answer-card.css; on a phone the panel follows the headline as a rounded block, as in the swipe's
-   prototype (SwipeDemo.dc.html), rather than from edge to edge. */
 .earlier-panel > .eyebrow, .earlier-panel p { margin: 0; }
 .earlier-panel > .hint { font-size: 14px; }
 
-/* What the agent recorded: the previous turn's block (turn.js), under a hairline. */
 .earlier-record { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 15px; }
 .earlier-record .eyebrow { margin: 0 0 8px; }
 .earlier-record .markdown > :first-child { margin-top: 0; }
@@ -20,6 +14,5 @@
 }
 @media (max-width: 40rem) {
   .earlier-panel.panel { margin-inline: 0; padding: 12px; border-radius: var(--radius); }
-  /* The previous turn clamps its texts on a phone (turn.css); here the record is the point. */
   .earlier-record .turn-text { display: block; overflow: visible; -webkit-line-clamp: none; line-clamp: none; }
 }

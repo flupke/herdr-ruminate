@@ -1,5 +1,3 @@
-/* The glossary (client/glossary.js): each use of a term, marked so that the reviewer sees at a
-   glance that it has a definition; the definition beside it; the list at the end of the design. */
 .term {
   text-decoration: underline dotted var(--accent) 2px;
   text-underline-offset: 3px;
@@ -11,7 +9,6 @@
 
 .term-tip {
   position: fixed;
-  /* Above the column at the window's left, whose sheet covers the page on a phone. */
   z-index: calc(var(--layer-left-column) + 1);
   max-width: min(22rem, calc(100vw - 16px));
   padding: 8px 10px;

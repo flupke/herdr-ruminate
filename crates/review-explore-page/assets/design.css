@@ -1,15 +1,7 @@
-/* The design screen (docs/design/explore-page/README.md, "1. Design screen"; design review,
-   findings 28 and 29): the change's thesis and its four parts in the reading column, the design
-   map in the panel. On a phone the map sits under the thesis, each part's header stays at the
-   top of the screen while its part scrolls, and a bar pinned to the bottom holds the way back
-   to the round. The figures and tables of the parts are drawn as everywhere on the page
-   (diagrams.css, markdown.css). */
-
 .design-head { display: grid; gap: 8px; margin: 0 0 28px; }
 .design-head h2 { margin: 0; max-width: var(--measure); text-wrap: pretty; overflow-wrap: anywhere; }
 .design-head .meta { margin: 0; color: var(--muted); font-size: 14px; }
 
-/* A part: its number, its name and "2 / 4", its thesis, then its figure, table and prose. */
 .design-part { margin: 0 0 44px; scroll-margin-top: 16px; }
 .part-head { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
 .part-head h3 { margin: 0; }
@@ -24,8 +16,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The numbered discs of the parts, in their headers and in the map: outlined, filled with the
-   accent for the part in view, and green in the map for the parts read. */
 .design-screen .n {
   box-sizing: border-box;
   display: inline-grid;
@@ -42,7 +32,6 @@
 .design-nav li.current .n { border-color: var(--accent-fill); background: var(--accent-fill); color: #fff; }
 .design-nav li.read .n { border-color: var(--good); background: var(--good); color: var(--canvas); }
 
-/* The design map: each part with its gist, then where the round stands. */
 .design-nav.panel { gap: 4px; }
 .design-nav > .eyebrow { margin: 0 0 6px; padding: 0 8px; }
 .design-nav ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
@@ -69,11 +58,9 @@
 .design-next .hint { margin: 0; font-size: 13px; }
 .design-next .button { margin-top: 4px; }
 
-/* The bar pinned to the bottom, on a phone only. */
 .design-bar { display: none; }
 
 @media (max-width: 40rem) {
-  /* The bar leaves room for the end of the design above it. */
   .design-screen { padding-bottom: 104px; }
   .design-head { gap: 6px; margin-bottom: 14px; }
   .design-head .meta { font-size: 13px; }

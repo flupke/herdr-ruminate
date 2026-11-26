@@ -1,9 +1,3 @@
-/* Diagrams drawn by Mermaid (client/diagrams.js; design review, finding 30), the design's and a
-   question's alike: a figure on the panel's surface, with a hairline in the light theme, at the
-   drawing's natural size, or shrunk a little to fit, or in a frame that scrolls sideways with
-   shadows at the edges that hide more and a caption that says so. A diagram whose nodes are
-   classed new or changed has a legend under it. On a phone the figure runs from edge to edge.
-   A diagram Mermaid could not draw shows its source and Mermaid's message. */
 .markdown .diagram {
   box-sizing: border-box;
   max-width: var(--figure);
@@ -15,9 +9,8 @@
   background: var(--panel);
 }
 .markdown .diagram .drawing > svg { display: block; height: auto; }
-/* Mermaid measures each label away from the page, then sizes its box to that measure: a label
-   that broke anywhere, as the Markdown's text does (markdown.css), would wrap past its box's
-   height, which clips its second line. A long name keeps to one line, as measured. */
+/* Mermaid sizes a label's box from a measure taken away from the page: a label that wraps
+   here would overflow its box. */
 .markdown .diagram .drawing { overflow-wrap: normal; }
 .markdown .diagram figcaption { position: sticky; left: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13px; }
 .markdown .diagram .legend { display: flex; gap: 14px; margin-top: 10px; }
@@ -35,9 +28,7 @@
 .markdown .diagram .key.new::before { border-color: var(--good); background: color-mix(in srgb, var(--good) 18%, transparent); }
 .markdown .diagram .key.changed::before { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
 .markdown .diagram .scroll-hint { display: none; margin-top: 10px; }
-/* A diagram too wide for the figure's width reads across the whole reading column. */
 .markdown .diagram.wide { max-width: none; }
-/* "Open large", under a diagram shown smaller than its natural size or scrolling. */
 .markdown .diagram .diagram-open {
   margin-top: 10px;
   padding: 0;
@@ -50,8 +41,6 @@
   cursor: pointer;
 }
 .markdown .diagram .diagram-open[hidden] { display: none; }
-/* The diagram at its natural size, over the dimmed page: the dialog scrolls both ways and
-   closes with Escape or its button. */
 .diagram-dialog {
   box-sizing: border-box;
   max-width: calc(100vw - 32px);
@@ -85,8 +74,6 @@
   }
 }
 
-/* A diagram Mermaid could not draw (design review, finding 22): the same neutral frame, a
-   muted caption, the source as code, and Mermaid's message behind a fold. */
 .markdown .diagram.failed figcaption { position: static; display: block; margin: 0 0 8px; }
 .markdown .diagram.failed > pre { margin: 0 0 8px; background: none; padding: 0; }
 .markdown .diagram.failed .disclosure-toggle { font-size: 13px; }

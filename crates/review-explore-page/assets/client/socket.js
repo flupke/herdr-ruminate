@@ -1,31 +1,13 @@
-// The page's one socket to the review tool, at /ws (crate::socket, crate::rpc). The tool sends
-// the whole view when the socket opens and at each change; the page sends the reviewer's actions
-// as requests in the shape of JSON-RPC 2.0, each answered once, matched by its `id`.
-//
-// What is ours, beside the browser's WebSocket: reconnection with a capped exponential back-off
-// with full jitter, a watchdog that opens a new socket when the tool's pings stop (a laptop that
-// slept, a phone that changed networks), and an immediate check when the page is shown again or
-// the network comes back. Nothing is replayed after a reconnect: the new socket gets the current
-// view. Actions wait while the socket is down; none is queued to be sent later.
-
 /**
  * @import { Call, Reply, Notification, StateParams } from "./types.ts"
  */
 
-/** The tool pings every 10 seconds (crate::socket::HEARTBEAT): a socket silent for longer than
- * this is dead. */
 const SILENCE = 25_000;
-/** How long a check of a socket that should be alive waits for the tool's reply. */
 const CHECK = 3_000;
-/** A delay in milliseconds that the page's address may set for every reconnection, in place of
- * the back-off: the e2e tests set 0, so that a page reconnects at once. */
 const CHOSEN_DELAY = new URLSearchParams(location.search).get('reconnect-delay');
-/** The back-off: the first delay, and the longest. */
 const FIRST_DELAY = CHOSEN_DELAY === null ? 250 : Number(CHOSEN_DELAY);
 const LONGEST_DELAY = CHOSEN_DELAY === null ? 10_000 : Number(CHOSEN_DELAY);
-/** A socket that stayed open this long resets the back-off. */
 const STABLE = 5_000;
-/** The close code of a socket whose token no longer opens a round (crate::socket::TOKEN_ENDED). */
 const TOKEN_ENDED = 4001;
 
 /**
@@ -36,11 +18,10 @@ const TOKEN_ENDED = 4001;
 export class Link {
   /**
    * @param {{ state: (params: StateParams) => void, link: (state: LinkState) => void }} listener
-   * @param {string | null} past the past round the socket shows, by its identity, if any
+   * @param {string | null} past
    */
   constructor(listener, past) {
     this.listener = listener;
-    /** The past round the socket shows in place of the round the page follows. */
     this.past = past;
     /** @type {WebSocket | null} */
     this.socket = null;
@@ -57,7 +38,6 @@ export class Link {
     this.stableTimer = undefined;
   }
 
-  /** Opens the socket, and keeps one open until the token ends. */
   start() {
     this.connect();
     setInterval(() => this.watch(), 5_000);
@@ -110,7 +90,6 @@ export class Link {
   }
 
   /**
-   * Sends `call` and waits for its reply; rejects when the socket is down, or closes first.
    * @param {Call} call
    * @returns {Promise<Reply>}
    */
@@ -139,12 +118,7 @@ export class Link {
     }
   }
 
-  /**
-   * Opens the next socket after a delay: full jitter on a doubling, capped back-off. A socket
-   * refused at its upgrade may have a token that ended: the page asks the tool before it tries
-   * again.
-   * @param {boolean} wasOpen whether the socket closed cleanly
-   */
+  /** @param {boolean} wasOpen */
   retry(wasOpen) {
     const ceiling = Math.min(LONGEST_DELAY, FIRST_DELAY * 2 ** this.attempts);
     this.attempts++;
@@ -158,7 +132,6 @@ export class Link {
     }, delay);
   }
 
-  /** Whether the tool answers, and says that the page's token opens no round any more. */
   async tokenEnded() {
     try {
       const response = await fetch('/token', { cache: 'no-store' });
@@ -168,12 +141,10 @@ export class Link {
     }
   }
 
-  /** Opens a new socket when the tool has been silent for too long. */
   watch() {
     if (this.state === 'open' && Date.now() - this.lastHeard > SILENCE) this.reopen();
   }
 
-  /** Checks at once that the socket is alive: the page is shown again, or the network is back. */
   async check() {
     if (this.state === 'ended') return;
     if (this.state !== 'open') {
@@ -191,11 +162,7 @@ export class Link {
     if (!alive) this.reopen();
   }
 
-  /**
-   * Shows the past round `past`, or with `null` the round the page follows, on a new socket:
-   * a socket shows one round for as long as it is open.
-   * @param {string | null} past
-   */
+  /** @param {string | null} past */
   follow(past) {
     if (past === this.past || this.state === 'ended') return;
     this.past = past;
@@ -208,13 +175,10 @@ export class Link {
     this.connect();
   }
 
-  /** The socket shows the round the page follows, though the page asked for a past round that
-   * it could not open: the page's address no longer names that round, and the socket stays. */
   pastRefused() {
     this.past = null;
   }
 
-  /** Drops a socket that seems dead, and opens a new one at once. */
   reopen() {
     const socket = this.socket;
     this.socket = null;

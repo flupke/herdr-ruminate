@@ -1,13 +1,3 @@
-/* The page's design tokens and its type scale, in one place (docs/design/explore-page/README.md,
-   "Design tokens"). Every other stylesheet takes its colours, type and radii from here.
-
-   One meaning for each colour:
-   - accent (blue): the reviewer acts here, or this is selected; links;
-   - good (green): done, marked, correct;
-   - warn (amber): check something before you act;
-   - bad (red): failed, wrong, or destructive (only Confirm reset is filled with it);
-   - agent (purple): the agent's judgement, its recommendation and the conclusion callout.
-   Grey tints stay between 6 and 12%. */
 :root {
   color-scheme: light dark;
 
@@ -18,35 +8,22 @@
   --line: light-dark(color-mix(in srgb, #1f2328 15%, transparent), rgba(255, 255, 255, 0.12));
   --line-strong: light-dark(color-mix(in srgb, #1f2328 30%, transparent), rgba(255, 255, 255, 0.28));
   --code-bg: color-mix(in srgb, var(--ink) 7%, transparent);
-  /* Text, borders, selection and links. */
   --accent: light-dark(#0969da, #4493f8);
-  /* The fill of primary buttons, under white text. */
   --accent-fill: light-dark(#0969da, #1f6feb);
   --good: light-dark(#1a7f37, #3fb950);
   --warn: light-dark(#9a6700, #d29922);
   --bad: light-dark(#cf222e, #f85149);
   --agent: light-dark(#8250df, #ab7df8);
-  /* The fill of Confirm reset, under white text: on a dark page --bad is too light for it. */
   --bad-fill: light-dark(#cf222e, #da3633);
 
   --font: system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius-panel: 12px;
-  /* Cards, code, figures, buttons and text boxes. */
   --radius: 8px;
   --radius-status: 10px;
   --radius-pill: 999px;
 
-  /* The stacking order, from the back. The page's own layers (sticky table columns, the
-     design's sticky part heads and bottom bar, the swipe's screens and edge) stay under 5. On a
-     desktop the column at the window's left (the chat, the list of past rounds), beside the
-     page or over its left side, comes over them and under the masthead, so that the
-     masthead's popovers and the meter's window open over it.
-     The masthead holds, in its own stack: its hairline and the meter's bar and target, then the
-     design map and the ⋯ menu, then the meter's window. Over the masthead come "Add to chat",
-     then, below the desk's two columns, the left column's scrim and its sheet. A diagram opened
-     large is a modal dialog, in the browser's top layer, over everything. */
   --layer-left-column-beside: 5;
   --layer-masthead: 10;
   --layer-line: 1;
@@ -59,9 +36,6 @@
   --shadow-popover: 0 14px 36px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.55));
   --shadow-drawer: 0 18px 48px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.55));
 
-  /* A motion that settles: fast, then slowing to rest (the meter, a drawer). A drawer, and the
-     room the page makes for it, come in and go out in these ("Interactions & behaviour", the
-     chat). */
   --ease-settle: cubic-bezier(0.2, 0.8, 0.2, 1);
   --drawer-in: 280ms;
   --drawer-out: 220ms;
@@ -77,8 +51,6 @@ body {
 a { color: var(--accent); }
 code, kbd, pre, samp { font-family: var(--mono); }
 
-/* The type scale: the review's title on the start cover; a stage's headline (a question, a quiz
-   item, the conclusion, the design's thesis); a section heading; a small heading. */
 h1 { font-size: 26px; line-height: 1.25; font-weight: 650; }
 h2 { font-size: 22px; line-height: 1.35; font-weight: 650; }
 h3 { font-size: 17px; line-height: 1.4; font-weight: 650; }
@@ -87,7 +59,6 @@ h4 { font-size: 15px; line-height: 1.45; font-weight: 650; }
   h2 { font-size: 19px; }
 }
 
-/* A small label above what it names: "Choices", "Citations", "No round is running". */
 .eyebrow {
   margin: 0;
   color: var(--muted);
@@ -98,7 +69,6 @@ h4 { font-size: 15px; line-height: 1.45; font-weight: 650; }
   text-transform: uppercase;
 }
 
-/* Read by screen readers only, not drawn. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -108,9 +78,6 @@ h4 { font-size: 15px; line-height: 1.45; font-weight: 650; }
   white-space: nowrap;
 }
 
-/* Help beside an action, and other small text: muted by its colour, so that a link or code
-   inside keeps its own. */
 .hint { color: var(--muted); font-size: 14px; }
 
-/* Every control shows where the keyboard is. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

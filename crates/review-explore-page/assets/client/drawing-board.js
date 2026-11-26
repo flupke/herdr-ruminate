@@ -1,11 +1,3 @@
-// Back to the drawing board: in place of an answer to the question that waits, the agent stops
-// asking and lists the changes the design needs, which the reviewer edits and implements on the
-// conclusion. The question's panel and the design screen offer it as a button that a first click
-// turns into its red confirmation, with what follows under it, and Escape turns back; the
-// masthead's menu shows the same confirmation in place of its entries. All send the same request,
-// with the comment typed in the answer's box, wherever that box is: the agent reads it as the
-// reviewer's reason. The box keeps its draft, so Cancel answer finds the comment in it again.
-
 /** @import { QuestionView } from "./types.ts" */
 
 import { typedComment } from './answer-comment.js';
@@ -16,21 +8,17 @@ const HINT =
 
 const CONFIRM = 'Confirm: back to the drawing board';
 
-/** The hidden fields that name the question an answer answers, in the answer's form and in
- * Back to the drawing board's.
- * @param {QuestionView} question */
+/** @param {QuestionView} question */
 export function answerFields(question) {
   return [
     question.round !== null ? h('input', { type: 'hidden', name: 'round', value: question.round }) : null,
     h('input', { type: 'hidden', name: 'question', value: question.id }),
     h('input', { type: 'hidden', name: 'version', value: question.version }),
-    // The number a refusal names the question by.
     question.number > 0 ? h('input', { type: 'hidden', name: 'number', value: question.number }) : null,
   ];
 }
 
-/** "Back to the drawing board…", which a first click turns into its confirmation.
- * @param {QuestionView} question the question it answers */
+/** @param {QuestionView} question */
 export function drawingBoard(question) {
   /** @type {HTMLElement[]} */
   let shown = [];
@@ -56,8 +44,7 @@ export function drawingBoard(question) {
   return form;
 }
 
-/** The confirmation, which answers `question`: in the menu, in place of its entries.
- * @param {QuestionView} question */
+/** @param {QuestionView} question */
 export function drawingBoardConfirmation(question) {
   return drawingBoardForm(
     question,
@@ -66,10 +53,10 @@ export function drawingBoardConfirmation(question) {
   );
 }
 
-/** The form of Back to the drawing board, with `children`: it sends the question it answers, that
- * it is no answer, and the comment typed for the question.
+/**
  * @param {QuestionView} question
- * @param {...HTMLElement} children */
+ * @param {...HTMLElement} children
+ */
 function drawingBoardForm(question, ...children) {
   const form = h(
     'form',

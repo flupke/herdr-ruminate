@@ -1,10 +1,3 @@
-// The page: its screens, the design of the change, each earlier question as the reviewer
-// answered it, the answered quiz, and the round's current stage, of which the address shows one
-// (route.js); on a phone a swipe turns from one to the next (swipe.js). Each screen is a list of
-// regions, in the order the page shows them, drawn from the latest view (dom.js has the rules).
-// Each screen or region has its own module; a new part of the page is one more region here, and
-// one module.
-
 /** @import { AskedUnder, Call, PageView, Reply, StatusCard } from "./types.ts" */
 /** @import { Current } from "./design.js" */
 
@@ -33,42 +26,31 @@ import { turnStrip } from './turn.js';
 export class Page {
   /**
    * @param {HTMLElement} main
-   * @param {HTMLElement} header the masthead, above `main`
-   * @param {(call: Call) => Promise<Reply>} call sends a request on the page's socket
+   * @param {HTMLElement} header
+   * @param {(call: Call) => Promise<Reply>} call
    */
   constructor(main, header, call) {
     this.main = main;
     const redraw = () => {
       if (this.view) this.render(this.view);
     };
-    // The notifications the reviewer turns on in the masthead's menu.
     this.notifier = new Notifier(redraw);
-    // What only the masthead knows (what it has open) changes the page through `render` too.
     this.masthead = new Masthead(header, redraw, this.notifier);
     this.meter = new Meter(/** @type {HTMLElement} */ (header.querySelector('#masthead-line')));
-    // The tab's icon, which shows the meter's share, or the agent at work, in small.
     this.favicon = new Favicon();
-    // The round's conversation with the agent, whose bubble sits in the masthead.
     this.chat = new Chat(/** @type {HTMLElement} */ (header.querySelector('#masthead-chat')), call, () => {
       if (this.view) this.render(this.view);
     });
-    // The list of past rounds, which the masthead's menu opens in the chat's place.
     this.pastList = new PastList(redraw);
     this.quotes = new QuotePicker(main);
-    // The glossary's terms, marked in the screens and in the chat.
     this.glossary = new Glossary([main, this.chat.element]);
-    /** The design screen. */
     this.designScreen = h('div', { class: 'screen', hidden: true });
-    /** The round's current stage. */
     this.stage = h('div', { class: 'screen' });
-    /** The answered quiz, once the stage shows the conclusion after it. */
     this.quizScreen = h('div', { class: 'screen', hidden: true });
     main.append(this.designScreen, this.stage, this.quizScreen);
-    /** The line above the screens that says the page shows a past round, with the way back. */
     this.past = new Region(main, 'past');
     main.prepend(this.past.anchor);
-    /** The screen of each earlier question, by its number, after the stage: the stage's diagrams
-     * keep their numbers. @type {Map<number, { screen: HTMLElement, region: Region }>} */
+    /** @type {Map<number, { screen: HTMLElement, region: Region }>} */
     this.earlierScreens = new Map();
     this.design = new Region(this.designScreen, 'design');
     this.cards = new Region(this.stage, 'cards');
@@ -78,19 +60,15 @@ export class Page {
     this.question = new Region(this.stage, 'question');
     this.conclusion = new Region(this.stage, 'conclusion');
     this.answeredQuiz = new Region(this.quizScreen, 'answered-quiz');
-    /** The item the answered quiz shows, from 0, which its address names while it shows. */
     this.answeredItem = 0;
-    /** The screen the page shows, and the part of the design it shows. @type {string | null} */
+    /** @type {string | null} */
     this.shown = null;
-    /** The past round the page shows, or `null` for the round it follows. @type {string | null} */
+    /** @type {string | null} */
     this.shownPast = null;
-    /** The screen the page shows other than the stage, which the rail shows as the step in view.
-     * @type {import('./masthead.js').Viewing} */
+    /** @type {import('./masthead.js').Viewing} */
     this.viewed = null;
-    /** Where the stage was scrolled to when another screen opened. */
     this.stageScroll = 0;
-    /** Where a swipe left the top of the screen it turned to, in the window, until it shows.
-     * @type {number | null} */
+    /** @type {number | null} */
     this.swipedTo = null;
     /** @type {DesignScreen | null} */
     this.shownDesign = null;
@@ -104,19 +82,15 @@ export class Page {
           this.swipedTo = top;
           location.hash = here(address);
         }
-        // What changed while the swipe moved the screens shows now.
         if (this.view) this.render(this.view);
       },
       chip: (step, on) => this.masthead.target(step, on),
     });
     /** @type {PageView | null} */
     this.view = null;
-    /** Why the reviewer's latest action did not go through, until the round changes.
-     * @type {StatusCard | null} */
+    /** @type {StatusCard | null} */
     this.notice = null;
-    /** The quiz item the reviewer just answered or moved to while the quiz asks, which shows
-     * until the reviewer moves on; after the last item, until the reviewer shows the conclusion.
-     * @type {import('./quiz.js').QuizAt | null} */
+    /** @type {import('./quiz.js').QuizAt | null} */
     this.quizAt = null;
   }
 
@@ -134,9 +108,6 @@ export class Page {
     );
     this.renderQuestion(view);
     const quizShown = this.renderConclusion(view);
-    // The question, the quiz and the conclusion show the previous turn on their own desk, and a
-    // turn that carries the reviewer's answer shows that answer in its panel; any other stage,
-    // above it.
     const turn = turnOf(view);
     this.turn.show(view.question || view.conclusion || view.sent ? null : keyOf(turn), () => turnStrip(turn));
     this.renderSent(view);
@@ -144,7 +115,6 @@ export class Page {
     this.chat.update(view, chatPlace(view, this.viewed));
     this.pastList.update(view);
     this.quotes.update(view.conversation?.writable ?? false);
-    // While the quiz shows an item, the rail names it.
     const quiz = view.conclusion?.quiz;
     const rail = quiz && quizShown !== null ? railShowing(view.rail, quizShown, quiz.items.length) : view.rail;
     this.masthead.update(rail === view.rail ? view : { ...view, rail }, this.viewed, this.chat.unread(), this.quizLink());
@@ -156,9 +126,10 @@ export class Page {
     drawDiagrams(this.main);
   }
 
-  /** The design screen, the earlier questions' screens, the answered quiz, and which screen shows.
+  /**
    * @param {PageView} view
-   * @param {boolean} asking whether the stage shows the quiz, which asks for answers */
+   * @param {boolean} asking
+   */
   renderScreens(view, asking) {
     const current = currentStep(view);
     openRound(view, current?.kind === 'question' && !current.working ? current.number : null);
@@ -175,14 +146,10 @@ export class Page {
     }
     this.renderEarlier(view, current);
     const answered = this.renderAnsweredQuiz(view, asking);
-    // A swipe under way moves the screens; the page shows the address's screen once it ends.
     if (this.swipe.active) return;
     const asked = route();
     const showsDesign = asked.screen === 'design' && design !== null;
     const earlier = asked.screen === 'question' ? this.earlierScreens.get(asked.number) : undefined;
-    // An earlier question the round no longer has (its answer was cancelled) gives way to the
-    // stage, and so does its address, which would otherwise open it again once it is back.
-    // So does the answered quiz while the quiz still asks, or once the round has none.
     if ((asked.screen === 'question' && !earlier) || (asked.screen === 'quiz' && !answered)) {
       history.replaceState(history.state, '', here(STAGE));
     }
@@ -191,8 +158,6 @@ export class Page {
     for (const { screen } of this.earlierScreens.values()) screen.hidden = screen !== earlier?.screen;
     this.quizScreen.hidden = !showsQuiz;
     this.stage.hidden = showsDesign || earlier !== undefined || showsQuiz;
-    // Scroll only when the screen, or the part of the design the address names, changed: the
-    // quiz scrolls to the item it moves to by itself.
     const shown = showsDesign
       ? `design:${asked.screen === 'design' ? asked.part : ''}`
       : earlier && asked.screen === 'question'
@@ -202,8 +167,6 @@ export class Page {
           : 'stage';
     const past = view.past?.round ?? null;
     if (shown === this.shown && past === this.shownPast) return;
-    // The reviewer who opens another screen from the stage comes back to where they were; going
-    // to, from or between past rounds opens the round at its top.
     if (past !== this.shownPast) this.stageScroll = 0;
     else if (this.shown === 'stage') this.stageScroll = window.scrollY;
     this.shown = shown;
@@ -219,7 +182,6 @@ export class Page {
     const swiped = this.swipedTo;
     this.swipedTo = null;
     if (swiped !== null) {
-      // A swipe showed the screen's top where it now is: the page keeps it there.
       const screen = showsDesign ? this.designScreen : showsQuiz ? this.quizScreen : (earlier?.screen ?? this.stage);
       window.scrollTo(0, window.scrollY + screen.getBoundingClientRect().top - swiped);
     } else if (showsDesign) this.shownDesign?.scrollTo(asked.screen === 'design' ? asked.part : null);
@@ -227,9 +189,10 @@ export class Page {
     else scrollToFragment(this.stageScroll);
   }
 
-  /** Builds the screen of each earlier question, each rebuilt only when its data changes.
+  /**
    * @param {PageView} view
-   * @param {Current | null} current */
+   * @param {Current | null} current
+   */
   renderEarlier(view, current) {
     const numbers = new Set(view.earlier_questions.map((question) => question.number));
     for (const [number, { screen }] of this.earlierScreens) {
@@ -250,11 +213,9 @@ export class Page {
   }
 
   /**
-   * Builds the answered quiz, read only, at the item its address names, once the stage shows the
-   * conclusion after the quiz.
    * @param {PageView} view
-   * @param {boolean} asking whether the stage shows the quiz, which asks for answers
-   * @returns {boolean} whether the page has the answered quiz
+   * @param {boolean} asking
+   * @returns {boolean}
    */
   renderAnsweredQuiz(view, asking) {
     const conclusion = view.conclusion;
@@ -267,7 +228,6 @@ export class Page {
     const asked = route();
     if (asked.screen === 'quiz') {
       this.answeredItem = Math.min(asked.item, quiz.items.length) - 1;
-      // An item the quiz does not have gives way to its last one.
       if (asked.item > quiz.items.length) history.replaceState(history.state, '', here(quizItem(this.answeredItem + 1)));
     }
     this.answeredItem = Math.min(this.answeredItem, quiz.items.length - 1);
@@ -284,15 +244,12 @@ export class Page {
     return true;
   }
 
-  /** Whether the rail's quiz step opens the answered quiz: the page has it, which it has only
-   * while the stage shows the conclusion, and the reviewer answered at least one item. */
   quizLink() {
     const step = this.view?.rail.find((each) => each.step.kind === 'quiz');
     return this.answeredQuiz.current !== undefined && step !== undefined && quizOpens(step);
   }
 
-  /** The screens a swipe turns between, in the rail's order, and the one that shows.
-   * @returns {import('./swipe.js').Track} */
+  /** @returns {import('./swipe.js').Track} */
   track() {
     /** @type {import('./swipe.js').Screen[]} */
     const screens = [];
@@ -302,21 +259,17 @@ export class Page {
       const { screen } = /** @type {{ screen: HTMLElement }} */ (this.earlierScreens.get(number));
       screens.push({ address: earlierQuestion(number), element: screen, step: `question-${number}` });
     }
-    // The answered quiz, where its step on the rail opens it, or while it shows.
     const viewed = this.viewed;
     if (this.quizLink() || (this.answeredQuiz.current && viewed?.kind === 'quiz')) {
       screens.push({ address: quizItem(this.answeredItem + 1), element: this.quizScreen, step: 'quiz' });
     }
     screens.push({ address: STAGE, element: this.stage, step: 'round' });
-    // From what the page shows, rather than from which screens are hidden: a swipe shows the
-    // neighbours while it moves.
     const step =
       viewed === null ? 'round' : viewed.kind === 'question' ? `question-${viewed.number}` : viewed.kind;
     return { screens, shown: Math.max(screens.findIndex((screen) => screen.step === step), 0) };
   }
 
-  /** The answer the agent's turn carries, beside the turn's card.
-   * @param {PageView} view */
+  /** @param {PageView} view */
   renderSent(view) {
     const sent = view.sent;
     if (!sent) {
@@ -333,16 +286,14 @@ export class Page {
       this.question.clear();
       return;
     }
-    // A revised question keeps the screen: its parts follow the new version, and the comment box
-    // keeps the focus while the reviewer types.
     const key = keyOf([question.round, question.id, question.number]);
     this.question.component(key, () => new QuestionScreen(question)).update(question, turnOf(view), view.past !== null);
   }
 
-  /** The conclusion, or its quiz first: the item the reviewer just answered or moved to, or the
-   * next one to answer.
+  /**
    * @param {PageView} view
-   * @returns {number | null} the quiz item the page shows, from 0, if any */
+   * @returns {number | null}
+   */
   renderConclusion(view) {
     const conclusion = view.conclusion;
     if (!conclusion) {
@@ -376,11 +327,7 @@ export class Page {
     return null;
   }
 
-  /**
-   * Shows why the reviewer's latest action did not go through, until the round changes or the
-   * reviewer acts again.
-   * @param {StatusCard | null} notice
-   */
+  /** @param {StatusCard | null} notice */
   showNotice(notice) {
     this.notice = notice;
     if (this.view) this.render(this.view);
@@ -388,10 +335,8 @@ export class Page {
 }
 
 /**
- * Where the page shows the chat, which a message is written under: the design, an earlier
- * question, the question with its version, or the conclusion; nothing in another stage.
  * @param {PageView} view
- * @param {import('./masthead.js').Viewing} viewed the screen the page shows, other than the stage
+ * @param {import('./masthead.js').Viewing} viewed
  * @returns {import('./chat.js').Place}
  */
 function chatPlace(view, viewed) {
@@ -408,9 +353,10 @@ function chatPlace(view, viewed) {
   return { askedUnder, question: view.question !== null };
 }
 
-/** The step the round stands at, from the rail; `null` when no round is running.
+/**
  * @param {PageView} view
- * @returns {Current | null} */
+ * @returns {Current | null}
+ */
 function currentStep(view) {
   for (const { step, state } of view.rail) {
     if (state.kind !== 'current') continue;
@@ -428,21 +374,18 @@ function currentStep(view) {
   return null;
 }
 
-/** Shows what the address's fragment names on the stage, or else scrolls the page to `top`.
- * @param {number} top */
+/** @param {number} top */
 function scrollToFragment(top) {
-  // A past round's address names the round, not a part of the stage.
   const named = location.hash.length > 1 && location.hash !== STAGE && pastRound() === null;
   const target = named ? document.getElementById(location.hash.slice(1)) : null;
   if (target && !target.closest('[hidden]')) target.scrollIntoView();
   else window.scrollTo(0, top);
 }
 
-/** The previous turn of the view: the reviewer's latest answer, which can be cancelled until an
- * implementation request is made, and what the agent's turn said back to it. An answer that can
- * no longer be cancelled still shows, as the round kept it.
+/**
  * @param {PageView} view
- * @returns {import('./turn.js').Turn} */
+ * @returns {import('./turn.js').Turn}
+ */
 function turnOf(view) {
   const kept = view.cancellable
     ? null

@@ -1,10 +1,3 @@
-// The start cover, when no round is running: the review the page belongs to as the headline,
-// where it is and how large its change is, then whose change it is, then Start and Start with
-// Challenger, each with one line that says what it does. For someone else's change, the
-// reviewer may give their name, which the agent reads.
-// The status cards above it say why the latest start failed, or that nothing is left to review,
-// in place of the eyebrow; then both buttons are inactive, described by that card.
-
 /** @import { MarkTally, StartView, ReviewName } from "./types.ts" */
 
 import { h } from './dom.js';
@@ -15,12 +8,9 @@ import { revisionCode, revisionText } from './revision.js';
 /**
  * @param {StartView} start
  * @param {ReviewName | null} review
- * @param {MarkTally | null} tally the review marks of the change, which give its size
+ * @param {MarkTally | null} tally
  */
 export function startCover(start, review, tally) {
-  // Whose change it is, mine unless the reviewer says otherwise, and their name for someone
-  // else's.
-  // Both are kept for the tab, as drafts are, so that a rebuild of the cover keeps them.
   const whose = () => {
     const others = kept('start:whose') === 'others';
     const name = keepDraft(

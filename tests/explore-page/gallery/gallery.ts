@@ -21,7 +21,6 @@ import { openSession } from '../tests/session.ts';
 import { contactSheet, type Shot } from './contact-sheet.ts';
 import { type GalleryState, STATES } from './states.ts';
 
-/** The states, widths and folders of a run, from the environment. */
 class Options {
   readonly states: GalleryState[];
   readonly widths: number[];
@@ -46,18 +45,9 @@ class Options {
   }
 }
 
-/**
- * The time of the server's fixed clock (`FIXED_NOW_MS` in
- * crates/review-explore-page-server/src/sessions.rs), which stamps every start and turn: the
- * pages stand 42 seconds after it, so that a time since reads "0:42" in every run.
- */
 const SERVER_CLOCK_MS = 1_791_000_000_000;
 const PAGE_CLOCK_MS = SERVER_CLOCK_MS + 42_000;
 
-/**
- * Makes the window as tall as the page, so that a part sized to the window, such as the sticky
- * column of the reviewer's actions, shows whole instead of scrolling inside itself.
- */
 async function showWhole(page: Page, width: number): Promise<void> {
   for (let tries = 0; tries < 3; tries++) {
     const whole = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -66,23 +56,19 @@ async function showWhole(page: Page, width: number): Promise<void> {
   }
 }
 
-/** Where a gallery's screenshots come from: the browser, and the server it opens pages of. */
 interface Studio {
   browser: Browser;
   baseUrl: string;
 }
 
-/** Takes the screenshot of `state` at `width` in `theme`, into `output`. */
 async function shoot(studio: Studio, state: GalleryState, width: number, theme: Theme, output: string): Promise<Shot> {
   const context = await studio.browser.newContext({
     viewport: { width, height: windowHeight(width) },
     colorScheme: theme,
     reducedMotion: 'reduce',
-    // Clock times read the same on every machine.
     timezoneId: 'UTC',
   });
   try {
-    // The page's clock stands still at a fixed time; its timers still run.
     await context.clock.setFixedTime(PAGE_CLOCK_MS);
     const page = await context.newPage();
     const session = await openSession(studio.baseUrl, {
@@ -99,7 +85,6 @@ async function shoot(studio: Studio, state: GalleryState, width: number, theme: 
   }
 }
 
-/** Runs `jobs`, at most `limit` at a time, and returns their results in order. */
 async function pooled<T>(jobs: (() => Promise<T>)[], limit: number): Promise<T[]> {
   const results: T[] = new Array(jobs.length);
   let next = 0;

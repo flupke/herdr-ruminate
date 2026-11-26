@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Runs the e2e tests of the Explore page, then fails when the page broke its content security
-# policy, and prints the end of the server's log when the run failed.
-#
-# Arguments go to `e2e run` as they are.
 set -uo pipefail
 cd "$(dirname "$0")"
 

@@ -1,14 +1,3 @@
-/* Buttons: one box, five tiers (docs/design/explore-page/README.md, "Design tokens"; design
-   review, finding 21). Give a button the class `button` and its tier:
-   - `primary`: the one thing to do in this view, filled with --accent-fill;
-   - `secondary`: an action beside it, with a strong hairline and ink text;
-   - `outline`: an accent outline and accent text (the chat's Send, Ask);
-   - `quiet`: underlined muted text, for actions that should not compete (Cancel answer, Skip
-     the quiz, Reset);
-   - `danger`: a red fill, only for Confirm reset.
-   Add `block` for the full width of the panel. In the panel the primary action comes last, at
-   full width; in a status card and in the flow, actions sit in a left-aligned row, primary
-   first. */
 .button {
   box-sizing: border-box;
   display: inline-flex;
@@ -30,7 +19,6 @@
   transition: background-color 150ms, border-color 150ms;
 }
 .button.block { display: flex; width: 100%; }
-/* "Go to question 2 →": the arrow follows its words at a space's width, not the gap's. */
 .button .arrow { margin-inline-start: -3px; }
 
 .button.primary {
@@ -40,8 +28,6 @@
   font-weight: 600;
 }
 .button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-fill) 88%, #000); }
-/* Dimmed until it can act: on a dark page, a faint fill under faint white; on a light page,
-   where faint white on a pale fill cannot be read, the accent's text on its tint. */
 .button.primary:disabled {
   background: light-dark(color-mix(in srgb, var(--accent-fill) 14%, transparent), color-mix(in srgb, var(--accent-fill) 35%, transparent));
   color: light-dark(color-mix(in srgb, var(--accent) 60%, transparent), rgb(255 255 255 / 0.6));
@@ -79,9 +65,6 @@
   .button.primary { min-height: 48px; }
 }
 
-/* A disclosure (client/disclosure.js): a muted line with its ▸ that shows or hides an action
-   behind a fold ("Edit before sending"). A disclosure may open from a button
-   of another tier instead. */
 .disclosure-toggle {
   padding: 0;
   border: 0;
@@ -92,13 +75,10 @@
   text-align: left;
   cursor: pointer;
 }
-/* The marks are decoration: the empty alternative text keeps them out of the button's name. */
 .disclosure-toggle::before { content: "▸" / ""; display: inline-block; width: 1.1em; font-size: 11px; }
 .disclosure-toggle[aria-expanded="true"]::before { content: "▾" / ""; }
 .disclosure-toggle:hover { color: var(--ink); }
 .disclosure-body { margin: 12px 0 0; }
-/* A row that opens as a whole (Door and Blast radius, the gain line): the disclosure's button
-   holds what the row shows folded, after its ▸. */
 .disclosure-row {
   display: flex;
   align-items: baseline;

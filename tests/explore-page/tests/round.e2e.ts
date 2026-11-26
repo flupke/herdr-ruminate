@@ -1,5 +1,3 @@
-// The page follows the round as the pane and the agent move it, with no reload by the reviewer,
-// and keeps what the reviewer is typing.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
@@ -12,8 +10,6 @@ test('the page follows an answer given in the pane, the next question, then the 
   const design = screen.getByRole('region', 'Design of the change');
   await expect(design).toBeVisible();
 
-  // The design that opened the round gives way to the round once it moves on in the pane; the
-  // answer shows, which the reviewer may cancel.
   await explore.answerInPane();
   await expect(screen.getByRole('status')).toContainText('The agent is working');
   await expect(design).toBeHidden();
@@ -22,8 +18,6 @@ test('the page follows an answer given in the pane, the next question, then the 
   await explore.askQuestion();
   await expect(screen.getByRole('region', 'Question 2')).toContainText('Where should the kept draft be stored?');
   await expect(screen.getByRole('status')).toBeHidden();
-  // Question 2 carries a diagram Mermaid cannot parse: the page reports it to the tool, which
-  // keeps it with the question.
   await expect
     .poll(() => explore.diagramErrors())
     .toEqual([
@@ -45,7 +39,6 @@ test('a comment being typed comes back when the page follows the round back to i
   await screen.getByRole('link', 'Go to question 1').tap();
   await screen.getByRole('textbox', 'Comment · optional').fill('Keep it, but log the overflow.');
 
-  // The pane moves the round away from the question, then back.
   await explore.answerInPane();
   await expect(screen.getByRole('status')).toContainText('The agent is working');
   await explore.cancelAnswerInPane();

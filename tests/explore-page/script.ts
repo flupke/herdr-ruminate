@@ -50,55 +50,32 @@ import type { Browser, Locator, Page } from 'playwright';
 import { launch, settle, StandaloneServer, THEMES, type Theme, windowHeight } from './standalone.ts';
 import { type DataSet, openSession, type Session } from './tests/session.ts';
 
-/** What a script works with. */
 export interface ScriptContext {
-  /** The browser page, opened on nothing yet: `session.open()` loads the session's round. */
   page: Page;
-  /** The session, whose helpers move the round as the agent and the pane would. */
   session: Session;
-  /** The window's width in CSS pixels in this run of the script. */
   width: number;
-  /** The page's theme in this run of the script. */
   theme: Theme;
-  /** The server's address, such as `http://127.0.0.1:41234`. */
   baseUrl: string;
-  /** The browser, for another page or context. */
   browser: Browser;
-  /**
-   * Opens another session on the server, whose page opens in `page`, of the data set `data`
-   * or the script's.
-   */
   openSession: (page: Page, data?: DataSet) => Promise<Session>;
-  /**
-   * Shows question `number` once the round asks it. From the design screen, which a tab shows
-   * instead of the question the first time it shows a round, it follows "Go to question
-   * `number`" as the reviewer would.
-   */
   showQuestion: (number: number) => Promise<void>;
-  /** Waits until the page has drawn the round, then takes a screenshot named `name`. */
   shot: (name: string, options?: ShotOptions) => Promise<string>;
 }
 
-/** What a screenshot shows. */
 export interface ShotOptions {
-  /** Only this element, which Playwright scrolls into view. */
   locator?: Locator;
-  /** The whole page when true (default), or only the window; ignored with `locator`. */
   fullPage?: boolean;
 }
 
-/** One run of the script: a width and a theme. */
 interface Look {
   width: number;
   theme: Theme;
 }
 
-/** The options of a run, from the environment. */
 class Options {
   readonly script: string;
   readonly data: DataSet;
   readonly looks: Look[];
-  /** SCRIPT_OUT, when given. */
   readonly output: string | undefined;
 
   constructor(env: NodeJS.ProcessEnv) {
@@ -127,13 +104,10 @@ class Options {
   }
 }
 
-/** The names of the files the runner writes in the folder of the screenshots. */
 const SHOT_FILE = /^(\d{2,}-.+|failure)-\d+-(light|dark)\.png$/;
 
-/** The folder of the screenshots: SCRIPT_OUT, or a new temporary folder made at the first one. */
 class ShotFolder {
   private path: string | undefined;
-  /** The names of the screenshots taken, in order. */
   private readonly names: string[] = [];
 
   constructor(fixed: string | undefined) {
@@ -145,21 +119,18 @@ class ShotFolder {
     this.path = fixed;
   }
 
-  /** The path of a new screenshot named `name`. */
   file(name: string): string {
     this.path ??= mkdtempSync(join(tmpdir(), 'explore-script-'));
     this.names.push(name);
     return join(this.path, name);
   }
 
-  /** Prints the folder and the screenshots' names, if any. */
   report(): void {
     if (this.names.length === 0) return;
     console.log(`\nScreenshots in ${this.path}:\n${this.names.map((name) => `  ${name}`).join('\n')}`);
   }
 }
 
-/** What each run of the script shares: the server, the browser and the screenshots' folder. */
 interface Stage {
   server: StandaloneServer;
   browser: Browser;
@@ -169,7 +140,6 @@ interface Stage {
 
 type Script = (context: ScriptContext) => Promise<void>;
 
-/** Runs `script` in a new page at `look`, and returns whether it passed. */
 async function runAt(script: Script, look: Look, stage: Stage): Promise<boolean> {
   const { width, theme } = look;
   const context = await stage.browser.newContext({
@@ -213,7 +183,6 @@ async function runAt(script: Script, look: Look, stage: Stage): Promise<boolean>
   }
 }
 
-/** `ScriptContext.showQuestion` in `page`. */
 async function showQuestion(page: Page, number: number): Promise<void> {
   const question = page.getByRole('region', { name: `Question ${number}`, exact: true });
   const way = page.getByRole('link', { name: `Go to question ${number}`, exact: true });
@@ -223,7 +192,6 @@ async function showQuestion(page: Page, number: number): Promise<void> {
   await settle(page);
 }
 
-/** Prints `error` and what the page shows after it, and shoots the page into `file`. */
 async function reportFailure(page: Page, error: unknown, file: string): Promise<void> {
   console.error(`\nThe script failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
   try {
@@ -246,11 +214,7 @@ async function reportFailure(page: Page, error: unknown, file: string): Promise<
   }
 }
 
-/**
- * Loads the script, and any TypeScript file of its folder that it imports, as ES modules with
- * their types stripped, whatever package.json the folder has or lacks: Node neither guesses
- * their module type nor warns about it.
- */
+// Node neither guesses the module type of a .ts file nor warns about it.
 async function load(path: string): Promise<Script> {
   const folder = pathToFileURL(dirname(path)).href + '/';
   registerHooks({

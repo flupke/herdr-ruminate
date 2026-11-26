@@ -1,16 +1,9 @@
-// Cited lines: each citation with its note, then its lines as rows of the diff in a code frame
-// whose head names the file and the lines, colored by the tool (each token's colour role is a
-// class, `c-<role>`, in citations.css). An added or removed row is marked by a bar in the
-// gutter. The question shows its citations most decisive first: the first one, then the others
-// folded until the reviewer opens them. A quiz item's proof uses the same citation.
-
 /** @import { CitationView, RowView } from "./types.ts" */
 
 import { disclosure } from './disclosure.js';
 import { h } from './dom.js';
 
 /**
- * One citation; `id` names its heading, the head of its code frame.
  * @param {CitationView} citation
  * @param {string} id
  */
@@ -49,10 +42,7 @@ function row(row) {
   );
 }
 
-/** A row's tokens: its indentation in a span of its own, which a long row never wraps after
- * (citations.css), then a span for each coloured token, and one text for each run of plain
- * ones, as the browser would parse them from markup.
- * @param {RowView} row */
+/** @param {RowView} row */
 function tokens(row) {
   /** @type {(HTMLElement | string)[]} */
   const nodes = [];
@@ -74,16 +64,12 @@ function tokens(row) {
   return nodes;
 }
 
-/** Whether the reviewer opened the citations after the first, for each question by its number
- * and its citations: the question's screen and the screen of its answer, read again while
- * the agent works, show them the same way. @type {Map<string, boolean>} */
+/** @type {Map<string, boolean>} */
 const opened = new Map();
 
 /**
- * The question's citations, or `null` when it has none: the first one, then the others behind a
- * fold, open when the reviewer left it open on another screen of the same question.
  * @param {CitationView[]} citations
- * @param {number} number the question's number
+ * @param {number} number
  */
 export function citationsSection(citations, number) {
   const [first, ...others] = citations;

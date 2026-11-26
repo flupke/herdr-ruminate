@@ -1,9 +1,3 @@
-/* The question screen (docs/design/explore-page/README.md, "2. Question screen"). The previous
-   turn is in turn.css, the choice cards in choices.css, the chips and tags in tags.css, the
-   code frame of the citations in citations.css, the desk and the panel in layout.css. */
-
-/* The question's head: "QUESTION 2" with its chips, then the question as the headline. On a
-   phone, a link beside the eyebrow leads to the choices. */
 .question-head { margin: 0 0 14px; }
 .question-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 6px; }
 .choices-link { display: none; margin-left: auto; font-size: 13px; font-weight: 600; letter-spacing: normal; text-transform: none; }
@@ -15,8 +9,6 @@
 .question-text p + p { margin-top: 8px; }
 .question-text code { font-size: 0.85em; background: var(--code-bg); border-radius: 4px; padding: 1px 4px; }
 
-/* Door and Blast radius: hairlined rows that open (client/disclosure.js). Folded, the lead
-   follows the label on one line, cut with an ellipsis; open, it wraps and the rest follows. */
 .assessments { max-width: var(--figure); margin: 20px 0 0; }
 .assessment { border-top: 1px solid var(--line); }
 .assessment:last-child { border-bottom: 1px solid var(--line); }
@@ -28,28 +20,22 @@
 .assessment > .disclosure-body { margin: 0; padding: 0 0 14px 22px; max-width: var(--measure); }
 .assessment > .disclosure-body:empty { padding: 0; }
 
-/* The panel: the reviewer's answer, then Back to the drawing board, below the reach of the sticky
-   Send answer's shadow. */
 .answer { display: grid; gap: 14px; }
 .answer-panel > .drawing-board { margin-top: 14px; }
 .answer > .hint { margin: 0; }
 
-/* The line that reveals the agent's recommendation after the first Send of a blind question:
-   purple when the agent recommends another choice, green when both picked the same. */
 .reveal { margin: 0; padding: 10px 12px; border-radius: var(--radius); font-size: 15px; }
 .reveal strong { display: block; font-weight: 650; }
 .reveal.other { background: color-mix(in srgb, var(--agent) 14%, transparent); }
 .reveal.same { background: color-mix(in srgb, var(--good) 14%, transparent); }
 .reveal:focus { outline: none; }
 
-/* Above a question the agent revised from the chat: that it did, then what changed and why. */
 .revision { margin: 0 0 14px; padding: 10px 12px; border-radius: var(--radius); font-size: 15px;
   background: color-mix(in srgb, var(--agent) 14%, transparent); }
 .revision > strong { display: block; font-weight: 650; }
 .revision-reason > :first-child { margin-top: 4px; }
 .revision-reason > :last-child { margin-bottom: 0; }
 
-/* "COMMENT · optional", and a box that grows with the comment. */
 .answer .comment-label { margin-top: 2px; font-weight: 650; }
 .answer .comment-label .optional { font-weight: 400; letter-spacing: 0; text-transform: none; }
 .answer .comment-label + .comment {
@@ -60,9 +46,6 @@
   line-height: 1.5;
 }
 
-/* The gain line: what answering marks, and the reviewed share of the change before and after,
-   with its bar (reviewed in green, what the answer adds hatched in accent); the lines open on
-   request. */
 .gain { padding: 12px; border-radius: var(--radius); background: var(--canvas); }
 .gain-toggle { flex-wrap: wrap; gap: 8px 6px; }
 .gain-toggle::before { font-size: 11px; }
@@ -90,8 +73,6 @@
 }
 .gain-lines { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 
-/* Send answer stays in view at the bottom of the panel when a short window makes the panel
-   scroll on its own (design review, finding 8). */
 @media (min-width: 70rem) {
   .answer > button[type="submit"] {
     position: sticky;
@@ -100,7 +81,6 @@
   }
 }
 
-/* On a narrower window the answer panel follows the reading: space it from the last hairline. */
 @media not all and (min-width: 70rem) {
   .question > .answer-panel { margin-top: 18px; }
 }

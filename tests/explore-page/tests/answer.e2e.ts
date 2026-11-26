@@ -1,5 +1,3 @@
-// Answering a question on the page: what the reviewer picks and writes is what the session
-// receives.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
@@ -10,7 +8,6 @@ test('the reviewer answers on the page, then sees the agent work and its next qu
   screen,
 }) => {
   await explore.open();
-  // The page opens while the agent works, and follows the round when the question comes.
   await expect(screen.getByRole('status')).toContainText('The agent is working');
   await explore.askQuestion();
   await screen.getByRole('link', 'Go to question 1').tap();
@@ -24,7 +21,6 @@ test('the reviewer answers on the page, then sees the agent work and its next qu
   expect(await explore.answers()).toEqual([
     { question: 'keep-draft', version: 1, choice: 'discard', comment: COMMENT },
   ]);
-  // The panel holds what was sent, the choice selected among the question's choices.
   const sent = screen.getByRole('region', 'Your answer to question 1');
   await expect(sent.getByRole('radio', 'Discard the draft')).toBeChecked();
 

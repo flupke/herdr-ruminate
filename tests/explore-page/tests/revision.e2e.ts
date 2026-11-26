@@ -1,11 +1,8 @@
-// A question the agent revises from the round's chat: the new version takes the screen, says
-// why, and keeps the comment the reviewer was typing.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
 const COMMENT = 'Only while the round lives.';
 
-/** The short data set's first question, as the agent asks it again after a message. */
 const REVISED = {
   id: 'keep-draft',
   version: 2,
@@ -34,10 +31,8 @@ test('a revised question replaces the open one, says why, keeps the comment and 
 
   await explore.reviseQuestion(REVISED);
   await expect(question).toContainText('Should a reopened round keep one draft per question?');
-  // The reviewer was typing: the comment box keeps the focus.
   await expect(question.getByRole('textbox', 'Comment · optional')).toBeFocused();
   await expect(question.getByRole('radio', 'Keep one draft per question')).not.toBeChecked();
-  // A second revision keeps the comment too.
   await explore.reviseQuestion({ ...REVISED, version: 3 });
   await expect(question.getByRole('textbox', 'Comment · optional')).toHaveValue(COMMENT);
 

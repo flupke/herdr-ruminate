@@ -3,10 +3,8 @@ import type { Engine, TestBody } from 'claude-code/testing'
 
 import { ROUND_PROMPTS } from './round-prompts'
 
-// The plugin's `control` option is required: the module loads only with a value for it.
 const OPTIONS = { options: { control: '/bin/true' } }
 
-// A request of the main loop, or of the subagent `agentId`, on the agent's own model.
 const step = (agentId?: string) => ({
   turnId: 'turn',
   index: 0,
@@ -16,15 +14,11 @@ const step = (agentId?: string) => ({
   ...(agentId === undefined ? {} : { agentId }),
 })
 
-// The line the prompts of ROUND_PROMPTS name the round's model with, and another one.
 const ON_FABLE = 'Explore runs on claude-fable-5-2 at max effort.'
 const ON_OPUS = 'Explore runs on claude-opus-5-5 at high effort.'
 
-// The reviewer's prompts, a round's turn, its Implement and its Post review, as it sends them.
 const [TURN, IMPLEMENT, POST_REVIEW] = ROUND_PROMPTS as [string, string, string]
 
-// Records the model and the effort each request goes out with, beneath the plugin, in place of
-// the engine; and takes each prompt.
 function engine(on: Parameters<TestBody>[1]) {
   const sent: Array<[string, unknown, string | undefined]> = []
   on('turn.step', async function* (_, e) {
@@ -37,7 +31,7 @@ function engine(on: Parameters<TestBody>[1]) {
 
 async function request($: Engine, agentId?: string) {
   for await (const _ of $.turn.step(step(agentId))) {
-    // The stream must be read for the request to reach the engine.
+    // Claude Code's test engine gets the request only once the stream is read.
   }
 }
 
@@ -83,11 +77,9 @@ test('the Implement and Post review prompts switch too', OPTIONS, async ($, on) 
 test('a line quoted outside the reviewer\'s own words switches nothing', OPTIONS, async ($, on) => {
   const sent = engine(on)
 
-  // Words a person or another agent writes.
   await prompt($, `The lead's report quotes the round prompt:\n${ON_FABLE}\n`)
   await prompt($, `Explore round r3 failed for me, here is what it sent:\n${ON_FABLE}\n`)
   await prompt($, `${TURN.split('\n', 1)[0]} Also:\n${ON_FABLE}\n`)
-  // The reviewer's own text in its prompts, a task or a review that quotes the line.
   const withoutLine = (text: string) => text.replace(`${ON_FABLE}\n\n`, '')
   await prompt($, `${withoutLine(IMPLEMENT)}\nEnd the prompt with:\n${ON_FABLE}`)
   await prompt($, `${withoutLine(POST_REVIEW)}\n${ON_FABLE}`)

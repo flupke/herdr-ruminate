@@ -1,42 +1,28 @@
-// Each test gets a fresh session on the standalone page server, and plays the agent and the
-// reviewer's pane in it.
 import { test as base } from '@e2e-dev/web';
 
-/** An answer the reviewer sent from the page, as the session received it. */
 export interface SentAnswer {
   question: string;
   version: number;
   choice: string | null;
   comment: string;
-  /** The reviewer's first pick, by choice ID, when the question hid its recommendation. */
   first_pick?: string;
-  /** Whether it sent the agent back to the drawing board instead. */
   drawing_board?: boolean;
 }
 
-/** A round the reviewer started from the page, as the session received it. */
 export interface SentStart {
   challenger: boolean;
-  /** Whether someone else wrote the change; left out when not. */
   others?: true;
-  /** The reviewer's name, for someone else's change; left out when none. */
   reviewer?: string;
 }
 
-/** What the reviewer answered of a conclusion's quiz, as the review tool saves it. */
 export interface QuizAnswers {
-  /** Each item picked, from 0, with the option picked, from 0; left out while empty. */
   picks?: { item: number; answer: number; correct: boolean }[];
-  /** Whether the reviewer skipped the rest of the quiz; left out when not. */
   skipped?: boolean;
 }
 
-/** A message the reviewer sent from the page's chat, as the review threads saved it. */
 export interface SentMessage {
-  /** The round whose conversation it joined. */
   round: string;
   text: string;
-  /** Where in the round it was written, or `null`. */
   asked_under:
     | { stage: 'question'; question: string; version: number; number: number }
     | { stage: 'design' }
@@ -45,7 +31,6 @@ export interface SentMessage {
   quote: string | null;
 }
 
-/** A session of the standalone server, which stands in for the review tool's Explore session. */
 export interface Session {
   /** The token of the page's address. */
   readonly token: string;
@@ -186,7 +171,6 @@ export interface Session {
   messages(): Promise<SentMessage[]>;
 }
 
-/** The start of the fixed reply of the short data set's agent in the round's conversation. */
 export const CHAT_REPLY = 'The draft lives in the round';
 
 async function control(baseUrl: string | undefined, path: string, body?: object): Promise<Response> {
@@ -198,20 +182,12 @@ async function control(baseUrl: string | undefined, path: string, body?: object)
   return response;
 }
 
-/** The browser page a session's page opens in. */
 export interface SessionPage {
-  /** Loads `path` of the server. */
   open(path: string): Promise<unknown>;
 }
 
-/** What the agent of the standalone server posts (crates/review-explore-page-server/src/round_data.rs). */
 export type DataSet = 'short' | 'rich';
 
-/**
- * Opens a session on the server at `baseUrl`, whose page opens in `page`, and whose agent posts
- * `data`, or the server's own data set. The `explore` fixture and the screenshot gallery
- * (`gallery/`) both play rounds through it.
- */
 export async function openSession(baseUrl: string | undefined, page: SessionPage, data?: DataSet): Promise<Session> {
   const request = data === undefined ? undefined : { data };
   const { token } = (await (await control(baseUrl, '/test/sessions', request)).json()) as { token: string };
@@ -275,8 +251,6 @@ export async function openSession(baseUrl: string | undefined, page: SessionPage
   };
 }
 
-/** The tests' `test`, whose `explore` fixture is a fresh session of a round of the short data
- * set, small enough for a test to name what it checks. */
 export const test = base.extend<{ explore: Session }>({
   explore: async ({ app }, use) => {
     const page: SessionPage = { open: (path) => app.open(path) };

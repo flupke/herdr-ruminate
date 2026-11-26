@@ -25,16 +25,9 @@ export interface GalleryState {
   extraWidths?: number[];
 }
 
-/**
- * Clicks `name`, a button or a link, and waits until the page has the reply to the action it
- * sent, if any: the round it changed is drawn by then.
- */
 async function submit(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name, exact: true }).or(page.getByRole('link', { name, exact: true })).click();
   await page.waitForFunction(() => !document.querySelector('main[aria-busy="true"]'));
-  // The page changes in place, under the pointer and where the click scrolled it: move the
-  // pointer away and scroll back to the top, so that no control shows as hovered and no part
-  // as scrolled, as on a page loaded again.
   await page.mouse.move(0, 0);
   await page.evaluate(() => {
     for (const panel of document.querySelectorAll('.panel')) panel.scrollTop = 0;
@@ -42,10 +35,6 @@ async function submit(page: Page, name: string): Promise<void> {
   });
 }
 
-/**
- * Opens the meter on the masthead's hairline with a click a third of the way across, as a
- * pointer would, and moves the pointer away: the window stays pinned.
- */
 async function openMeter(page: Page): Promise<void> {
   const strip = page.getByRole('button', { name: /^Lines reviewed/ });
   const box = await strip.boundingBox();
@@ -53,16 +42,10 @@ async function openMeter(page: Page): Promise<void> {
   await page.mouse.move(0, 0);
 }
 
-/** Selects the choice `name` of the question or the quiz item on the page. */
 async function choose(page: Page, name: string): Promise<void> {
   await page.getByRole('radio', { name }).check();
 }
 
-/**
- * Waits until the open chat has come in and the page has made room for it: no transition runs
- * (the chat's rise with the masthead runs on the page's scroll, not in time), and a diagram has
- * fitted the column again.
- */
 async function chatSettled(page: Page): Promise<void> {
   await page.getByRole('complementary', { name: 'Conversation with the agent' }).waitFor();
   await page.waitForFunction(
@@ -75,10 +58,6 @@ async function chatSettled(page: Page): Promise<void> {
   );
 }
 
-/**
- * Sends `text` from the chat, which opens first when it is closed, and waits until the chat shows
- * the message.
- */
 async function chatTo(page: Page, text: string): Promise<void> {
   const chat = page.getByRole('complementary', { name: 'Conversation with the agent' });
   if (!(await chat.isVisible())) await page.getByRole('button', { name: 'Talk to the agent' }).click();
@@ -87,16 +66,11 @@ async function chatTo(page: Page, text: string): Promise<void> {
   await chat.getByRole('article', { name: 'Your message' }).filter({ hasText: text.replaceAll('`', '') }).waitFor();
 }
 
-/**
- * Selects the last sentence of paragraph `index` of the question's Context, as the reviewer
- * selects a passage.
- */
 async function selectPassage(page: Page, index: number): Promise<void> {
   await page.locator('.explanation > p').nth(index).waitFor();
   await page.evaluate((index) => {
     const paragraph = document.querySelectorAll('.explanation > p')[index];
     if (!paragraph) throw new Error(`no paragraph ${index}`);
-    // The paragraph's last stretch of plain text that holds a sentence.
     const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
     let text: Text | null = null;
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -113,9 +87,7 @@ async function selectPassage(page: Page, index: number): Promise<void> {
   }, index);
 }
 
-/** Selects the last sentence of paragraph `index` of the Context, then adds it to the chat. */
 async function quote(page: Page, index: number): Promise<void> {
-  // On a phone the open chat covers the page: the reviewer closes it to select.
   if ((await page.locator('.left-scrim:visible').count()) > 0) {
     await page.getByRole('button', { name: 'Close the conversation' }).click();
   }
@@ -123,35 +95,26 @@ async function quote(page: Page, index: number): Promise<void> {
   await page.getByRole('button', { name: 'Add to chat' }).click();
 }
 
-/** The start screen of a session whose round the reviewer reset. */
 async function startScreen(session: Session): Promise<void> {
   await session.reset();
   await session.open();
 }
 
-/** The page, opened again, shows the round once `move` changed it. */
 async function after(session: Session, move: () => Promise<void>): Promise<void> {
   await move();
   await session.open();
 }
 
-/**
- * The page shows question `count`, each earlier question answered in the pane. The round opens
- * on its design: on question 1 the reviewer goes on from it to the question.
- */
 async function question(session: Session, page: Page, count: number): Promise<void> {
   await ask(session, count);
   if (count === 1) await submit(page, 'Go to question 1');
 }
 
-/** The page shows the design screen, on question `count`, each earlier question answered in the
- * pane: the design opens the round, and later the reviewer opens it again at its address. */
 async function design(session: Session, count: number): Promise<void> {
   await ask(session, count);
   if (count > 1) await session.openDesign();
 }
 
-/** The agent asks question `count`, each earlier one answered in the pane, then the page opens. */
 async function ask(session: Session, count: number): Promise<void> {
   for (let asked = 1; asked <= count; asked++) {
     if (asked > 1) await session.answerInPane();
@@ -160,11 +123,6 @@ async function ask(session: Session, count: number): Promise<void> {
   await session.open();
 }
 
-/**
- * Opens every folded part of what the page gives to read: Door, Blast radius, the other
- * citations, the lines an answer marks. A fold that holds an action opens from a button of a
- * button tier (`.button`), and stays closed.
- */
 async function unfold(page: Page): Promise<void> {
   const folded = page.locator(
     'main details:not([open]) > summary:visible, main button[aria-expanded="false"]:not(.button):visible',
@@ -172,10 +130,6 @@ async function unfold(page: Page): Promise<void> {
   while ((await folded.count()) > 0) await folded.first().click();
 }
 
-/**
- * The page shows the conclusion, with its quiz when `quiz`, after the three questions: the
- * second, a blind one, answered with the recommendation after a first pick of another choice.
- */
 async function conclusion(session: Session, quiz: boolean): Promise<void> {
   for (let asked = 1; asked <= 3; asked++) {
     await session.askQuestion();
@@ -184,13 +138,11 @@ async function conclusion(session: Session, quiz: boolean): Promise<void> {
   await after(session, () => (quiz ? session.concludeWithQuiz() : session.conclude()));
 }
 
-/** The page sent the conclusion's implementation request, and the session is sending it. */
 async function implementing(session: Session, page: Page): Promise<void> {
   await conclusion(session, false);
   await submit(page, IMPLEMENT);
 }
 
-/** The page shows the first item of the quiz answered right, then the second answered wrong. */
 async function quizRightThenWrong(session: Session, page: Page): Promise<void> {
   await conclusion(session, true);
   await choose(page, QUIZ_RIGHT);
@@ -200,18 +152,12 @@ async function quizRightThenWrong(session: Session, page: Page): Promise<void> {
   await submit(page, 'Check');
 }
 
-/**
- * Moves the round with `move` behind the page's back, then takes the page's action `action`,
- * which the round no longer offers: the page shows the refusal's notice, over the round as it
- * is now.
- */
 async function refused(session: Session, page: Page, move: () => Promise<void>, action: string): Promise<void> {
   await session.holdPage();
   await move();
   await submit(page, action);
 }
 
-// Choices and quiz answers of the rich data set (crates/review-explore-page-server/src/rich).
 const IDLE_OR_FULL = 'Send the queue after two seconds';
 const MERGE = 'Keep sending each reply at once';
 const DROP = 'Drop the waiting notifications';
@@ -576,7 +522,6 @@ export const STATES: GalleryState[] = [
       const list = page.getByRole('navigation', { name: 'Past rounds' });
       await list.getByRole('region', { name: /^Give the Explore agent/ }).getByRole('link').nth(1).click();
       await page.getByRole('region', { name: 'Past round' }).waitFor();
-      // Over the page, the list closed as the round opened: the reviewer opens it again.
       if (!(await page.evaluate(() => matchMedia('(min-width: 89rem)').matches))) {
         await list.waitFor({ state: 'hidden' });
         await page.getByRole('button', { name: 'Round menu' }).click();
@@ -592,7 +537,6 @@ export const STATES: GalleryState[] = [
       'Question 1 opened again from the rail at question 3, read only: the question as it was asked, the answer, what it marked, what the agent recorded, and the way back.',
     async reach(session, page) {
       await question(session, page, 3);
-      // The rail's link to question 1, which a phone's rail hides: the address it goes to.
       await page.evaluate(() => {
         location.hash = '#question-1';
       });
@@ -926,8 +870,6 @@ export const STATES: GalleryState[] = [
   },
 ];
 
-/** A question whose Context draws a sequence diagram of seven participants, wider than the
- * reading column at its natural size. */
 const WIDE_DIAGRAM = {
   id: 'flush-on-close',
   version: 1,

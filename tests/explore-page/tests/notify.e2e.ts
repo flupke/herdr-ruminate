@@ -1,6 +1,3 @@
-// The agent's notifications: the reviewer turns them on in the ⋯ menu, and the browser tells them
-// when the agent finishes while they look elsewhere. The browser's `Notification` is replaced by
-// one that records what the page shows, and the page reports that it has no focus.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
@@ -36,16 +33,13 @@ test('the reviewer turns on notifications and hears when the next question is re
   await expect(browser).toHaveTitle(/^Agent working/);
   expect(await shown()).toEqual([]);
   await explore.askQuestion();
-  // The page notifies in the same drawing that retitles the tab.
   await expect(browser).toHaveTitle(/^Q2 · your turn/);
   expect(await shown()).toEqual(['Question 2 is ready']);
 
-  // A reply in the chat, which stays open, notifies too: the reviewer is in another window.
   await screen.getByRole('button', 'Talk to the agent').tap();
   const chat = screen.getByRole('complementary', 'Conversation with the agent');
   await chat.getByRole('textbox', 'Message to the agent').fill('Why?');
   await chat.getByRole('button', 'Send').tap();
-  // The agent can reply once the message is saved.
   await expect(chat.getByRole('status')).toContainText('The agent is answering');
   await explore.agentReplies();
   await expect(chat.getByRole('article', 'Reply from the agent')).toBeVisible();

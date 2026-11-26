@@ -1,5 +1,3 @@
-// The conclusion's implementation request: the reviewer edits the list, sends it with
-// Implement, and may cancel it while it is on its way.
 import { expect } from 'e2e';
 import { test } from './session.ts';
 
@@ -14,7 +12,6 @@ test('the reviewer edits the list, sends it, sees it received, then starts a new
 
   const tasks = screen.getByRole('textbox', 'To be implemented');
   const implement = screen.getByRole('button', 'Implement', { exact: true });
-  // The tool refuses a blank list: Implement waits for a task.
   await tasks.fill(' \n\n ');
   await expect(implement).toBeDisabled();
   await tasks.fill(TASKS);

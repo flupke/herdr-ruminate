@@ -1,10 +1,3 @@
-/* The end of the round (docs/design/explore-page/README.md, "5. Conclusion"; design review,
-   findings 10 and 24): the conclusion to read on the left, with the reviewer's decisions, and
-   the panel with the list to be implemented, whole, on the right. The panel is the wide one
-   (`desk wide`). assets/client/conclusion.js builds it. */
-
-/* The reading column: the eyebrow, the headline, the lead paragraph, "Your decisions", the rest
-   of the summary with its run-in labels, then Future work. */
 .conclusion > .eyebrow { margin: 0 0 4px; }
 .conclusion > h2 { margin: 0 0 12px; }
 .conclusion .lead { margin: 0 0 20px; font-size: 17px; }
@@ -12,8 +5,6 @@
 .conclusion .summary strong { font-weight: 650; }
 .future-work > .eyebrow { margin: 0 0 6px; }
 
-/* "Your decisions": one hairlined row per question, its number in a narrow column, the question
-   muted, then the choice kept with its tags. */
 .decisions { max-width: var(--measure); margin: 0 0 20px; }
 .decisions > .eyebrow { margin: 0 0 8px; }
 .decision-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
@@ -30,7 +21,6 @@
 .decision-kept { margin: 2px 0 0; }
 .decision-kept strong, .decision-kept.comment-only { font-weight: 600; }
 .decision-comment { margin: 2px 0 0; color: var(--muted); font-size: 14px; font-style: italic; }
-/* A tag after the choice (chips.js, `decisionTag`). */
 .decision-kept .tag {
   padding: 1px 8px;
   border-radius: var(--radius-pill);
@@ -41,16 +31,11 @@
   -webkit-box-decoration-break: clone;
 }
 
-/* The panel opens with the quiz's score (quiz.css). */
-
-/* What became of the latest request: its card, without the actions, which come last in the
-   panel at its full width. */
 .to-be-implemented > .status-card { margin: 0; max-width: none; }
 .to-be-implemented .status-reason, .to-be-implemented .status-next { font-size: 14px; }
 .to-be-implemented > form:not(.implement) { display: grid; gap: 8px; }
 .to-be-implemented > form:not(.implement) > .hint { margin: 0; font-size: 13px; }
 
-/* The list to be implemented, which shows every item: the box grows with its text. */
 .implement { display: grid; gap: 12px; }
 .implement .hint { margin: 0; }
 .implement .tasks {
@@ -63,8 +48,6 @@
   line-height: 1.45;
 }
 
-/* A request's list, read only, on the page's own surface: muted once it is out of the
-   reviewer's hands, its first items shown until "… N more" (assets/client/conclusion.js). */
 .saved-list {
   padding: 12px;
   border-radius: var(--radius);
@@ -87,8 +70,6 @@
 }
 .to-be-implemented .more:hover { color: var(--ink); text-decoration: underline; }
 
-/* The forms behind a disclosure (buttons.css): "Edit before sending", the confirmation of
-   "Start a new round…". */
 .to-be-implemented .disclosure-body > form { display: grid; gap: 12px; margin: 0; }
 .to-be-implemented .disclosure-body > form .hint { margin: 0; }
 .to-be-implemented .disclosure-body > form > button { justify-self: start; }

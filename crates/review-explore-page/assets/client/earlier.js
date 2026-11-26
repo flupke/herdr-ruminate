@@ -1,11 +1,3 @@
-// An earlier question: a question the reviewer answered before in the round, opened from its done
-// step on the round rail (`#question-N`, route.js) or reached with a swipe on a phone. On the
-// desk, the question as it was asked, with its Context, Door and Blast radius rows and its
-// citations; in the panel, what the reviewer answered, what the answer marked and what the agent
-// recorded, then the way back to the step the round stands at. Everything is read only but
-// Cancel answer, which the screen offers while the round offers to cancel the latest answer: it
-// takes this answer back with every answer after it, and the question waits again.
-
 /** @import { EarlierQuestionView } from "./types.ts" */
 /** @import { Current } from "./design.js" */
 
@@ -18,13 +10,11 @@ import { questionReading } from './question.js';
 import { cancelAnswer, followUpsLine, recorded } from './turn.js';
 
 /**
- * The screen of an earlier question.
  * @param {EarlierQuestionView} question
- * @param {Current | null} current the step the round stands at, which the way back goes to
+ * @param {Current | null} current
  */
 export function earlierScreen(question, current) {
   const label = `earlier-${question.number}-label`;
-  // On a phone, the panel follows the head: the answer comes before the rest of the reading.
   const [head, ...reading] = questionReading(
     { ...question, label, name: `Question ${question.number} · answered` },
     null,
@@ -39,10 +29,10 @@ export function earlierScreen(question, current) {
   );
 }
 
-/** What the reviewer answered and what it marked, what the agent recorded of it, and the way
- * back to the round.
+/**
  * @param {EarlierQuestionView} question
- * @param {Current | null} current */
+ * @param {Current | null} current
+ */
 function panel(question, current) {
   const title = `earlier-${question.number}-answer`;
   return h(
@@ -63,9 +53,7 @@ function panel(question, current) {
   );
 }
 
-/** What the agent recorded of the answer and replied, then the follow-ups it noted; nothing
- * when it said nothing.
- * @param {EarlierQuestionView} question */
+/** @param {EarlierQuestionView} question */
 function record(question) {
   const response = question.recorded;
   const said = response.interpretations.some((interpretation) => interpretation.recap_html) || response.reply_html;

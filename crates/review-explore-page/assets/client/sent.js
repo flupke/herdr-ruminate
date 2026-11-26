@@ -1,15 +1,3 @@
-// The answer the agent's turn carries, while the agent works on the turn or the turn did not go
-// through (docs/design/explore-page/README.md, "3. Waiting"; design review, findings 6 and 13):
-// on the desk, the turn's status card, then the question the answer answers, as it read before
-// the answer (the reviewer rereads it while the agent works: the project owner asked for it at
-// full contrast, where the handoff's capture mutes it and folds its citations), with its Door and
-// Blast radius and its citations; in the panel, its choices with the one sent selected, the
-// comment, what it marked, the card's one action (Stop waiting, or Retry) and Cancel this
-// answer.
-//
-// The parts are rebuilt only when their own data changes, so the time since the turn went out
-// keeps counting, and the reader's folds stay open, while the round moves on in the pane.
-
 /** @import { SentView, LatestAnswer } from "./types.ts" */
 
 import { answerCard, markedLine, marksProblemLine } from './answer-card.js';
@@ -23,8 +11,6 @@ import { cancelAnswer } from './turn.js';
 export class SentScreen {
   constructor() {
     this.element = h('div', { class: 'sent desk' });
-    // On a narrow window the desk shows its parts in this order: the panel comes right after the
-    // card, so that what was sent and the one action come before the question read again.
     this.card = new Region(this.element, 'card');
     this.panel = new Region(this.element, 'panel');
     this.reading = new Region(this.element, 'reading');
@@ -33,8 +19,7 @@ export class SentScreen {
 
   /**
    * @param {SentView} sent
-   * @param {LatestAnswer | null} cancellable the reviewer's latest answer, when the page offers
-   *   to cancel it
+   * @param {LatestAnswer | null} cancellable
    */
   update(sent, cancellable) {
     this.card.show(keyOf(sent.card), () => panelCard(sent.card));
@@ -58,9 +43,10 @@ export class SentScreen {
   }
 }
 
-/** What the reviewer sent, what it marked, then the card's action and Cancel this answer.
+/**
  * @param {SentView} sent
- * @param {LatestAnswer | null} cancellable */
+ * @param {LatestAnswer | null} cancellable
+ */
 function panel(sent, cancellable) {
   const title = sent.question
     ? sent.number !== null

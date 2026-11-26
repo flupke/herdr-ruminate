@@ -1,22 +1,3 @@
-// The question screen (docs/design/explore-page/README.md, "2. Question screen"): on the desk,
-// the previous turn, the question as the headline with its chips, its Context, Door and Blast
-// radius as rows that open, then its citations; in the panel, the reviewer's answer.
-//
-// On a question whose Door is not two-way, the pick is blind: the panel hides the agent's
-// recommendation, and the tool does not even send it, until the reviewer's first Send. That Send
-// records the first pick (`pick`) and sends no answer; the panel then shows the recommendation,
-// with a line that says whether the reviewer and the agent picked the same choice, and its
-// button becomes Confirm answer, which sends the answer (`answer`). The comment typed before the
-// first Send stays in the comment box, since both forms keep the same draft.
-//
-// The section stays while the page shows the same question; its parts (the turn,
-// the reading, the panel, the citations) are rebuilt only when their own data changes, so a
-// first pick rebuilds the panel alone and leaves the reader's folds and scroll as they are.
-//
-// When the agent revises the question from the round's chat, the new version takes the screen
-// with a notice of what changed above it: the pick starts over, and the comment typed for the
-// version it replaced stays in the box.
-
 /** @import { Door, QuestionView, ChoiceView, MarksView, GainView, SectionView } from "./types.ts" */
 /** @import { Children } from "./dom.js" */
 /** @import { Turn } from "./turn.js" */
@@ -37,7 +18,6 @@ export class QuestionScreen {
   constructor(question) {
     this.element = h('section', {
       class: 'question desk',
-      // What Cancel answer brings back into view (CHANGED in actions.js).
       'data-shows': 'cancel-answer',
       'aria-labelledby': `question-${question.number}-label`,
       'data-question': question.id,
@@ -51,21 +31,18 @@ export class QuestionScreen {
 
   /**
    * @param {QuestionView} question
-   * @param {Turn} turn the turn that led to the question
-   * @param {boolean} past whether the question is the one a past round left waiting: its
-   *   choices show read only, with the agent's recommendation
+   * @param {Turn} turn
+   * @param {boolean} past
    */
   update(question, turn, past) {
     this.element.dataset.version = String(question.version);
     this.turn.show(keyOf(turn), () => turnStrip(turn));
-    // The first pick of a blind question changes the panel only: the reading keeps its folds.
     const { text_html, context_html, sections, number, door, answerable, revision } = question;
     const blind = question.recommendation !== 'shown';
     this.reading.show(keyOf({ text_html, context_html, sections, number, door, blind, answerable, revision }), () =>
       reading(question),
     );
     this.panel.show(
-      // The version too: the form answers it, and a revised question starts its pick over.
       keyOf([
         question.version,
         question.answerable,
@@ -85,10 +62,7 @@ export class QuestionScreen {
   }
 }
 
-/** The question's head, its Context, then Door and Blast radius, folded to their leads. "Blind
- * pick" follows the door's chip while the question is blind; on a phone, a link leads past the
- * reading to the choices.
- * @param {QuestionView} question */
+/** @param {QuestionView} question */
 function reading(question) {
   const { revision } = question;
   return [
@@ -103,9 +77,7 @@ function reading(question) {
   ];
 }
 
-/** The choices of the question a past round left waiting, read only, with the agent's
- * recommendation: nothing to pick.
- * @param {QuestionView} question */
+/** @param {QuestionView} question */
 function unansweredPanel(question) {
   return h(
     'div',
@@ -115,8 +87,7 @@ function unansweredPanel(question) {
   );
 }
 
-/** "The agent revised this question after your message", and what changed and why.
- * @param {string} reasonHtml */
+/** @param {string} reasonHtml */
 function revisionNotice(reasonHtml) {
   const reason = h('div', { class: 'revision-reason' });
   setRenderedMarkdown(reason, reasonHtml);
@@ -129,13 +100,9 @@ function revisionNotice(reasonHtml) {
 }
 
 /**
- * What the reader reads of a question, on the question screen and on an earlier question's: the
- * eyebrow that names it ("QUESTION 2"), with the door's chip and `more`, the question as the
- * headline, then its Context, and Door and Blast radius folded to their leads.
  * @param {{ label: string, name: string, door: Door | null, text_html: string,
- *   context_html: string | null, sections: SectionView[] }} question `label` is the ID of the
- *   eyebrow's name, which names the question's region
- * @param {Children} more what follows the door's chip in the eyebrow
+ *   context_html: string | null, sections: SectionView[] }} question
+ * @param {Children} more
  */
 export function questionReading(question, more) {
   const headline = h('h2', { class: 'question-text' });
@@ -158,9 +125,7 @@ export function questionReading(question, more) {
   ].filter((node) => node !== null);
 }
 
-/** A section of the question folded to one row, its lead beside its title; open, the lead wraps
- * and the rest follows.
- * @param {SectionView} section */
+/** @param {SectionView} section */
 function assessment(section) {
   const lead = h('span', { class: 'assessment-lead' });
   setRenderedMarkdown(lead, section.lead_html);
@@ -173,17 +138,12 @@ function assessment(section) {
   return element;
 }
 
-/** The reviewer's answer: the choices, an optional comment, what the answer marks, and Send
- * answer; Confirm answer once the first Send of a blind question revealed the recommendation.
- * Back to the drawing board follows it in the panel.
- * @param {QuestionView} question */
+/** @param {QuestionView} question */
 function panel(question) {
   const picking = question.recommendation === 'hidden_until_pick';
   const revealed = question.recommendation === 'shown_after_pick';
   const door = question.door ? DOORS[question.door].name : 'This question';
   const sendLabel = revealed ? 'Confirm answer' : 'Send answer';
-  // A revised question keeps the comment typed for the version it replaced, under its own key,
-  // so that a second revision keeps it too.
   const { key: draft, from } = takeOverComment(question);
   const box = sendsOnKeys(
     keepDraft(
@@ -192,7 +152,6 @@ function panel(question) {
       '',
     ),
   );
-  // The reviewer typing in the replaced version's box keeps the focus in this one.
   if (from !== null) box.dataset.draftFrom = from;
   return h(
     'form',
@@ -225,10 +184,7 @@ function panel(question) {
   );
 }
 
-/** The line at the top of the panel once the recommendation shows after the first pick: whether
- * the reviewer and the agent picked the same choice, the checked one. Disagreeing is
- * information, not an error. The page brings it into view after the first pick.
- * @param {ChoiceView[]} choices */
+/** @param {ChoiceView[]} choices */
 function revealLine(choices) {
   const same = choices.some((choice) => choice.checked && choice.recommendation !== null);
   const shows = { tabindex: -1, 'data-shows': 'pick' };
@@ -242,10 +198,10 @@ function revealLine(choices) {
       );
 }
 
-/** What answering marks, and the reviewed share of the change before and after, with its bar;
- * the lines on request.
+/**
  * @param {MarksView} marks
- * @param {GainView | null} gain */
+ * @param {GainView | null} gain
+ */
 function gainLine(marks, gain) {
   const [first, ...rest] = marks.summary.parts;
   const { element } = disclosure(
@@ -271,8 +227,7 @@ function gainLine(marks, gain) {
   return element;
 }
 
-/** The share reviewed now, then the share the answer adds, hatched.
- * @param {GainView} gain */
+/** @param {GainView} gain */
 function gainBar(gain) {
   const done = h('span', { class: 'gain-done' });
   const added = h('span', { class: 'gain-added' });

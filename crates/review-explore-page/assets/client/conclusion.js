@@ -1,12 +1,3 @@
-// The end of the round (docs/design/explore-page/README.md, "5. Conclusion"): the conclusion to
-// read on the left, with the reviewer's decisions, and on the right the panel with the list to
-// be implemented, whole, and one primary action for each state of the implementation request.
-//
-// The section stays while the page shows the same conclusion, and each part is rebuilt only when
-// its own data changes: a request that goes from being sent to received changes its card and
-// leaves the rest as it is. "Not ready? Reply to the agent instead" opens the chat (chat.js),
-// where a message about the conclusion does not answer it.
-
 /** @import { ConclusionView, DecisionView, ImplementationView } from "./types.ts" */
 /** @import { Turn } from "./turn.js" */
 
@@ -21,13 +12,11 @@ import { quizItem } from './route.js';
 import { panelActions, panelCard } from './status.js';
 import { turnStrip } from './turn.js';
 
-/** A request's list shows this many items before "… N more". */
 const SHOWN_ITEMS = 3;
 
 export class ConclusionScreen {
   constructor() {
     this.element = h('section', { class: 'conclusion desk wide', 'aria-labelledby': 'conclusion-title' });
-    // The previous turn, above the conclusion it led to.
     this.turn = new Region(this.element, 'turn');
     this.element.append(
       h('p', { class: 'eyebrow' }, 'The round is over'),
@@ -42,8 +31,8 @@ export class ConclusionScreen {
 
   /**
    * @param {ConclusionView} conclusion
-   * @param {string | null} reset the round Reset closes, when the page offers it
-   * @param {Turn} turn the turn that led to the conclusion
+   * @param {string | null} reset
+   * @param {Turn} turn
    */
   update(conclusion, reset, turn) {
     this.turn.show(keyOf(turn), () => turnStrip(turn));
@@ -67,11 +56,7 @@ export class ConclusionScreen {
   }
 }
 
-/**
- * "Your decisions": each question the reviewer answered, with the choice kept and its tags, or
- * the comment of an answer that kept no choice.
- * @param {DecisionView[]} decisions
- */
+/** @param {DecisionView[]} decisions */
 function decisionList(decisions) {
   return h(
     'section',
@@ -111,8 +96,6 @@ function decisionList(decisions) {
   );
 }
 
-/** The panel: the quiz's score, then the list to be implemented and what became of its latest
- * request, with the one primary action of each state, then the line that opens the chat. */
 class Panel {
   constructor() {
     this.element = h('section', { class: 'to-be-implemented panel', 'aria-label': 'To be implemented' });
@@ -142,17 +125,14 @@ class Panel {
   }
 }
 
-/** The list's name: the tasks to implement, or the review of someone else's change to post.
- * @param {ConclusionView} conclusion */
+/** @param {ConclusionView} conclusion */
 function listName(conclusion) {
   return conclusion.posts_review ? 'Review to post' : 'To be implemented';
 }
 
 /**
- * The list: the text the reviewer edits and sends with Implement, or the list read only, then
- * the actions of the request's state: the card's, "Edit before sending", "Start a new round…".
  * @param {ConclusionView} conclusion
- * @param {string | null} reset the round Reset closes, when the page offers it
+ * @param {string | null} reset
  * @returns {HTMLElement | HTMLElement[]}
  */
 function list(conclusion, reset) {
@@ -173,11 +153,7 @@ function list(conclusion, reset) {
   }
 }
 
-/**
- * "Start a new round…", once the agent received the request: Reset of the round, as the
- * masthead's menu sends it, worded as starting the next one, behind its confirmation.
- * @param {string} round the round it closes
- */
+/** @param {string} round */
 function newRound(round) {
   const confirmation = resetConfirmation(round, {
     hint: 'A new round closes this one for good: it is no longer shown, and its agent can no longer post to it. Its records stay saved.',
@@ -187,11 +163,9 @@ function newRound(round) {
 }
 
 /**
- * The list a request sends, read only, under its eyebrow: its first items, and the others behind
- * "… N more".
  * @param {ImplementationView} implementation
  * @param {string} label
- * @param {boolean} settled whether the request is out of the reviewer's hands, which mutes it
+ * @param {boolean} settled
  * @returns {HTMLElement[]}
  */
 function savedList(implementation, label, settled) {
@@ -216,9 +190,6 @@ function savedList(implementation, label, settled) {
 }
 
 /**
- * The form that sends the list the reviewer edits: as the conclusion's first request, in place
- * of one the agent did not receive, or, under "Edit before sending", in place of a saved one.
- * `label` names its button, or `null` for Implement under the eyebrow "To be implemented".
  * @param {ConclusionView} conclusion
  * @param {string | null} label
  * @param {'primary' | 'secondary'} tier
@@ -230,14 +201,13 @@ function implementForm(conclusion, label, tier) {
     `implement:${conclusion.request}:${replaces ?? ''}`,
     conclusion.draft,
   );
-  // Without `field-sizing`, the box grows by its rows.
+  // A browser without CSS `field-sizing` grows the box by its rows.
   const grow = () => {
     box.rows = box.value.split('\n').length + 1;
   };
   box.addEventListener('input', grow);
   const form = h(
     'form',
-    // The tool refuses a blank list, as the pane does: Implement waits for a task.
     { class: 'implement', 'data-method': 'implement', 'data-requires': label === null ? 'text' : null },
     h('input', { type: 'hidden', name: 'conclusion', value: conclusion.request }),
     replaces !== null ? h('input', { type: 'hidden', name: 'replaces', value: replaces }) : null,
@@ -257,7 +227,6 @@ function implementForm(conclusion, label, tier) {
 }
 
 /**
- * A read-only list on the page's own surface, muted when `settled`.
  * @param {HTMLElement} text
  * @param {boolean} settled
  */

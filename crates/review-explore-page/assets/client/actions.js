@@ -1,11 +1,3 @@
-// The reviewer's actions: every form of the page names the request it sends (`data-method`),
-// and one listener turns its submit into that request on the socket, with the identities its
-// hidden fields carry. A form waits for its reply, so a second click sends nothing; while the
-// socket is down, every action waits, its button disabled. A form may also say what it needs
-// before it can be sent (`data-requires`): its button stays dimmed until then. A refusal shows
-// its notice; what an action changed arrives as the next view, before its reply, and the page
-// then brings the part that changed into view (`CHANGED`).
-
 /** @import { Call, Reply } from "./types.ts" */
 /** @import { Link } from "./socket.js" */
 /** @import { Page } from "./page.js" */
@@ -14,7 +6,7 @@
  * @typedef {{ form: HTMLFormElement, data: FormData, submitter: HTMLElement | null }} Submitted
  */
 
-/** How each form's fields make its request. @type {Record<string, (submitted: Submitted) => Call>} */
+/** @type {Record<string, (submitted: Submitted) => Call>} */
 const CALLS = {
   answer: ({ data }) => ({
     method: 'answer',
@@ -24,8 +16,6 @@ const CALLS = {
       version: Number(text(data, 'version')),
       choice: optional(data, 'choice'),
       comment: optional(data, 'comment') ?? '',
-      // Back to the drawing board answers with this field, with no choice, and with the comment
-      // typed in the answer's box as the reviewer's reason (drawing-board.js).
       drawing_board: optional(data, 'drawing_board') === 'true',
       number: number(data, 'number'),
     },
@@ -101,10 +91,7 @@ const CALLS = {
   }),
 };
 
-/** Where the result of each action shows, which the page brings into view when the reviewer
- * cannot see it: the element its module marks with `data-shows` (the reveal of the
- * recommendation after a first pick, the verdict on a quiz answer, the question waiting again
- * after Cancel answer), or the round's state, a status card, after an answer. @type {Record<string, string>} */
+/** @type {Record<string, string>} */
 const CHANGED = {
   pick: '[data-shows="pick"]',
   quiz: '[data-shows="quiz"]',
@@ -112,8 +99,7 @@ const CHANGED = {
   'cancel-answer': '[data-shows="cancel-answer"]',
 };
 
-/** What each value of `data-requires` asks of a form before it can be sent.
- * @type {Record<string, (form: HTMLFormElement) => boolean>} */
+/** @type {Record<string, (form: HTMLFormElement) => boolean>} */
 const REQUIRES = {
   choice: (form) => form.querySelector('input[name="choice"]:checked') !== null,
   answer: (form) => form.querySelector('input[name="answer"]:checked') !== null,
@@ -123,7 +109,6 @@ const REQUIRES = {
 };
 
 /**
- * Where in the round the chat's message was written, from its form's fields.
  * @param {FormData} data
  * @returns {import('./types.ts').AskedUnder | null}
  */
@@ -159,7 +144,6 @@ function optional(data, name) {
 }
 
 /**
- * A whole number the form carries, or `null` when it carries none.
  * @param {FormData} data
  * @param {string} name
  */
@@ -179,10 +163,7 @@ export class Actions {
     this.link = link;
     this.page = page;
     this.connected = false;
-    // The forms of the masthead (Reset, in its menu) are outside `main`.
     main.ownerDocument.addEventListener('submit', (event) => this.submit(event));
-    // An edit may block or unblock its form's button (`data-blocked`), in the chat too, which
-    // is outside `main`.
     main.ownerDocument.addEventListener('input', () => this.enable());
   }
 
@@ -199,10 +180,8 @@ export class Actions {
     try {
       const reply = await this.link.call(call);
       this.settle(call, reply);
-      // The form's own module may follow what went through: the chat clears its composer.
       if ('result' in reply) form.dispatchEvent(new CustomEvent('sent'));
     } catch {
-      // The socket closed before the reply: the next view shows what became of the action.
     } finally {
       this.sending(form, false);
     }
@@ -217,13 +196,11 @@ export class Actions {
       this.page.showNotice(reply.error.data);
       return;
     }
-    // A pick shows the item's answer until the reviewer moves on; a skip shows the conclusion.
     if (call.method === 'quiz' || call.method === 'quiz-skip') {
       this.page.quizAt =
         call.method === 'quiz' ? { conclusion: call.params.conclusion, item: call.params.item } : null;
       if (this.page.view) this.page.render(this.page.view);
     }
-    // A Reset on the network ends the page's token: the page opens again with the next one.
     if (reply.result.reopen !== null) {
       location.replace(`/?token=${encodeURIComponent(reply.result.reopen)}`);
       return;
@@ -232,7 +209,6 @@ export class Actions {
   }
 
   /**
-   * Marks `form` as waiting for its reply, or as done.
    * @param {HTMLFormElement} form
    * @param {boolean} waiting
    */
@@ -243,15 +219,12 @@ export class Actions {
     this.enable();
   }
 
-  /** @param {boolean} connected whether the socket is open */
+  /** @param {boolean} connected */
   connection(connected) {
     this.connected = connected;
     this.enable();
   }
 
-  /** Enables each submit button unless its form waits, the socket is down, the round blocks it
-   * (`data-blocked`), or its form lacks what it requires. Called after each render and each edit
-   * too. */
   enable() {
     for (const button of this.main.ownerDocument.querySelectorAll('button[type="submit"]')) {
       if (!(button instanceof HTMLButtonElement)) continue;
@@ -265,16 +238,13 @@ export class Actions {
   }
 }
 
-/** Whether `form` has what its `data-requires` asks for.
- * @param {HTMLFormElement} form */
+/** @param {HTMLFormElement} form */
 function ready(form) {
   const requires = form.dataset.requires;
   return !requires || (REQUIRES[requires]?.(form) ?? true);
 }
 
 /**
- * Brings the result of the action `method` into view, when it is out of view, and gives it the
- * focus when it can take it.
  * @param {HTMLElement} main
  * @param {string} method
  */
