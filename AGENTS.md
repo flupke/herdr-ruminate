@@ -1,7 +1,7 @@
 # Ownership
 
-You are the owner and long-term maintainer of this codebase, and its design is up to you,
-within the decision records (see Decisions): agents write all of its code. Keep how existing
+You are the owner and long-term maintainer of this codebase, and its design is up to you:
+agents write all of its code. Keep how existing
 features behave, unless the task asks for a new behaviour or it fixes a bug.
 
 # Eyes and hands
@@ -51,57 +51,12 @@ When a part of the product has no such tool, build one before you rely on tests 
 - Before writing an Explore page e2e test, read
   `.agents/wiki/explore-page-e2e.md` and use the `e2e` skill.
 
-# Wiki
-
-The wiki is a playbook for working in this repository, one topic per page,
-listed in `.agents/wiki/index.md`. Read the page for a tool (the checks,
-`make vision`, the e2e tests, the Jev evaluations) before you run or debug it.
-The workflow says when to read the pages of an area (step 1) and when to update
-them (step 2).
-
-A line earns its place when an agent working here needs it and cannot get it
-cheaply from the code, the tests or a `--help`:
-
-- how to run a tool, and its gotchas;
-- the conclusions of expensive runs, such as evaluations and studies, and the
-  commands that run them again;
-- how an outside tool behaves, such as Herdr, jj, e2e, Claude Code, Codex and
-  the language servers;
-- the reason for a choice, or a guarantee that spans several files, which no
-  single file can state.
-
-What a module does, its files, its classes and markup, and the behaviour a test
-checks stay in the code and the tests.
-
-The rules for a page:
-
-- Give a new topic its own page, and add its line to the index.
-- A page says how things work now. The account of a past run goes in the change
-  description, and its result files under `target/`: the page keeps only its
-  conclusions.
-- `docs/` is for people: design handoffs and the README's assets. Knowledge for
-  agents goes in the wiki, and decisions in `.agents/adr/`.
-
-# Decisions
-
-`.agents/adr/` holds the decision records (ADRs), one decision per file. A
-record keeps a decision from being undone by accident.
-
-- When a change would contradict a record, tell the user which record, and why
-  its reasons may no longer hold. Change the design once the user agrees.
-- Record a decision when all three hold: it is hard to reverse, it would
-  surprise a reader who lacks the context, and a real alternative was weighed.
-  Say the situation, the choice, and the alternative given up with the reason.
-- A record is frozen. When a decision changes, write a new record that names the
-  one it supersedes, and leave the old text as it was.
-
 # Change workflow
 
 Follow these steps for every change: a feature, a fix, or a change to docs.
 
 1. Create a fresh jj change before implementation. Use the previous change as
-   the fixed point for this change. Read the wiki pages and the decision
-   records of the area you will change.
+   the fixed point for this change.
 2. Implement the change, and check it as you go with the levels that fit it,
    cheapest first:
    1. `make lint`: clippy on every target, the Explore page client's types, and
@@ -115,10 +70,7 @@ Follow these steps for every change: a feature, a fix, or a change to docs.
    change that reaches the page, which
    `make check-changed CHECK_CHANGED_ARGS=--dry-run` lists with the other checks
    a change reaches. Once the change is complete, run
-   `make fmt` and bring the wiki up to date: edit each line the change made
-   false, and add a line only when it earns its place (see Wiki). Record a
-   decision that the change made, when the decision passes the test in
-   Decisions.
+   `make fmt`.
 3. For a change the user can see, explore the affected paths with the tools of
    Eyes and hands, in the pane or on the Explore page, and fix what you find.
 4. Invoke the `code-review` skill against the fixed point; the subagents it
@@ -132,8 +84,7 @@ Follow these steps for every change: a feature, a fix, or a change to docs.
    `CHECK_BASE` to the revision below the first. Fix whatever fails, even outside the change, run
    `make fmt`, review those fixes with one round of step 4, and run the gate
    again until it passes.
-6. Check the wiki against the change once more, since the fixes of steps 4 and
-   5 count too. Then describe the change with `jj describe`: a plain imperative
+6. Describe the change with `jj describe`: a plain imperative
    subject, then what changed for the user and why. The description and your
    closing report name each thing the change does, however small: check both
    against `jj diff`. Write both for a reader who did not follow the session (see
@@ -148,8 +99,7 @@ Follow these steps for every change: a feature, a fix, or a change to docs.
 For an investigation, which answers a question and builds nothing, check the answer by its
 sources in place of step 2's levels and step 3: give the `file:line` of each claim about this
 code, and the docs, API schema or `--help` of each claim about an outside tool, and report
-what you tried live as what you saw, with the command. Give the plan to whoever asked. The
-wiki lines the answer earns are a docs change: follow steps 1 and 4 to 7 for them.
+what you tried live as what you saw, with the command. Give the plan to whoever asked.
 
 Run the make targets through `scripts/dev-shell` so the pinned Rust
 toolchain, `cccc`, and `cargo-nextest` are available, and `make install` through
