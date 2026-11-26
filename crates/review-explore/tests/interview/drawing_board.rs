@@ -1,7 +1,5 @@
 use super::*;
 
-/// A round whose reviewer sent the agent back to the drawing board on its first question, and
-/// the request that took them there.
 fn at_drawing_board() -> (Exploration, TurnRequest) {
     let mut exploration = started();
     let question = exploration.questions[0].clone();
@@ -17,7 +15,6 @@ fn at_drawing_board() -> (Exploration, TurnRequest) {
     (exploration, request)
 }
 
-/// The agent's conclusion at the drawing board, with the changes the design needs.
 fn changes(request: &TurnRequest) -> InterviewUpdate {
     let mut response = update(request, None);
     response.conclusion = Some(Conclusion {
@@ -29,7 +26,6 @@ fn changes(request: &TurnRequest) -> InterviewUpdate {
 
 #[test]
 fn the_drawing_board_answers_the_open_question_with_no_comment_and_no_choice() {
-    // An answer with neither is refused, unless it sends the agent back to the drawing board.
     let (exploration, request) = at_drawing_board();
     let answer = request.answer.unwrap();
 

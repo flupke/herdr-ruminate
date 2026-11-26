@@ -1,6 +1,3 @@
-//! Who in the round marked each line, and what the question the round waits for marks once
-//! answered.
-
 use review_explore::{
     ExploreRound, InterviewUpdate, MarkableFiles, NamedLines, NotRelevantMark, SourceSide,
     TurnMarks,
@@ -11,16 +8,13 @@ use review_types::MarkAuthor;
 
 use crate::{Marker, PendingLines, WholeChange, count};
 
-/// The round of the review, if any, which tells its own marks from those of other rounds.
 pub(crate) struct RoundMarks<'a>(Option<&'a ExploreRound>);
 
-/// The round's marks on one file: the lines each answer found not relevant.
 pub(crate) struct FileMarkers<'a> {
     round: &'a RoundMarks<'a>,
     not_relevant: Vec<(&'a str, NamedLines)>,
 }
 
-/// A changed line, or the whole file for a file without lines.
 #[derive(Clone, Copy)]
 pub(crate) enum Line {
     One(SourceSide, u32),
@@ -32,7 +26,6 @@ impl<'a> RoundMarks<'a> {
         Self(round)
     }
 
-    /// The round's marks on `file`.
     pub(crate) fn in_file(&'a self, file: &ChangedFile) -> FileMarkers<'a> {
         let marks = self
             .0
@@ -70,13 +63,10 @@ impl<'a> RoundMarks<'a> {
 }
 
 impl FileMarkers<'_> {
-    /// Who, in the meter's groups, marked `line` as `author`.
     pub(crate) fn marker(&self, author: &MarkAuthor, line: Line) -> Marker {
         match author {
             MarkAuthor::Reviewer => Marker::ByHand,
             MarkAuthor::Jev => Marker::Jev,
-            // A turn that follows no answer marks only lines it found not relevant: the
-            // round refuses its reviewed and reopened lines.
             MarkAuthor::ExploreRead { request } if self.round.has_turn(request) => {
                 Marker::NotRelevant
             }
@@ -91,7 +81,6 @@ impl FileMarkers<'_> {
         }
     }
 
-    /// Whether the turn `answer` applied marked `line` not relevant.
     fn found_not_relevant(&self, answer: &str, line: Line) -> bool {
         self.not_relevant
             .iter()
@@ -108,21 +97,17 @@ impl Line {
     }
 }
 
-/// The marks that answering the question the round waits for applies, as the agent's turn
-/// that posted it asked, on the files where they apply.
 pub(crate) struct Answering<'a> {
     question: &'a InterviewUpdate,
     markable: &'a MarkableFiles,
 }
 
-/// The open lines answering marks, and the marked lines it reopens.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct AnswerEffect {
     pub(crate) pending: PendingLines,
     pub(crate) reopened: u64,
 }
 
-/// The lines answering marks and reopens on one file.
 struct FileAnswer {
     reviewed: Option<NamedLines>,
     not_relevant: Option<NamedLines>,
@@ -134,7 +119,6 @@ impl<'a> Answering<'a> {
         Self { question, markable }
     }
 
-    /// Whether the question cites `file`.
     pub(crate) fn cites(&self, file: &ChangedFile) -> bool {
         self.question.next.as_ref().is_some_and(|question| {
             question
@@ -144,8 +128,6 @@ impl<'a> Answering<'a> {
         })
     }
 
-    /// The lines the answer marks and reopens on `file`: none on a file whose diff changed
-    /// since the round started.
     fn in_file(&self, file: &ChangedFile) -> FileAnswer {
         if !self.markable.allows(file) {
             return FileAnswer {
@@ -165,9 +147,6 @@ impl<'a> Answering<'a> {
         }
     }
 
-    /// The open lines of `file` the answer marks, and how many of its `reviewed` lines it
-    /// reopens. Marks apply to open lines only; a reviewed line it reopens and marks again
-    /// stays marked.
     pub(crate) fn on_lines(
         &self,
         file: &ChangedFile,
@@ -195,7 +174,6 @@ impl<'a> Answering<'a> {
         }
     }
 
-    /// What the answer does to `file`, which is marked or left whole.
     pub(crate) fn on_whole(&self, file: &ChangedFile, marked: bool) -> Option<WholeChange> {
         let answer = self.in_file(file);
         if marked {
@@ -221,7 +199,6 @@ impl FileAnswer {
         Self::names(self.reviewed.as_ref(), line)
     }
 
-    /// Whether the answer reopens the marked `line` and leaves it open.
     fn reopens(&self, line: Line) -> bool {
         Self::names(self.reopened.as_ref(), line)
             && !self.marks_reviewed(line)
@@ -229,7 +206,6 @@ impl FileAnswer {
     }
 }
 
-/// The lines `removed` and `added` number, each on its side.
 fn lines(
     removed: impl Iterator<Item = u32>,
     added: impl Iterator<Item = u32>,

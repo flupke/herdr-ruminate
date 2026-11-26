@@ -1,5 +1,3 @@
-//! The page's routes: the shell that loads the page's client, its assets, and its socket.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,13 +16,8 @@ use crate::diagram;
 use crate::files::PageFiles;
 use crate::round::Rounds;
 
-/// Scripts and styles only from the page itself, and no inline script; the page's requests go
-/// only to itself, its socket included. The socket is named in full, `ws:`, or `wss:` through a
-/// tunnel: older browsers do not count it to the page's own address as `'self'`. Inline styles
-/// are allowed for Mermaid, which writes them into each diagram it draws: without them its boxes
-/// and labels are misplaced. Images may also be `data:` URLs, which the tab's icon draws its
-/// states with (client/favicon.js); its timer runs in a worker of the page's own. The page posts
-/// no form. The browser reports what the policy blocks to `/csp-report`.
+// Older browsers do not count the socket's `ws:` or `wss:` address as `'self'`. Mermaid writes
+// inline styles into each diagram it draws.
 fn content_security_policy(socket: &str) -> String {
     format!(
         "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
@@ -34,43 +27,31 @@ fn content_security_policy(socket: &str) -> String {
     )
 }
 
-/// Every response is read again, never from the browser's cache.
 const NO_STORE: (HeaderName, HeaderValue) =
     (header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
-/// The largest report of a policy violation the page reads.
 const CSP_REPORT_LIMIT: usize = 16 * 1024;
 
-/// How long a page in development waits for a file change before it asks again.
 const DEV_CHANGES_WAIT: Duration = Duration::from_secs(25);
 
-/// Something the page refused or could not do, for the server's log.
 #[derive(Debug)]
 pub enum PageEvent {
-    /// A request for a host name the page does not answer.
     UnknownHost,
-    /// A request that may change something, sent from another site's page.
     ForeignOrigin,
-    /// A request with a missing token, or one that opens no round.
     WrongToken,
-    /// The browser blocked something under the content security policy; the browser's report.
     CspViolation(String),
 }
 
-/// The Explore page of a set of rounds, served by the caller on the page's own listener.
 pub struct ExplorePage<R> {
     rounds: R,
     hosts: Hosts,
     files: PageFiles,
-    /// The reviewer's first picks of blind questions.
     pub(crate) picks: FirstPicks,
-    /// Changes with each start of the tool, when the revisions start again.
     epoch: String,
     log: Box<dyn Fn(PageEvent) + Send + Sync>,
 }
 
 impl<R: Rounds> ExplorePage<R> {
-    /// `log` receives what the page refuses or fails to do.
     pub fn new(
         rounds: R,
         hosts: Hosts,
@@ -87,7 +68,6 @@ impl<R: Rounds> ExplorePage<R> {
         }
     }
 
-    /// The page's routes, and the caller's own `routes`, all behind the page's [`Hosts`].
     pub fn into_router(self, routes: Router) -> Router {
         let page = Arc::new(self);
         let (script_path, script) = diagram::script_route::<R>();
@@ -119,17 +99,14 @@ impl<R: Rounds> ExplorePage<R> {
             .layer(middleware::from_fn_with_state(page, admit_host::<R>))
     }
 
-    /// The rounds the page shows.
     pub(crate) fn rounds(&self) -> &R {
         &self.rounds
     }
 
-    /// The value that tells this start of the tool from the others.
     pub(crate) fn epoch(&self) -> &str {
         &self.epoch
     }
 
-    /// Whether the request's cookie carries a token that opens a round.
     fn admits(&self, headers: &HeaderMap) -> Result<(), Refused> {
         TokenCookie::read(headers)
             .and_then(|token| self.rounds.find(token))
@@ -137,7 +114,6 @@ impl<R: Rounds> ExplorePage<R> {
             .ok_or_else(|| self.refuse(PageEvent::WrongToken))
     }
 
-    /// Trades the address's token for the cookie, then drops it from the address bar.
     fn open(&self, token: &str) -> Response {
         let Some(cookie) = self
             .rounds
@@ -151,12 +127,10 @@ impl<R: Rounds> ExplorePage<R> {
         response
     }
 
-    /// The shell that loads the page's client, which draws the round from its socket.
     fn show(&self, headers: &HeaderMap) -> Response {
         if let Err(refused) = self.admits(headers) {
             return refused.into_response();
         }
-        // The host was checked against the page's own names already.
         let host = headers
             .get(header::HOST)
             .and_then(|host| host.to_str().ok())
@@ -166,8 +140,7 @@ impl<R: Rounds> ExplorePage<R> {
             return StatusCode::BAD_REQUEST.into_response();
         };
         let policy = (header::CONTENT_SECURITY_POLICY, policy);
-        // A link in the agent's text does not tell another site the page's address on this
-        // network.
+        // Browsers send the page's address to the sites its links open, unless a policy says not to.
         let referrer = (
             header::REFERRER_POLICY,
             HeaderValue::from_static("same-origin"),
@@ -190,12 +163,10 @@ impl<R: Rounds> ExplorePage<R> {
     }
 }
 
-/// A request the page refused, once logged.
 pub(crate) struct Refused;
 
 impl IntoResponse for Refused {
     fn into_response(self) -> Response {
-        // A phone keeps the page of a round the reviewer has closed since: say what to do.
         (
             StatusCode::FORBIDDEN,
             [NO_STORE],
@@ -222,7 +193,6 @@ async fn admit_host<R: Rounds>(
     }
 }
 
-/// A request whose cookie carries a round's token.
 pub(crate) struct Admitted;
 
 impl<R: Rounds> FromRequestParts<Arc<ExplorePage<R>>> for Admitted {
@@ -241,8 +211,6 @@ struct PageQuery {
     token: Option<String>,
 }
 
-/// The address the reviewer opens carries the token: the page trades it for a cookie, then
-/// drops it from the address bar. Without a token in the address, serves the page.
 async fn index<R: Rounds>(
     State(page): State<Arc<ExplorePage<R>>>,
     Query(query): Query<PageQuery>,
@@ -261,7 +229,6 @@ async fn asset<R: Rounds>(
     serve_asset(&page.files, &name)
 }
 
-/// A module of the page's client.
 async fn client_asset<R: Rounds>(
     State(page): State<Arc<ExplorePage<R>>>,
     Path(name): Path<String>,
@@ -288,8 +255,6 @@ struct ChangesQuery {
     since: u64,
 }
 
-/// Development only: answers once a file of the page changes after `since`, or after a while
-/// with the same count.
 async fn dev_changes<R: Rounds>(
     State(page): State<Arc<ExplorePage<R>>>,
     _: Admitted,

@@ -8,8 +8,6 @@ fn proposal(title: &str, result: ProposalResult, reason: Option<&str>) -> Challe
     }
 }
 
-/// A round with or without a Challenger, and its kickoff turn reporting
-/// `proposals`.
 fn kickoff(challenger: bool, proposals: Vec<ChallengerProposal>) -> (Exploration, InterviewUpdate) {
     let mut exploration = exploration();
     exploration.challenger = challenger;

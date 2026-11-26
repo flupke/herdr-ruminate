@@ -6,7 +6,6 @@ use review_test_support::{GitFixture, complete_repository_snapshot};
 
 #[test]
 fn snapshots_git_worktrees_without_changing_the_real_index() {
-    // This test uses GitFixture directly because it checks the real Git index.
     let git = GitFixture::new();
     fs::write(git.root().join("modified.txt"), b"before\n").unwrap();
     fs::write(git.root().join("deleted.txt"), b"deleted\n").unwrap();

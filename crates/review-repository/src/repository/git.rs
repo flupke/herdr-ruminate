@@ -1,5 +1,3 @@
-//! Git working-tree snapshots backed by a private index and object store.
-
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -36,7 +34,6 @@ struct GitCache {
 }
 
 impl GitBackend {
-    /// Find the Git working tree that contains `start`, if any.
     pub(super) fn working_tree_root(
         start: &Path,
         cancellation: &Cancellation,
@@ -54,7 +51,6 @@ impl GitBackend {
         .map(Some)
     }
 
-    /// Open the backend for the working tree at `root`.
     pub(super) fn discover(root: &Path, cancellation: &Cancellation) -> Result<Self> {
         let objects =
             RepositoryProcess::new("git", root, "discover Git object directory", cancellation)
@@ -80,9 +76,6 @@ impl GitBackend {
         })
     }
 
-    /// Watch HEAD, the index and refs of the plan's working tree.
-    ///
-    /// Returns the common Git directory, or `None` when the working tree has no Git directory.
     pub(super) fn watch_metadata(plan: &mut WatchPlan) -> Option<PathBuf> {
         let git = Self::git_directory(&plan.root)?;
         let common =
@@ -93,7 +86,6 @@ impl GitBackend {
         Some(common)
     }
 
-    /// Resolve the Git directory of the working tree at `root`, following a `.git` link file.
     pub(super) fn git_directory(root: &Path) -> Option<PathBuf> {
         let path = root.join(".git");
         if path.is_dir() {
@@ -233,7 +225,6 @@ impl RepositoryBackend for GitBackend {
         RepoType::Git
     }
 
-    /// Watch HEAD, the index and refs, and apply Git's global and repository excludes.
     fn watch_plan(&self, root: &Path) -> WatchPlan {
         let mut plan = WatchPlan::new(root);
         let mut excludes = gitconfig_excludes_path().into_iter().collect::<Vec<_>>();
@@ -339,9 +330,7 @@ impl RepositoryBackend for GitBackend {
         if read.status.success() {
             return Ok(Some(read.stdout));
         }
-        // `git cat-file` fails the same way on a missing path, a directory and a broken read:
-        // only the revision's listing of the path tells them apart. A directory where a file
-        // was is no file at `path`, as a deleted one is.
+        // `git cat-file` fails the same way on a missing path, a directory and a broken read.
         let listed = self.run(
             repository,
             [
@@ -449,7 +438,6 @@ impl RepositoryBackend for GitBackend {
         Ok(results)
     }
 
-    // A Git working tree has no revisions for the reviewer to select or edit.
     fn revision_candidates(
         &self,
         _repository: &Repository,
@@ -539,8 +527,8 @@ impl Drop for GitCache {
     }
 }
 
-/// The arguments that read the file at `path` in `revision`: `git cat-file`, unlike `git show`,
-/// takes no pathspec, so a missing path with a wildcard fails instead of reading as empty.
+// Unlike `git show`, `git cat-file` takes no pathspec: a missing path with a wildcard fails
+// instead of reading as empty.
 fn cat_file_blob(revision: &str, path: &RepoPath) -> [OsString; 3] {
     let mut object = OsString::from(revision);
     object.push(":");

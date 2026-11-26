@@ -1,16 +1,12 @@
-//! Minimal valid excerpts from parsed unified diffs.
-
 use std::fmt::Write as _;
 use std::ops::RangeInclusive;
 
 use crate::diff::DiffRow;
 
-/// A valid unified-diff excerpt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiffExcerpt(String);
 
 impl DiffExcerpt {
-    /// Build the smallest valid excerpt for an inclusive row selection.
     pub fn build(rows: &[DiffRow], selection: RangeInclusive<usize>) -> Result<Self, ExcerptError> {
         if rows.iter().any(|row| matches!(row, DiffRow::Notice { .. })) {
             return Err(ExcerptError::Notice);
@@ -65,27 +61,21 @@ impl DiffExcerpt {
         Ok(Self(text))
     }
 
-    /// Get the excerpt text without a trailing newline.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Consume the excerpt and return its text.
     pub fn into_string(self) -> String {
         self.0
     }
 }
 
-/// Why a diff selection cannot become an excerpt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ExcerptError {
-    /// The diff does not contain the required file headers.
     #[error("Diff headers are incomplete")]
     MissingHeaders,
-    /// The selection has no context, added, or deleted row.
     #[error("Select context, added, or deleted lines")]
     NoContent,
-    /// The diff contains a binary, conflict, or unsupported notice.
     #[error("This diff cannot be inserted as text")]
     Notice,
 }

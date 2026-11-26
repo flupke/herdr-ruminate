@@ -1,13 +1,3 @@
-//! The reviewer's actions, as the page's socket receives them. Each is checked against the
-//! latest stage the round's owner published, then handed to the owner as a [`PageCommand`],
-//! which checks it again against its own round: an action on something the round moved past
-//! is refused as stale, with a notice worded for it. A repeat of an action that went through
-//! (the same answer to the same version of a question, the same pick, list or quiz answer) is
-//! answered as applied already, and changes nothing; a repeat of a Start, a Stop
-//! waiting, a Retry or a resend names a start, a turn or an attempt that is no longer the
-//! current one, so it cannot start, stop or send anything a second time. A message in the
-//! round's conversation goes to the owner of the review threads instead (`conversation`).
-
 mod conversation;
 
 use review_explore::{AnswerInput, DiagramError, QuizResponse};
@@ -24,14 +14,12 @@ use crate::rpc::{
 };
 use crate::{Recovery, Rounds, Waiting};
 
-/// The actions of one page on one round.
 pub(crate) struct Actions<'a, R> {
     pub(crate) page: &'a ExplorePage<R>,
     pub(crate) round: &'a PageRound,
 }
 
 impl<R: Rounds> Actions<'_, R> {
-    /// Carries out `call`, or says why not.
     pub(crate) async fn call(&self, call: Call) -> Result<Outcome, Notice> {
         match call {
             Call::Round(call) => self.on_round(call).await,
@@ -48,7 +36,6 @@ impl<R: Rounds> Actions<'_, R> {
             RoundCall::Stop(params) => self.stop(params).await,
             RoundCall::Retry(params) => self.retry(params).await,
             RoundCall::CancelAnswer(params) => {
-                // The latest answer, or an earlier question's while the latest can be cancelled.
                 let round = self.round.stages.latest();
                 let offered = round.cancellable.is_some_and(|latest| {
                     latest.id == params.answer
@@ -71,7 +58,6 @@ impl<R: Rounds> Actions<'_, R> {
                     source: params.source,
                     message: params.message,
                 };
-                // The page shows the error whatever the owner replies.
                 let sent = self.round.commands.send(PageCommand::DiagramFailed(error));
                 Ok(Outcome::applied(sent.await.unwrap_or(false)))
             }
@@ -106,8 +92,6 @@ impl<R: Rounds> Actions<'_, R> {
         }
     }
 
-    /// Hands the reviewer's answer to the round's owner, with the reviewer's first pick of a
-    /// blind question, unless the page showed a question that no longer waits for an answer.
     async fn answer(&self, params: AnswerParams) -> Result<Outcome, Notice> {
         let shown = self.round.stages.latest();
         let asked = shown
@@ -119,7 +103,6 @@ impl<R: Rounds> Actions<'_, R> {
             number: params.number,
         };
         if asked.is_none() {
-            // The round's latest answer is this one: a repeat of an answer that went through.
             let answered = Answered {
                 question: Some((params.question, params.version)),
                 option: params.choice,
@@ -128,8 +111,6 @@ impl<R: Rounds> Actions<'_, R> {
             };
             return repeat(shown.repeats(&answered, &comment), action);
         }
-        // A question answered before, whose recommendation the reviewer has seen, keeps no first
-        // pick, nor does the drawing board, which keeps no choice.
         let first_pick = shown
             .stage
             .blind()
@@ -150,8 +131,6 @@ impl<R: Rounds> Actions<'_, R> {
         self.send(PageCommand::Answer(answer), action).await
     }
 
-    /// Keeps the reviewer's first pick of a blind question, once the round's owner says that it
-    /// still asks it. A pick kept already stays the first one.
     async fn pick(&self, params: PickParams) -> Result<Outcome, Notice> {
         let action = Action::Pick {
             number: params.number,
@@ -170,7 +149,6 @@ impl<R: Rounds> Actions<'_, R> {
             .blind()
             .filter(|blind| blind.offers(&params.choice))
         else {
-            // A question that shows its recommendation at once keeps no first pick.
             return Ok(Outcome::default());
         };
         if self
@@ -194,8 +172,6 @@ impl<R: Rounds> Actions<'_, R> {
         Ok(Outcome::applied(kept == Pick::First))
     }
 
-    /// Hands the start the page offered to the round's owner, unless the round offers another
-    /// start since, or none, or nothing is left to review.
     async fn start(&self, params: StartParams) -> Result<Outcome, Notice> {
         let shown = self.round.stages.latest();
         if shown.stage.offered_start() != Some(params.start.as_str()) {
@@ -220,9 +196,6 @@ impl<R: Rounds> Actions<'_, R> {
         self.send(command, Action::Start).await
     }
 
-    /// Hands Stop waiting to the round's owner, unless the page showed a start or a turn that is
-    /// no longer waited for. A repeat of a Stop waiting that stopped the agent's turn finds the
-    /// turn paused.
     async fn stop(&self, params: StopParams) -> Result<Outcome, Notice> {
         let action = Action::Recover(RecoveryAction::Stop);
         let waiting = match (params.start, params.request) {
@@ -245,9 +218,6 @@ impl<R: Rounds> Actions<'_, R> {
             .await
     }
 
-    /// Hands Retry to the round's owner, unless the page showed an attempt of the turn that is
-    /// no longer its latest one. A repeat of a Retry that went through finds the agent working on
-    /// the turn.
     async fn retry(&self, params: RetryParams) -> Result<Outcome, Notice> {
         let action = Action::Recover(RecoveryAction::Retry);
         let stage = self.round.stages.stage();
@@ -261,9 +231,6 @@ impl<R: Rounds> Actions<'_, R> {
         self.send(command, action).await
     }
 
-    /// Hands the saved implementation request to the round's owner to send again, unless the
-    /// page showed an attempt that is no longer its latest one. A repeat of a resend that went
-    /// through finds the request on its way, or received.
     async fn resend(&self, params: ResendImplementationParams) -> Result<Outcome, Notice> {
         let stage = self.round.stages.stage();
         if !stage.resends_implementation(&params.conclusion, &params.delivery, &params.attempt) {
@@ -284,9 +251,6 @@ impl<R: Rounds> Actions<'_, R> {
         self.send(command, Action::Implement).await
     }
 
-    /// Hands Reset to the round's owner, unless the page showed a round that is no longer
-    /// running. A Reset ends the token of a round on the network: the page receives the token of
-    /// the start screen, so that it can start the next round.
     async fn reset(&self, params: ResetParams) -> Result<Outcome, Notice> {
         let offered = self.round.stages.round().as_deref() == Some(params.round.as_str());
         let command = PageCommand::Recover(Recovery::Reset {
@@ -303,14 +267,10 @@ impl<R: Rounds> Actions<'_, R> {
         Ok(outcome)
     }
 
-    /// Hands the reviewer's Implement to the round's owner, unless the page showed a conclusion
-    /// that no longer offers it.
     async fn implement(&self, params: ImplementParams) -> Result<Outcome, Notice> {
         let stage = self.round.stages.stage();
         let text = crlf_to_lf(params.text);
         if !stage.offers_implement(&params.conclusion, params.replaces.as_deref()) {
-            // The conclusion's latest request is this list, on its way or received, in place of
-            // the one the page showed: a repeat of an Implement that went through.
             let sent = stage.concludes(&params.conclusion)
                 && stage.implementation().is_some_and(|latest| {
                     latest.text == text
@@ -338,8 +298,6 @@ impl<R: Rounds> Actions<'_, R> {
         self.quiz(response).await
     }
 
-    /// Sends `response` to the round's owner, unless the round no longer shows the quiz where it
-    /// fits. A repeat of a pick or a skip the round saved changes nothing.
     async fn quiz(&self, response: PageQuizResponse) -> Result<Outcome, Notice> {
         let stage = self.round.stages.stage();
         if stage.quiz_has(&response) {
@@ -350,8 +308,6 @@ impl<R: Rounds> Actions<'_, R> {
             .await
     }
 
-    /// Hands `command` to the round's owner when the page offers it (`offered`); `action` words
-    /// the notice when it did not go through.
     async fn offered(
         &self,
         offered: bool,
@@ -373,8 +329,6 @@ impl<R: Rounds> Actions<'_, R> {
     }
 }
 
-/// The reply to an action the round no longer offers: applied already when it is a `repeat` of
-/// one that went through, else stale.
 fn repeat(repeat: bool, action: Action) -> Result<Outcome, Notice> {
     if repeat {
         Ok(Outcome::applied(false))
@@ -383,9 +337,7 @@ fn repeat(repeat: bool, action: Action) -> Result<Outcome, Notice> {
     }
 }
 
-/// The text of a text area as the reviewer wrote it: a browser may send its line breaks as
-/// CRLF, while the pane's editor keeps LF, so that the round saves the same text whichever
-/// front end the reviewer wrote it in.
+// A browser may send the line breaks of a text area as CRLF.
 fn crlf_to_lf(text: String) -> String {
     if text.contains('\r') {
         text.replace("\r\n", "\n")

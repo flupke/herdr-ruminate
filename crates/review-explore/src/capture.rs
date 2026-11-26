@@ -15,11 +15,9 @@ mod compressed_diffs;
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ManifestEntry {
     pub file: usize,
-    /// None identifies file metadata/non-text changes; text hunks have one-based IDs.
     pub hunk: Option<usize>,
 }
 
-/// Internal comparison for native viewers; no repository catalog is sent to the agent.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Comparison {
     pub repository_root: PathBuf,
@@ -36,7 +34,6 @@ pub struct Comparison {
 }
 
 impl Comparison {
-    /// What the reviewed change says it does, when it says anything.
     pub fn change_description(&self) -> Option<&str> {
         self.base
             .as_ref()
@@ -188,8 +185,6 @@ impl Comparison {
         .map(Cow::into_owned)
     }
 
-    /// Whether a mark names a changed file, on a side the change has, with
-    /// valid lines.
     pub(crate) fn validate_mark(&self, location: &CodeLocation) -> bool {
         self.files.iter().any(|file| location.names(file)) && self.validate_location(location)
     }
@@ -210,7 +205,6 @@ impl Comparison {
             return location.lines.is_none() && changed_side;
         }
         if source.read(&self.repository_root).is_err() {
-            // Source buffers and their limitations are not saved with a round.
             return location.lines.is_none() && (source.limitation.is_some() || changed_side);
         }
         location.lines.as_ref().is_none_or(|range| {
@@ -245,7 +239,7 @@ impl Comparison {
             .get(entry.file)
             .and_then(|file| file.hunks.get(hunk.checked_sub(1)?))
         else {
-            return true; // Restored associations are navigation, never review marks.
+            return true;
         };
         let range = match location.side {
             SourceSide::Old => &hunk.old,

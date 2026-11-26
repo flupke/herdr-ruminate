@@ -1,6 +1,5 @@
 use super::*;
 
-/// An item whose correct option is the second, proven by the first two lines of the base.
 pub(super) fn item(question: &str) -> QuizItem {
     QuizItem {
         question: question.into(),
@@ -20,7 +19,6 @@ fn question_evidence() -> Vec<EvidenceRef> {
     question(1).evidence
 }
 
-/// Concludes a new round at once, with `quiz`.
 fn concluded(quiz: Vec<QuizItem>) -> eyre::Result<(Exploration, String)> {
     let mut exploration = exploration();
     let request = exploration.request(None, None).unwrap();
@@ -234,7 +232,6 @@ fn only_the_quiz_of_the_current_conclusion_takes_answers() {
     assert!(without_quiz.answer_quiz(&request, pick).is_err());
 }
 
-/// A round concluded at once with an empty quiz.
 fn exploration_without_quiz() -> Exploration {
     let mut exploration = exploration();
     let request = exploration.request(None, None).unwrap();

@@ -1,6 +1,5 @@
 use super::*;
 
-/// The agent's version `version` of the round's open question, after the reviewer's message.
 fn revision(exploration: &Exploration, version: u32) -> QuestionRevision {
     QuestionRevision {
         instance: exploration.instance.clone(),
@@ -28,8 +27,6 @@ fn first_line() -> CodeLocation {
     }
 }
 
-/// A round whose reviewer answered its first question with a comment, and whose agent asked
-/// version 2 of it, asking to mark the first line of policy.rs once the reviewer answers.
 fn asked_again() -> (Exploration, ReviewerAnswer) {
     let mut exploration = started();
     let question = exploration.questions[0].clone();

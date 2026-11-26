@@ -1,11 +1,6 @@
-//! Back to the drawing board: the reviewer's request, in place of an answer, that the agent
-//! conclude at once with the changes the design needs. The code changes before another round
-//! reviews it, so the conclusion has no quiz and marks no lines.
-
 use crate::{Exploration, InterviewUpdate};
 
 impl Exploration {
-    /// A turn at the drawing board concludes with the changes to implement, and nothing else.
     pub(crate) fn validate_drawing_board(&self, update: &InterviewUpdate) -> eyre::Result<()> {
         if !self
             .outstanding
@@ -40,8 +35,6 @@ impl Exploration {
         Ok(())
     }
 
-    /// Whether the round concluded at the drawing board: its conclusion answers the answer that
-    /// sent the agent there, or a reply to that conclusion.
     pub fn concluded_at_drawing_board(&self) -> bool {
         self.conclusion.is_some()
             && self

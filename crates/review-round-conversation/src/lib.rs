@@ -1,68 +1,39 @@
-//! The read model of an Explore round's conversation: the review thread attached to the round,
-//! as plain data that a page can draw and a serde message can carry.
-
 use review_threads::{
     AskedUnder, Author, Message, MessageId, ReviewThread, ReviewThreads, ThreadId, WakeupNotice,
 };
 use serde::Serialize;
 
-/// The conversation of one Explore round, as the reviewer reads it.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct RoundConversation {
-    /// The round, by its instance.
     pub round: String,
-    /// The round's thread, once a first message started it.
     pub thread: Option<ThreadId>,
-    /// The messages in posting order.
     pub messages: Vec<ConversationMessage>,
-    /// The agent's replies the reviewer has not read.
     pub unread: usize,
-    /// Whether Retry would wake the agent again for the reviewer's waiting messages. It holds
-    /// for any waiting message, as the pane's Retry does; a page that offers Retry only on a
-    /// message that was not delivered reads each message's `delivery` instead.
     pub can_retry: bool,
-    /// The position to mark read through, once the reviewer saw these messages.
     pub read_through: u64,
 }
 
-/// One message of a round conversation.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ConversationMessage {
     pub id: MessageId,
     pub author: Author,
     pub text: String,
-    /// When the review received it, in milliseconds since the Unix epoch.
     pub posted_at_ms: Option<u64>,
-    /// Where in the round the reviewer wrote it.
     pub asked_under: Option<AskedUnder>,
-    /// The passage of the round the reviewer quoted.
     pub quote: Option<String>,
-    /// What became of a reviewer's message; an agent's reply has none.
     pub delivery: Option<Delivery>,
-    /// Whether the reviewer has not read this reply of the agent.
     pub unread: bool,
 }
 
-/// What became of a message the reviewer wrote.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, ts_rs::TS)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Delivery {
-    /// The agent has not replied yet: the wakeup is on its way, or the agent is working on it.
-    /// `held` says why the wakeup that covers it waits to reach the agent, while it does.
     Waiting { held: Option<String> },
-    /// The wakeup that covered it did not reach the agent; Retry sends another. The reviewer
-    /// keeps no record of it: after a restart the message reads as waiting, and Retry still
-    /// applies.
     NotDelivered { error: String },
-    /// An agent reply took it up.
     Answered,
 }
 
 impl RoundConversation {
-    /// The conversation of `round` in `threads`, where the latest wakeup for the review's
-    /// pending comments shows `notice`, if any: the notice of the thread worker's latest
-    /// `Event::Wakeup` for the review, which is `None` again once another wakeup is on its way.
-    /// A wakeup that waits leaves its messages waiting; one that failed marks them not delivered.
     pub fn new(threads: &ReviewThreads, round: &str, notice: Option<&WakeupNotice>) -> Self {
         let thread = threads.round_conversation(round);
         Self {

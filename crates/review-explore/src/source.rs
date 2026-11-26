@@ -29,7 +29,6 @@ pub enum SourceSide {
 }
 
 impl SourceSide {
-    /// `old` on the old side, `new` on the new side.
     pub(crate) fn pick<T>(self, old: T, new: T) -> T {
         match self {
             Self::Old => old,
@@ -37,13 +36,11 @@ impl SourceSide {
         }
     }
 
-    /// The path of `file` on this side, when the file exists there.
     pub(crate) fn path_in(self, file: &ChangedFile) -> Option<&RepoPath> {
         self.pick(file.old_path.as_ref(), file.new_path.as_ref())
     }
 }
 
-/// `old` or `new`, as citations name the sides.
 impl std::fmt::Display for SourceSide {
     fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         output.write_str(match self {
@@ -65,7 +62,6 @@ pub struct CodeLocation {
     pub lines: Option<SourceLineRange>,
 }
 
-/// `path new 7-9`, or `path (whole file)`.
 impl std::fmt::Display for CodeLocation {
     fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.lines {
@@ -76,7 +72,6 @@ impl std::fmt::Display for CodeLocation {
 }
 
 impl CodeLocation {
-    /// The one-based location of zero-based `lines` on one side of `file`.
     pub fn on(file: &ChangedFile, side: SourceSide, lines: std::ops::Range<u32>) -> Self {
         let path = match side {
             SourceSide::Old => file.old_path.as_ref(),
@@ -90,8 +85,6 @@ impl CodeLocation {
         }
     }
 
-    /// Whether the location is in `file`: its path on the location's side,
-    /// or either of its paths for the whole file.
     pub fn names(&self, file: &ChangedFile) -> bool {
         let old = file.old_path.as_ref() == Some(&self.path);
         let new = file.new_path.as_ref() == Some(&self.path);
@@ -112,7 +105,6 @@ impl CodeLocation {
     }
 }
 
-/// Source content for native evidence viewers. Working-copy text is read on demand.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Source {
     pub path: RepoPath,
@@ -168,7 +160,6 @@ impl Source {
     }
 }
 
-/// `bytes` as text, or why they cannot be cited as lines: a NUL byte, or invalid UTF-8.
 pub(crate) fn text(bytes: Vec<u8>) -> eyre::Result<String> {
     eyre::ensure!(
         !bytes.contains(&0),

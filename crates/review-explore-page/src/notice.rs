@@ -1,52 +1,29 @@
-//! What the page tells the reviewer after an action it could not carry out: the socket's reply
-//! to the action carries it, as a status card (`StatusCard`), which the page shows until the
-//! round changes.
-
 use crate::command::CommandRefusal;
 
-/// An action that did not go through, and why. The page shows it as a status card
-/// (`StatusCard`), which words it for the action.
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Notice {
     pub(crate) action: Action,
     pub(crate) problem: Problem,
 }
 
-/// What the reviewer asked for with the action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Action {
-    /// An answer to the question the page showed, of this number on the rail when the page
-    /// said it.
     Answer { number: Option<usize> },
-    /// The start of a round.
     Start,
-    /// The reviewer's first pick of a blind question, before the recommendation shows, of this
-    /// number on the rail when the page said it.
     Pick { number: Option<usize> },
-    /// The implementation request of the conclusion the page showed.
     Implement,
-    /// A pick of a quiz item, or a skip of the quiz, of the conclusion the page showed.
     Quiz,
-    /// A message in the round's conversation.
     Message,
-    /// Retry of the reviewer's messages that did not reach the agent.
     RetryMessages,
-    /// An action that recovers or closes the round.
     Recover(RecoveryAction),
 }
 
-/// An action of the page that recovers or closes the round, as the pane offers it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RecoveryAction {
-    /// Stop waiting for the start or the agent's turn the page showed.
     Stop,
-    /// Retry of the agent's turn the page showed as interrupted.
     Retry,
-    /// Cancel answer of the reviewer's latest answer.
     CancelAnswer,
-    /// Reset of the round the page showed.
     Reset,
-    /// Cancel of the implementation request the page showed as being sent.
     CancelImplementation,
 }
 
@@ -62,21 +39,16 @@ impl RecoveryAction {
     }
 }
 
-/// Why an action did not go through.
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum Problem {
-    /// The round moved on since the page was loaded.
     Stale,
-    /// The round's owner could not carry out the action, for this reason.
     Failed(String),
-    /// The round's owner did not reply: the action may have gone through.
     NoReply,
 }
 
 impl From<CommandRefusal> for Problem {
     fn from(refusal: CommandRefusal) -> Self {
         match refusal {
-            // `CommandSender::send` answers a repeat as applied, not as a problem.
             CommandRefusal::Stale | CommandRefusal::AlreadyApplied => Self::Stale,
             CommandRefusal::Failed(reason) => Self::Failed(reason),
         }
@@ -84,8 +56,6 @@ impl From<CommandRefusal> for Problem {
 }
 
 impl Action {
-    /// The number on the rail of the question the action answers or picks a choice of, when the
-    /// page said it.
     pub(crate) fn question_number(self) -> Option<usize> {
         match self {
             Self::Answer { number } | Self::Pick { number } => number,
@@ -93,7 +63,6 @@ impl Action {
         }
     }
 
-    /// The action's name, as the socket's replies say it.
     fn name(self) -> &'static str {
         match self {
             Self::Answer { .. } => "answer",
@@ -109,7 +78,6 @@ impl Action {
 }
 
 impl Notice {
-    /// The code of the socket's reply that carries the notice.
     pub(crate) fn code(&self) -> i32 {
         match self.problem {
             Problem::Stale => crate::rpc::RpcError::STALE,
@@ -118,8 +86,6 @@ impl Notice {
         }
     }
 
-    /// What became of the action, in a few words, for the socket's reply: the page shows the
-    /// notice's status card.
     pub(crate) fn message(&self) -> String {
         match &self.problem {
             Problem::Stale => format!("{} is stale", self.action.name()),

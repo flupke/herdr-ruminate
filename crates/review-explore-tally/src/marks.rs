@@ -1,6 +1,3 @@
-//! The review marks of the reviewer's snapshot, file by file, read from the tracker again only
-//! for the files whose saved mark changed.
-
 use std::collections::HashMap;
 
 use review_explore::{ExploreRound, InterviewUpdate, MarkableFiles};
@@ -11,37 +8,28 @@ use review_types::MarkAuthor;
 
 use crate::MarkTally;
 
-/// One changed file and its review marks.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct FileMarks {
     pub(crate) file: ChangedFile,
     pub(crate) marks: Marks,
 }
 
-/// The review marks of one changed file.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Marks {
-    /// The file's changed lines, open or reviewed, with who reviewed each.
     Lines(FileLines),
-    /// A file without lines to mark one by one, marked whole by an author or not at all.
     Whole(Option<MarkAuthor>),
-    /// The marks could not be read: the file counts as left.
     Unread,
 }
 
-/// The review marks of the reviewer's latest snapshot, kept for the next reading: a file whose
-/// saved mark did not change, in the same snapshot, is not read again.
 #[derive(Debug)]
 pub struct ChangeMarks {
     store: ReviewStore,
     snapshot: Option<SnapshotIdentity>,
     files: Vec<FileMarks>,
-    /// The saved mark each file of `files` was read from.
     records: HashMap<RepoPath, LoadResult>,
 }
 
 impl ChangeMarks {
-    /// Marks read from `store`, before any snapshot.
     pub fn new(store: ReviewStore) -> Self {
         Self {
             store,
@@ -51,7 +39,6 @@ impl ChangeMarks {
         }
     }
 
-    /// Reads the marks of `snapshot` through `tracker`.
     pub fn read(&mut self, tracker: &ReviewTracker, snapshot: &Snapshot) {
         if self.snapshot.as_ref() != Some(&snapshot.identity) {
             self.snapshot = Some(snapshot.identity.clone());
@@ -79,7 +66,6 @@ impl ChangeMarks {
         self.files = files;
     }
 
-    /// The marks of `file`: `previous`, when they were read from the same saved mark.
     fn read_file(
         &mut self,
         tracker: &ReviewTracker,
@@ -104,16 +90,12 @@ impl ChangeMarks {
                 file: file.clone(),
                 marks: Marks::read(tracker, snapshot, file),
             });
-        // Marks that could not be read are read again next time.
         if marks.marks != Marks::Unread {
             self.records.insert(path.clone(), record);
         }
         marks
     }
 
-    /// The tally of the marks read last, in `round`, while the round waits for an answer to
-    /// the question the agent's turn `question` posted, whose marks apply on the `markable`
-    /// files of the snapshot read last.
     pub fn mark_tally(
         &self,
         round: Option<&ExploreRound>,
@@ -128,7 +110,6 @@ impl Marks {
     fn read(tracker: &ReviewTracker, snapshot: &Snapshot, file: &ChangedFile) -> Self {
         match tracker.lines(snapshot, file) {
             Ok(lines) if lines != FileLines::default() => Self::Lines(lines),
-            // A file without lines to mark one by one is marked whole.
             Ok(_) => tracker
                 .whole_file_author(snapshot, file)
                 .map_or(Self::Unread, Self::Whole),

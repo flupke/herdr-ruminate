@@ -175,7 +175,6 @@ fn revision_candidates_and_edits_follow_the_real_jj_graph() {
     assert_eq!(parents[0].change_id.as_str(), parent);
 }
 
-/// The change IDs of the revision history's lines, in the order the history lists them.
 fn listed_changes(repository: &Repository) -> Vec<String> {
     repository
         .revision_history()
@@ -185,7 +184,6 @@ fn listed_changes(repository: &Repository) -> Vec<String> {
         .collect()
 }
 
-/// The change IDs of the revision candidates in `direction`, as `]v` or `[v` offers them.
 fn candidate_ids(repository: &Repository, direction: RevisionDirection) -> Vec<String> {
     repository
         .revision_candidates(direction)
@@ -203,33 +201,26 @@ fn revision_navigation_never_moves_onto_another_workspace_s_working_copy() {
     let shared_base = fixture.change_id();
     fixture.new_change("reviewed change");
     let reviewed = fixture.change_id();
-    // The other task's stack sits on the reviewed change: a described change, then the other
-    // workspace's working copy above it.
     fixture.new_change("other task's change");
     let other_task = fixture.change_id();
     fixture.add_workspace_on("other-task", &other_task);
     let other_working_copy = fixture.working_copy("other-task");
-    // A third workspace's working copy is a direct child of the reviewed change.
     fixture.add_workspace_on("child-task", &reviewed);
     let child_working_copy = fixture.working_copy("child-task");
-    // The review workspace's own child, which no working copy reaches.
     fixture.edit(&reviewed);
     fixture.new_change("own child");
     let own_child = fixture.change_id();
     fixture.edit(&reviewed);
 
-    // `]v`: every child but the third workspace's working-copy commit.
     let mut children = candidate_ids(&repository, RevisionDirection::Children);
     children.sort();
     let mut expected = vec![other_task.clone(), own_child.clone()];
     expected.sort();
     assert_eq!(children, expected);
-    // `[v`: the base both stacks share.
     assert_eq!(
         candidate_ids(&repository, RevisionDirection::Parents),
         std::slice::from_ref(&shared_base)
     );
-    // `vv`: the history lists every change but the other workspaces' working-copy commits.
     let listed = listed_changes(&repository);
     for offered in [&shared_base, &reviewed, &own_child, &other_task] {
         assert!(
@@ -244,8 +235,6 @@ fn revision_navigation_never_moves_onto_another_workspace_s_working_copy() {
         );
     }
 
-    // A jump back or forward edits by change ID: the edit itself refuses the other
-    // workspaces' working-copy commits, and names their workspaces.
     for (change, workspace) in [
         (&other_working_copy, "other-task"),
         (&child_working_copy, "child-task"),
@@ -263,7 +252,6 @@ fn revision_navigation_never_moves_onto_another_workspace_s_working_copy() {
     assert_eq!(fixture.working_copy("other-task"), other_working_copy);
     assert_eq!(fixture.working_copy("child-task"), child_working_copy);
 
-    // Every other change stays editable, the one below the other task's working copy too.
     for change in [&own_child, &other_task, &shared_base] {
         assert_eq!(
             repository
@@ -279,8 +267,6 @@ fn revision_navigation_never_moves_onto_another_workspace_s_working_copy() {
 
 #[test]
 fn revision_navigation_climbs_the_own_stack_up_to_another_workspace_s_working_copy() {
-    // The reported shape: the review workspace's @ at the bottom of a stack of described
-    // changes, and another workspace's working copy on top of it.
     let fixture = JjFixture::new(JjLayout::NonColocated);
     let repository = Repository::discover(fixture.root()).unwrap();
     fixture.new_change("reviewed change");
@@ -295,7 +281,6 @@ fn revision_navigation_climbs_the_own_stack_up_to_another_workspace_s_working_co
     let other_working_copy = fixture.working_copy("other-task");
     fixture.edit(&reviewed);
 
-    // `vv`: the picker lists the whole stack above @, and not the other working copy.
     let listed = listed_changes(&repository);
     for change in std::iter::once(&reviewed).chain(&stack) {
         assert!(listed.contains(change), "{change} missing from {listed:?}");
@@ -305,7 +290,6 @@ fn revision_navigation_climbs_the_own_stack_up_to_another_workspace_s_working_co
         "{other_working_copy} listed in {listed:?}"
     );
 
-    // `]v` climbs the stack one change at a time, up to its top.
     for change in &stack {
         let children = repository
             .revision_candidates(RevisionDirection::Children)
@@ -323,8 +307,6 @@ fn revision_navigation_climbs_the_own_stack_up_to_another_workspace_s_working_co
         );
         assert_eq!(&fixture.change_id(), change);
     }
-    // Above the top sits only the other workspace's working copy: `]v` offers nothing, and an
-    // edit by change ID is refused.
     assert!(candidate_ids(&repository, RevisionDirection::Children).is_empty());
     assert_eq!(
         repository
@@ -337,8 +319,6 @@ fn revision_navigation_climbs_the_own_stack_up_to_another_workspace_s_working_co
     assert_eq!(fixture.change_id(), top);
     assert_eq!(fixture.working_copy("other-task"), other_working_copy);
 
-    // `[v` steps back down, and `]v` still goes back up: what the reviewer offers does not
-    // depend on where in the stack @ is.
     let below_top = &stack[stack.len() - 2];
     assert_eq!(
         candidate_ids(&repository, RevisionDirection::Parents),
@@ -583,7 +563,6 @@ fn a_snapshot_of_another_revision_reads_its_own_files_and_leaves_the_working_cop
         .collect::<Vec<_>>();
     assert_eq!(paths, ["first.txt"]);
     assert_eq!(snapshot.files[0].statistics.lines_added, 2);
-    // The working copy stays on its own change.
     assert_eq!(fixture.change_id(), second);
     let second_snapshot = repository
         .snapshot_of(&ChangeId::from(second))
@@ -604,7 +583,6 @@ fn a_snapshot_of_a_divergent_change_says_it_is_divergent() {
     )
     .unwrap();
     fixture.jj(["describe", "-m", "one"]);
-    // A second description at the earlier operation makes the change divergent.
     fixture.jj([
         "--at-op",
         &operation,

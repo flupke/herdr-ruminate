@@ -1,6 +1,3 @@
-//! The lines a citation puts before the reviewer, as the pane's evidence viewer and the
-//! Explore page find them in the change.
-
 use std::borrow::Cow;
 use std::path::Path;
 
@@ -10,35 +7,20 @@ use review_source::SourceLineRange;
 
 use crate::{CodeLocation, Comparison, Source, SourceSide};
 
-/// The source a citation names, read as text, with its cited range checked.
 pub struct CitedSource<'a> {
     pub source: Cow<'a, Source>,
     pub content: String,
-    /// The index in [`Comparison::files`] of the changed file whose diff holds the source:
-    /// the change touches the cited path on the cited side. `None` for a source the change
-    /// leaves alone.
     pub file: Option<usize>,
 }
 
-/// Why a citation shows no lines.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Uncitable {
-    /// The path leaves the repository.
     Path,
-    /// The source cannot be read as text.
     Unreadable(String),
-    /// The cited lines are not in the source.
     Range,
-    /// The citation names the whole file, not lines of it.
     WholeFile,
-    /// The change of the cited file has no text diff: a binary file, a conflict, or rows the
-    /// diff parser does not know.
     NoTextDiff(NoticeKind),
-    /// The file is neither part of the change nor tracked by the repository, such as an ignored
-    /// `.env`: see [`Comparison::tracked_cited_lines`].
     Untracked,
-    /// The repository no longer holds the code a saved round cited, and the round's saved diff
-    /// does not hold the cited lines: see [`Comparison::saved_cited_lines`].
     Gone,
 }
 
@@ -71,7 +53,6 @@ impl std::fmt::Display for Uncitable {
     }
 }
 
-/// [`Uncitable::Range`] unless `content` holds the lines `range`.
 fn check_range(range: &SourceLineRange, content: &str) -> Result<(), Uncitable> {
     if range.first_line == 0
         || range.last_line < range.first_line
@@ -82,7 +63,6 @@ fn check_range(range: &SourceLineRange, content: &str) -> Result<(), Uncitable> 
     Ok(())
 }
 
-/// Why a file whose change is `kind` shows no lines.
 fn no_text_diff(kind: NoticeKind) -> &'static str {
     match kind {
         NoticeKind::Binary => "File-level evidence · the change of this file is binary.",
@@ -96,23 +76,15 @@ fn no_text_diff(kind: NoticeKind) -> &'static str {
     }
 }
 
-/// The cited lines of one side of a file, as diff rows: the rows of the change where it
-/// touches them, unchanged rows elsewhere, and the other side's rows between the first cited
-/// line and the last.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CitedLines {
-    /// The path whose syntax colors the lines.
     pub path: String,
     pub rows: Vec<DiffRow>,
-    /// The whole file before the change, when it has one.
     pub old_content: Option<Vec<u8>>,
-    /// The whole file after the change, when it has one.
     pub new_content: Option<Vec<u8>>,
 }
 
 impl CitedLines {
-    /// The lines `location` cites in a file whose change is `diff`, and whose content is
-    /// `old_content` before the change and `new_content` after it.
     pub fn in_diff(
         location: &CodeLocation,
         diff: &[DiffRow],
@@ -140,8 +112,6 @@ impl CitedLines {
         })
     }
 
-    /// The lines `range` of the change's rows `diff` of one file, on `side`, with no content:
-    /// [`Uncitable::Gone`] unless the rows hold every line of the range.
     fn in_diff_alone(
         path: String,
         side: SourceSide,
@@ -168,7 +138,6 @@ impl CitedLines {
                 .collect(),
         };
         let rows = file.cited(range).map_err(|_| Uncitable::Gone)?;
-        // Between two hunks, the rows skip the lines the change left alone.
         let lines = rows.iter().filter(|row| file.line(row).is_some()).count();
         if lines != (range.last_line - range.first_line + 1) as usize {
             return Err(Uncitable::Gone);
@@ -181,8 +150,6 @@ impl CitedLines {
         })
     }
 
-    /// The lines `range` of a file the change leaves alone: unchanged rows numbered alike on
-    /// both sides.
     fn unchanged(path: String, range: &SourceLineRange, content: String) -> Self {
         let lines: Vec<&str> = content.lines().collect();
         let rows = (range.first_line..=range.last_line)
@@ -202,8 +169,6 @@ impl CitedLines {
     }
 }
 
-/// Every row of one side of a changed file: the rows of its diff, with the unchanged lines
-/// between its hunks filled in from that side's content.
 struct FileRows {
     side: SourceSide,
     rows: Vec<DiffRow>,
@@ -243,8 +208,6 @@ impl FileRows {
         file
     }
 
-    /// Appends `count` unchanged rows from `old` and `new` on, with the text of this side's
-    /// `lines`.
     fn unchanged(&mut self, lines: &[&str], old: &mut u32, new: &mut u32, count: u32) {
         for _ in 0..count {
             let line = self.side.pick(*old, *new);
@@ -259,7 +222,6 @@ impl FileRows {
         }
     }
 
-    /// The line number of `row` on this side, when the side has the row.
     fn line(&self, row: &DiffRow) -> Option<u32> {
         match (self.side, row) {
             (
@@ -274,7 +236,6 @@ impl FileRows {
         }
     }
 
-    /// The rows from the first line of `range` on this side to its last.
     fn cited(&self, range: &SourceLineRange) -> Result<Vec<DiffRow>, Uncitable> {
         let first = self
             .rows
@@ -292,7 +253,6 @@ impl FileRows {
 }
 
 impl Comparison {
-    /// The source `location` names, read from `root`, with its lines checked against it.
     pub fn cited_source(
         &self,
         location: &CodeLocation,
@@ -316,9 +276,6 @@ impl Comparison {
         })
     }
 
-    /// The lines `location` cites, as [`Self::cited_lines`] finds them, when the change touches
-    /// the cited file or the repository tracks it; [`Uncitable::Untracked`] for any other file
-    /// of the working copy, which a page open from the network must not show.
     pub fn tracked_cited_lines(
         &self,
         location: &CodeLocation,
@@ -330,9 +287,6 @@ impl Comparison {
         self.cited_lines(location, root)
     }
 
-    /// Whether the change touches the path `location` names on its side, or the base of the
-    /// change has that path. A file the change leaves alone is the same at the base, so the base
-    /// has it exactly when the repository tracks it.
     fn tracks(&self, location: &CodeLocation, root: &Path) -> bool {
         let changed = self
             .files
@@ -349,7 +303,6 @@ impl Comparison {
                 .is_some_and(|source| source.read(root).is_ok())
     }
 
-    /// The lines `location` cites, read from `root`, in the rows of the change.
     pub fn cited_lines(
         &self,
         location: &CodeLocation,
@@ -377,9 +330,6 @@ impl Comparison {
         )
     }
 
-    /// The lines `location` cites as the round saw them, whatever the working copy holds now:
-    /// read from `repository` at the round's checkpoint, else from the change's saved diff;
-    /// [`Uncitable::Gone`] when neither holds them.
     pub fn saved_cited_lines(
         &self,
         location: &CodeLocation,
@@ -404,9 +354,6 @@ impl Comparison {
         })
     }
 
-    /// The lines `range` that `location` cites in `content`, the text of its file at `path`:
-    /// unchanged rows when the change leaves the file alone, else the rows of the change of its
-    /// file `index`, whose other side `read` reads.
     fn lines_of(
         &self,
         location: &CodeLocation,
@@ -435,7 +382,6 @@ impl Comparison {
         )
     }
 
-    /// The rows of the change of its file `index`.
     fn diff_of(&self, index: usize) -> Vec<DiffRow> {
         parse_file_diff(
             self.diffs.get(index).map_or(&[], Vec::as_slice),
@@ -443,9 +389,6 @@ impl Comparison {
         )
     }
 
-    /// The file at `path` on `side` of the change as the round saw it, read from `repository`:
-    /// the round's checkpoint for the new side, its base for the old one. `None` when the
-    /// repository no longer holds it.
     fn saved_file(
         &self,
         repository: &Repository,

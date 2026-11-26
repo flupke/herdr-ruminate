@@ -1,12 +1,9 @@
-//! Portable reading and editor state, separate from accepted investigation content.
 use review_types::TextEditorState;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Question indices address the immutable posted question/version list within a round.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ExplorePage {
-    /// Kept only to read saved views written before the Opening page was removed.
     Opening,
     Question(usize),
     Conclusion(String),
@@ -34,12 +31,8 @@ pub enum EditorFocus {
     Evidence,
 }
 
-/// Where the reviewer follows a round: in the pane, or on the Explore page, where the pane
-/// shows only the round's state and the page's address.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub enum RoundFront {
-    /// The pane shows the interview. Views saved before the Explore page existed say nothing,
-    /// and show the round here.
     #[default]
     Pane,
     Page,
@@ -64,7 +57,6 @@ pub struct EvidencePosition {
     pub column: usize,
 }
 
-/// The reviewer's saved editors and reading position for one round.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[allow(
     clippy::struct_excessive_bools,
@@ -82,8 +74,6 @@ pub struct ExploreViewState {
     pub map: bool,
     pub heights: Vec<((usize, usize), u16)>,
     pub code: Vec<EvidencePosition>,
-    /// Left out while it is the default, so that a view saved before it existed is written
-    /// back unchanged.
     #[serde(default, skip_serializing_if = "RoundFront::is_pane")]
     pub front: RoundFront,
 }
@@ -110,7 +100,6 @@ impl crate::Exploration {
 }
 
 impl crate::ExploreRound {
-    /// Ignore only the exact pre-post draft consumed by a durable answer.
     pub fn restored_view(&self, view: Option<&ViewSave>) -> ExploreViewState {
         let Some(view) = view else {
             return ExploreViewState {

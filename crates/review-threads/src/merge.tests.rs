@@ -106,7 +106,6 @@ fn a_thread_continued_in_another_workspace_gains_only_what_it_lacks() {
             ("Answer in the task".into(), 3),
         ]
     );
-    // The task's answer covers the first comment only: the follow-up still waits.
     assert_eq!(main.new_messages().len(), 1);
     assert_eq!(main.pending_comment_sequence(), Some(2));
 }
@@ -156,7 +155,6 @@ fn a_tab_gets_the_pending_comments_it_posted_and_those_of_threads_retried_there(
     answer(&mut book, &thread, "Answered");
     assert!(!book.has_new_messages_for(&tab("w1:t1", &none)));
     assert!(book.has_new_messages_for(&tab("w1:t1", &retried)));
-    // A Retry covers the comments posted before it: a later one waits for its own tab.
     answer(&mut book, &older, "Answered after the Retry");
     book.post(Post::reply(older.clone(), "Later, from tab three".into()).from_tab("w1:t3".into()))
         .unwrap();

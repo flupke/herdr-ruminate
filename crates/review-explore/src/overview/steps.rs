@@ -1,21 +1,12 @@
-//! The question steps of a round, and where the round stands among its steps.
-
 use super::quiz::QuizProgress;
 use crate::{Exploration, Question, ReviewerAnswer};
 
-/// One question of the round rail: the versions of one question that the agent posted one
-/// after the other. A clarification is a higher version of the question that follows the
-/// earlier one directly, so it stays in the earlier one's step. A version posted after another
-/// question came back to a question the reviewer had left: it is a step of its own, in the
-/// order the reviewer met it.
 pub(super) struct QuestionStep<'a> {
-    /// The step's number in the rail, from 1.
     pub(super) number: usize,
     versions: &'a [Question],
 }
 
 impl<'a> QuestionStep<'a> {
-    /// The question steps of `exploration`, in the order the agent posted them.
     pub(super) fn of(exploration: &'a Exploration) -> Vec<Self> {
         exploration
             .questions
@@ -28,12 +19,10 @@ impl<'a> QuestionStep<'a> {
             .collect()
     }
 
-    /// The step's latest version.
     pub(super) fn question(&self) -> &'a Question {
         self.versions.last().expect("a step has a version")
     }
 
-    /// The reviewer's latest answer to the step's latest version.
     pub(super) fn answer(&self, exploration: &'a Exploration) -> Option<&'a ReviewerAnswer> {
         let question = self.question();
         exploration
@@ -43,14 +32,12 @@ impl<'a> QuestionStep<'a> {
             .find(|answer| answer.answers(question))
     }
 
-    /// Whether `question`, in its version, is one of the step's versions.
     pub(super) fn holds(&self, question: &Question) -> bool {
         self.versions
             .iter()
             .any(|version| version.is_version(&question.id, question.version))
     }
 
-    /// Whether `answer` answers one of the step's versions.
     pub(super) fn answered_by(&self, answer: &ReviewerAnswer) -> bool {
         self.versions
             .iter()
@@ -58,31 +45,20 @@ impl<'a> QuestionStep<'a> {
     }
 }
 
-/// What the agent does with the turn the round waits for.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Activity {
-    /// The agent works on a turn the session delivers.
     Working,
-    /// A turn waits for Retry: its prompt failed, the reviewer stopped waiting, or the reviewer
-    /// reopened during it.
     Interrupted,
-    /// No turn is pending: the round waits for the reviewer.
     Idle,
 }
 
-/// What the agent's latest turn posted.
 #[derive(Clone, Copy, Debug)]
 pub enum LatestTurn<'a> {
-    /// No turn yet: the round waits for its first.
     None,
-    /// A question, the round's latest step.
     Question,
-    /// The conclusion, with its quiz and what the reviewer answered of it; `None` for a
-    /// conclusion without a quiz.
     Conclusion { quiz: Option<QuizProgress<'a>> },
 }
 
-/// The step the round stands at.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Current {
     Design,
@@ -91,8 +67,6 @@ pub(super) enum Current {
     Conclusion,
 }
 
-/// Where the round stands: what the agent does, what its latest turn posted, and the step
-/// that makes current.
 pub(super) struct Position<'a> {
     pub(super) activity: Activity,
     latest: LatestTurn<'a>,
@@ -100,8 +74,6 @@ pub(super) struct Position<'a> {
 }
 
 impl<'a> Position<'a> {
-    /// Where `exploration`, with its question steps `steps`, stands; `delivering` as
-    /// [`super::RoundOverview::of`] takes it.
     pub(super) fn of(
         exploration: &'a Exploration,
         steps: &[QuestionStep<'_>],
@@ -114,8 +86,6 @@ impl<'a> Position<'a> {
         )
     }
 
-    /// Where a round stands whose agent does `activity`, whose latest turn posted `latest`,
-    /// with `questions` question steps.
     pub(super) fn new(activity: Activity, latest: LatestTurn<'a>, questions: usize) -> Self {
         let current = match latest {
             LatestTurn::None => Current::Design,
@@ -154,12 +124,10 @@ impl<'a> Position<'a> {
         }
     }
 
-    /// Whether the agent's latest turn posted a conclusion.
     pub(super) fn concluded(&self) -> bool {
         matches!(self.latest, LatestTurn::Conclusion { .. })
     }
 
-    /// The conclusion's quiz, once the round concluded with one.
     pub(super) fn quiz(&self) -> Option<QuizProgress<'a>> {
         match self.latest {
             LatestTurn::Conclusion { quiz } => quiz,
@@ -167,7 +135,6 @@ impl<'a> Position<'a> {
         }
     }
 
-    /// Whether the round went past the question step `step`.
     pub(super) fn passed(&self, step: &QuestionStep<'_>) -> bool {
         self.current != Current::Question(step.number)
     }

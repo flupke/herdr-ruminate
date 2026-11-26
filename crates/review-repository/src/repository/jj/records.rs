@@ -1,5 +1,3 @@
-//! Parsers for the records printed by the jj templates.
-
 use std::collections::HashMap;
 
 use crate::repository::{
@@ -24,7 +22,6 @@ impl FileKind {
 }
 
 impl ChangedFile {
-    /// Parse the changed-file records printed by `jj diff` with the file template.
     pub(super) fn parse_jj(output: &[u8]) -> Result<Vec<Self>> {
         if output.is_empty() {
             return Ok(Vec::new());
@@ -94,7 +91,6 @@ impl ChangedFile {
         }
     }
 
-    /// Apply the per-path line counts printed by the jj statistics template.
     pub(super) fn add_jj_stats(files: &mut [Self], output: &[u8]) -> Result<()> {
         if output.is_empty() {
             return Ok(());
@@ -132,7 +128,6 @@ impl ChangedFile {
 }
 
 impl SnapshotIdentity {
-    /// Parse the record printed by the jj identity template.
     pub(super) fn parse_jj(output: &[u8]) -> Result<Self> {
         let raw_fields: Vec<_> = output.split(|byte| *byte == 0).collect();
         let fields: Vec<_> = raw_fields.iter().map(strip_ansi_escapes::strip).collect();

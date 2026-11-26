@@ -1,4 +1,3 @@
-//! Store checkpoint patches compactly so a later working-copy edit cannot rewrite Explore evidence.
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Deserializer, Serializer, de::Error, ser::Error as _};
 

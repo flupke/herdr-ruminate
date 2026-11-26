@@ -2,7 +2,6 @@ use review_types::ReviewUnit;
 
 use crate::{Draft, MessageId, Post, Resolution, ThreadId};
 
-/// Review-thread work carried unchanged from the UI to the conversation owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ThreadCommand {
     Load(ReviewUnit),

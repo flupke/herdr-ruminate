@@ -46,7 +46,6 @@ fn a_blank_title_names_nothing() {
 
 #[test]
 fn an_offline_round_keeps_the_pull_request_an_older_round_found() {
-    // Newest first: a round started offline found the ticket of its bookmark alone.
     let offline = ChangeReferences {
         pull_request: None,
         tickets: vec![ticket("#7", None)],
@@ -59,7 +58,6 @@ fn an_offline_round_keeps_the_pull_request_an_older_round_found() {
     let merged = ChangeReferences::of_rounds([&ChangeReferences::default(), &offline, &online]);
 
     assert_eq!(merged.pull_request, online.pull_request);
-    // The newest round's tickets, with the title the older round read.
     assert_eq!(merged.tickets, [ticket("#7", Some("Login fails"))]);
 }
 

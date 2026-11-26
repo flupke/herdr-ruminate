@@ -1,31 +1,19 @@
-//! The files on which the review marks of a round's turns still name the lines the round
-//! read, once the code may have changed since the round started.
-
 use std::collections::BTreeSet;
 
 use review_repository::repository::{ChangedFile, RepoPath, Repository, Snapshot};
 
 use crate::Comparison;
 
-/// The changed files of a snapshot on which a round's marks apply: the lines a turn names are
-/// the same lines at the snapshot as at the round's checkpoint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MarkableFiles {
-    /// The snapshot is the round's checkpoint: every file.
     All,
-    /// The code changed since the round started: the files whose diff is still the one the
-    /// round captured (Git's abbreviated object names aside), so that their changed lines keep
-    /// their numbers on both sides. A file of another review, or one the round never captured,
-    /// is not one of them.
     Unchanged {
         unchanged: BTreeSet<RepoPath>,
-        /// The files whose diff could not be read: not marked now, and not known to differ.
         unread: BTreeSet<RepoPath>,
     },
 }
 
 impl MarkableFiles {
-    /// No file.
     pub fn none() -> Self {
         Self::Unchanged {
             unchanged: BTreeSet::new(),
@@ -33,8 +21,6 @@ impl MarkableFiles {
         }
     }
 
-    /// The files of `snapshot` on which the marks of the round that captured `comparison`
-    /// apply.
     pub fn at(comparison: &Comparison, repository: &Repository, snapshot: &Snapshot) -> Self {
         let identity = &snapshot.identity;
         let checkpoint = &comparison.checkpoint;
@@ -63,7 +49,6 @@ impl MarkableFiles {
         Self::Unchanged { unchanged, unread }
     }
 
-    /// Whether marks apply on `file`.
     pub fn allows(&self, file: &ChangedFile) -> bool {
         match self {
             Self::All => true,
@@ -71,7 +56,6 @@ impl MarkableFiles {
         }
     }
 
-    /// Whether the diff of `file` could not be read, so that nothing tells whether it changed.
     pub fn unread(&self, file: &ChangedFile) -> bool {
         match self {
             Self::All => false,
@@ -79,9 +63,6 @@ impl MarkableFiles {
         }
     }
 
-    /// These files of `snapshot` less `diverged`, the files whose diff had changed when the
-    /// agent wrote its turn: its line numbers there may name other lines, even once the code
-    /// is back to the round's.
     #[must_use]
     pub fn excluding(self, snapshot: &Snapshot, diverged: &[String]) -> Self {
         if diverged.is_empty() {
@@ -101,9 +82,6 @@ impl MarkableFiles {
         Self::Unchanged { unchanged, unread }
     }
 
-    /// The files of the round that captured `comparison` whose diff differs at `snapshot`, by
-    /// their review paths: those whose diff changed, and those `snapshot` no longer changes.
-    /// A file whose diff could not be read is not one of them.
     pub fn diverged(&self, comparison: &Comparison, snapshot: &Snapshot) -> Vec<String> {
         if *self == Self::All {
             return Vec::new();
@@ -123,7 +101,6 @@ impl MarkableFiles {
             .collect()
     }
 
-    /// Whether the result is complete: every diff was read.
     pub fn complete(&self) -> bool {
         match self {
             Self::All => true,
@@ -132,8 +109,8 @@ impl MarkableFiles {
     }
 }
 
-/// Whether two diffs of a file are the same: byte for byte, but for the abbreviated object
-/// names of a Git `index` line, whose length grows with the repository.
+// Git abbreviates the object names of an `index` line to a length that grows with the
+// repository.
 fn same_diff(current: &[u8], captured: &[u8]) -> bool {
     let lines = |diff: &[u8]| {
         diff.split(|byte| *byte == b'\n')
@@ -148,8 +125,6 @@ fn same_diff(current: &[u8], captured: &[u8]) -> bool {
             .all(|(current, captured)| current == captured || same_index(current, captured))
 }
 
-/// Whether two `index <old>..<new> [<mode>]` lines name the same objects, one abbreviation a
-/// prefix of the other.
 fn same_index(current: &[u8], captured: &[u8]) -> bool {
     let parts = |line: &[u8]| -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         let rest = line.strip_prefix(b"index ")?;
@@ -176,7 +151,6 @@ fn same_index(current: &[u8], captured: &[u8]) -> bool {
 }
 
 impl Comparison {
-    /// The diff the round captured of `file`, when it captured the same paths.
     fn captured_diff(&self, file: &ChangedFile) -> Option<&[u8]> {
         let index = self.files.iter().position(|captured| {
             captured.old_path == file.old_path && captured.new_path == file.new_path

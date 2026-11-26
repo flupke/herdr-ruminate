@@ -1,11 +1,7 @@
-//! The page's shell, client modules, styles, scripts and icons: built into the binary, or read
-//! from disk in development.
-
 use std::path::{Path, PathBuf};
 
 use tokio::sync::watch;
 
-/// An asset, by its path under `assets/`, with its content type.
 macro_rules! asset {
     ($name:literal, $content_type:literal) => {
         Asset {
@@ -16,11 +12,9 @@ macro_rules! asset {
     };
 }
 
-/// The page that loads the client; `{dev}` takes the count of file changes in development.
 const SHELL: &str = include_str!("../assets/page.html");
 
-/// Assets by name, with their content type. A module of the client must be listed here, with
-/// the strict content type of a script, or the browser refuses to load it.
+// Browsers refuse to load a module script that is not served with a script's content type.
 const ASSETS: &[Asset] = &[
     asset!("tokens.css", "text/css"),
     asset!("buttons.css", "text/css"),
@@ -104,30 +98,22 @@ struct Asset {
     body: &'static [u8],
 }
 
-/// Where the page's files come from.
 pub struct PageFiles(Source);
 
 enum Source {
     Embedded,
-    /// Development: the files are read again on every request.
     Disk {
-        /// The directory that holds `assets/`.
         root: PathBuf,
-        /// Counts the changes under `root`.
         changes: watch::Receiver<u64>,
         _watcher: notify::RecommendedWatcher,
     },
 }
 
 impl PageFiles {
-    /// The files built into the binary.
     pub fn embedded() -> Self {
         Self(Source::Embedded)
     }
 
-    /// Development: reads the files under `root`, this crate's directory, on every request,
-    /// so an edit shows on the next load. An open page loads itself again when a file changes:
-    /// the change comes from the file system's events (inotify on Linux), not from polling.
     pub fn from_dir(root: PathBuf) -> notify::Result<Self> {
         let (counter, changes) = watch::channel(0);
         let watcher = watch_files(&root, counter)?;
@@ -138,8 +124,6 @@ impl PageFiles {
         }))
     }
 
-    /// The page that loads the client, which loads itself again on a file change in
-    /// development.
     pub(crate) fn shell(&self) -> String {
         match &self.0 {
             Source::Embedded => SHELL.replace("{dev}", ""),
@@ -151,7 +135,6 @@ impl PageFiles {
         }
     }
 
-    /// The content type and body of the asset `name`, a path under `assets/`.
     pub(crate) fn asset(&self, name: &str) -> Option<(&'static str, Vec<u8>)> {
         let asset = ASSETS.iter().find(|asset| asset.name == name)?;
         match &self.0 {
@@ -163,7 +146,6 @@ impl PageFiles {
         }
     }
 
-    /// The count of file changes, in development only.
     pub(crate) fn changes(&self) -> Option<watch::Receiver<u64>> {
         match &self.0 {
             Source::Embedded => None,

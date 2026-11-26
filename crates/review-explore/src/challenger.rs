@@ -1,6 +1,3 @@
-//! What became of the questions the Challenger proposed, so the reviewer can
-//! see whether it finds decisions the implementer did not.
-
 use serde::{Deserialize, Serialize};
 
 /// How one of the Challenger's proposals ended on a turn.
@@ -33,8 +30,6 @@ pub struct ChallengerProposal {
 }
 
 impl ChallengerProposal {
-    /// Whether the proposal has a title and, when retired, a reason. Errors
-    /// name the proposal.
     pub(crate) fn validate(&self) -> eyre::Result<()> {
         let title = self.title.trim();
         eyre::ensure!(!title.is_empty(), "Every challenger proposal needs a title");

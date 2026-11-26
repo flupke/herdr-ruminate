@@ -75,8 +75,6 @@ impl Exploration {
         Ok(())
     }
 
-    /// Marks name lines of changed paths; those an answer settled or
-    /// reopened follow a human answer.
     fn validate_marks(
         &self,
         update: &InterviewUpdate,
@@ -106,9 +104,6 @@ impl Exploration {
             .try_for_each(|mark| mark.validate(comparison))
     }
 
-    /// The first question comes after the design of the change, and only the first turn
-    /// explains it. The conclusion tool has no design: a first turn that concludes puts it in
-    /// the summary.
     fn validate_design(&self, update: &InterviewUpdate) -> eyre::Result<()> {
         let kickoff = self
             .outstanding
@@ -128,7 +123,6 @@ impl Exploration {
         design.validate()
     }
 
-    /// Only a round with a challenger reports its proposals.
     fn validate_challenger_proposals(&self, update: &InterviewUpdate) -> eyre::Result<()> {
         eyre::ensure!(
             self.challenger || update.challenger_proposals.is_empty(),
@@ -293,7 +287,6 @@ impl Exploration {
         Ok(())
     }
 
-    /// A question about someone else's change can be left to its author.
     fn validate_ask_author(&self, question: &Question) -> eyre::Result<()> {
         eyre::ensure!(
             self.author == crate::ChangeAuthor::Reviewer
@@ -332,18 +325,12 @@ impl Exploration {
     }
 }
 
-/// The shortest glossary term, in characters: shorter ones would mark common words.
 const TERM_SHORTEST: usize = 2;
-/// The longest glossary term, in characters: a term is a word or a short phrase of the change.
 const TERM_LENGTH: usize = 60;
-/// The longest definition, in characters: one plain sentence.
 const DEFINITION_LENGTH: usize = 300;
-/// The most terms a round's glossary holds.
 const TERMS: usize = 100;
 
 impl Exploration {
-    /// Each term is a short phrase on one line, with a definition of one sentence, and no two
-    /// terms of the round differ only by case or spaces: the page takes them for one term.
     fn validate_glossary(
         &self,
         glossary: &std::collections::BTreeMap<String, String>,
@@ -377,8 +364,6 @@ impl Exploration {
     }
 }
 
-/// Whether the page would take `a` and `b` for one term: the same words whatever their case and
-/// the spaces between them.
 fn same_term(a: &str, b: &str) -> bool {
     let words = |term: &str| {
         term.split_whitespace()
@@ -388,7 +373,6 @@ fn same_term(a: &str, b: &str) -> bool {
     words(a) == words(b)
 }
 
-/// `term` is a short phrase on one line, and `definition` one sentence.
 fn validate_term(term: &str, definition: &str) -> eyre::Result<()> {
     eyre::ensure!(
         term.trim() == term

@@ -24,8 +24,6 @@ fn comparison_includes_the_whole_change_and_reads_unchanged_sources_from_disk(ki
     let snapshot = complete_repository_snapshot(&repository);
     let comparison = Comparison::prepare(&repository, &snapshot).unwrap();
     assert!(comparison.manifest.len() >= snapshot.files.len());
-    // The metadata also identifies historical text through ordinary VCS tools,
-    // without access to reviewer-private files or an MCP source-reading endpoint.
     let (program, arguments) = match kind {
         RepoType::Git => (
             "git",

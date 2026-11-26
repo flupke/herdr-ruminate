@@ -1,77 +1,46 @@
-//! Git-style unified diff rows.
-
 use crate::repository::{ChangedFile, FileKind, RepoPath};
 
 const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
-/// One parsed row in a unified diff.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiffRow {
-    /// The paths from a `diff --git` header.
     FileHeader {
-        /// The parent-side path, when present.
         old_path: Option<RepoPath>,
-        /// The current-side path, when present.
         new_path: Option<RepoPath>,
-        /// The complete original row.
         text: String,
     },
-    /// A file header or other known Git metadata row.
     Meta {
-        /// The complete original row.
         text: String,
     },
-    /// A unified diff hunk header.
     Hunk {
-        /// The first parent-side line.
         old_start: u32,
-        /// The number of parent-side lines.
         old_count: u32,
-        /// The first current-side line.
         new_start: u32,
-        /// The number of current-side lines.
         new_count: u32,
     },
-    /// An unchanged row.
     Context {
-        /// The parent-side line number.
         old_line: u32,
-        /// The current-side line number.
         new_line: u32,
-        /// The complete original row.
         text: String,
     },
-    /// A deleted row.
     Delete {
-        /// The parent-side line number.
         old_line: u32,
-        /// The complete original row.
         text: String,
     },
-    /// An added row.
     Add {
-        /// The current-side line number.
         new_line: u32,
-        /// The complete original row.
         text: String,
     },
-    /// A special file or unsupported row.
     Notice {
-        /// The type of notice.
         kind: NoticeKind,
-        /// Text that explains the notice.
         text: String,
     },
 }
 
-/// A special condition in diff output.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NoticeKind {
-    /// Text diff is not available for binary content.
     Binary,
-    /// The file contains a merge conflict.
     Conflict,
-    /// The parser did not recognize the row or the hunk shape.
     Unsupported,
 }
 
@@ -305,7 +274,6 @@ impl ActiveHunk {
     }
 }
 
-/// Parse the diff for a known file and preserve its lossless paths.
 pub fn parse_file_diff(output: &[u8], file: &ChangedFile) -> Vec<DiffRow> {
     if file.old_kind == FileKind::Symlink || file.new_kind == FileKind::Symlink {
         return vec![DiffRow::Notice {

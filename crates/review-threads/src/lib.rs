@@ -1,5 +1,3 @@
-//! Persistent review conversations anchored to source code.
-
 mod attention;
 mod command;
 mod draft;
@@ -26,19 +24,16 @@ pub use round::AskedUnder;
 pub use source::{ThreadSource, ThreadSubject};
 pub use wakeup::{WakeupFailure, WakeupNotice, WakeupWait};
 
-/// The stable identity of one review thread.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct ThreadId(String);
 
 impl ThreadId {
-    /// The identity text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-/// A conversation that survives changes to, or deletion of, its anchor.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReviewThread {
     pub id: ThreadId,
@@ -54,7 +49,6 @@ pub struct ReviewThread {
 }
 
 impl ReviewThread {
-    /// The snapshot boundary returned with a conversation for an agent reply.
     pub fn last_comment(&self) -> Option<&Message> {
         self.messages
             .iter()
@@ -62,8 +56,6 @@ impl ReviewThread {
             .find(|message| message.author == Author::Reviewer)
     }
 
-    /// Append a posted message. A reviewer's message reopens a round conversation, which
-    /// would otherwise never bring it to the agent.
     fn receive(&mut self, message: Message) {
         if message.author == Author::Reviewer && self.round().is_some() {
             self.resolution = Resolution::Open;
@@ -78,19 +70,12 @@ impl ReviewThread {
     }
 }
 
-/// The review pane of one Herdr tab, as the recipient of pending comments: it brings to its
-/// agent the comments its tab posted, and those the reviewer retried there. The workspaces of a
-/// repository share its threads, so another tab's comments wait for its own review pane, or for
-/// Retry here; comments of earlier builds name no tab.
 #[derive(Clone, Copy, Debug)]
 pub struct Recipient<'a> {
     pub tab: &'a str,
-    /// For each thread the reviewer retried in this tab, the sequence of the latest comment the
-    /// Retry covered: a comment posted later waits for its own tab again.
     pub retried: &'a BTreeMap<ThreadId, u64>,
 }
 
-/// Conversation history and completed work shared by every recipient of a logical review.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReviewThreads {
     pub review_unit: ReviewUnit,
@@ -139,8 +124,6 @@ impl ReviewThreads {
             .count()
     }
 
-    /// Stamps each message with the time `time` gives for its sequence number, in place of the
-    /// clock it was posted by: a page drawn from fixed data shows the same times on every run.
     pub fn stamp_postings(&mut self, time: impl Fn(u64) -> u64) {
         for message in self
             .threads
@@ -161,8 +144,6 @@ impl ReviewThreads {
             && thread.has_comments_after(self.answered.get(&thread.id).copied().unwrap_or_default())
     }
 
-    /// Return complete conversations containing reviewer comments awaiting a reply.
-    /// Agent replies supply context and never create additional agent work.
     pub fn new_messages(&self) -> Vec<ReviewThread> {
         self.threads
             .iter()
@@ -175,8 +156,6 @@ impl ReviewThreads {
         self.threads.iter().any(|thread| self.pending(thread))
     }
 
-    /// Whether `thread` holds an unanswered comment that `recipient` brings to its agent: one
-    /// its tab posted, or one a Retry in its tab covered.
     fn pending_for(&self, thread: &ReviewThread, recipient: &Recipient<'_>) -> bool {
         let answered = self.answered.get(&thread.id).copied().unwrap_or_default();
         let retried = recipient
@@ -194,7 +173,6 @@ impl ReviewThreads {
             })
     }
 
-    /// The complete conversations whose pending comments `recipient` brings to its agent.
     pub fn new_messages_for(&self, recipient: &Recipient<'_>) -> Vec<ReviewThread> {
         self.threads
             .iter()
@@ -209,7 +187,6 @@ impl ReviewThreads {
             .any(|thread| self.pending_for(thread, recipient))
     }
 
-    /// The latest pending reviewer comment that `recipient` brings to its agent.
     pub fn pending_comment_sequence_for(&self, recipient: &Recipient<'_>) -> Option<u64> {
         self.threads
             .iter()
@@ -219,7 +196,6 @@ impl ReviewThreads {
             .max()
     }
 
-    /// Latest pending reviewer comment; agent replies do not advance this position.
     pub fn pending_comment_sequence(&self) -> Option<u64> {
         self.threads
             .iter()
@@ -229,7 +205,6 @@ impl ReviewThreads {
             .max()
     }
 
-    /// Append an answer and acknowledge its exact snapshot in the same stored update.
     pub fn answer(&mut self, post: Post) -> Result<MessageId, String> {
         if post.message.author != Author::Agent {
             return Err("Only an agent reply can acknowledge comments".into());
@@ -251,7 +226,6 @@ impl ReviewThreads {
         Ok(id)
     }
 
-    /// Retry delivery of unanswered work without reopening completed conversations.
     pub fn retry(&self, thread: &ThreadId) -> Result<(), String> {
         let thread = self
             .thread(thread)
@@ -262,7 +236,6 @@ impl ReviewThreads {
         Ok(())
     }
 
-    /// Apply one immutable post. Repeating the same post cannot duplicate it.
     pub fn post(&mut self, post: Post) -> Result<MessageId, String> {
         if let Some(existing) = self.message(&post.message.id) {
             return if existing.same_content(&post.message)
@@ -293,7 +266,6 @@ impl ReviewThreads {
             .find(|thread| thread.id == post.thread_id);
         if let Some(subject) = post.subject {
             match existing {
-                // A round's conversation is one thread, which its first message starts.
                 Some(thread) if matches!(subject, ThreadSubject::Round { .. }) => {
                     if thread.subject != subject {
                         return Err("This review thread belongs to another subject".into());

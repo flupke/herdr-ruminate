@@ -1,17 +1,3 @@
-//! The page's socket, at `/ws`: one for each open page, in both directions. The tool sends the
-//! whole view when the socket opens and again at each change, numbered; nothing is replayed
-//! after a reconnect, since the new socket gets the current view. The page sends the reviewer's
-//! actions, and gets one reply for each (`crate::rpc`). A ping every few seconds lets the page
-//! notice a socket that died without closing.
-//!
-//! The upgrade passes the page's host and origin checks like any request, and needs the token's
-//! cookie. A socket whose token no longer opens a round is closed with [`TOKEN_ENDED`], at the
-//! latest when the page sends a request, which is not carried out.
-//!
-//! A socket opened with `?past=<round>` on a page that offers past rounds shows that saved
-//! round in place of the round the page follows, read only: it refuses every request but a
-//! ping. It shows the round the page follows when no saved round has that identity.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,39 +20,28 @@ use crate::status::StatusCard;
 use crate::view::PageView;
 use crate::{Rounds, notice::Notice};
 
-/// Wraps `listener` so that each page's connection sends without Nagle's algorithm: a reply leaves
-/// at once instead of after the delayed acknowledgement of the view sent before it, about 40 ms
-/// later.
 pub fn page_listener(
     listener: tokio::net::TcpListener,
 ) -> impl axum::serve::Listener<Io = tokio::net::TcpStream, Addr = std::net::SocketAddr> {
     axum::serve::ListenerExt::tap_io(listener, |stream| {
-        // A connection that keeps Nagle's algorithm is only slower.
+        // Nagle's algorithm delays the socket's small messages.
         let _ = stream.set_nodelay(true);
     })
 }
 
-/// How often the tool pings each open page.
 pub(crate) const HEARTBEAT: Duration = Duration::from_secs(10);
 
-/// The close code of a socket whose token no longer opens a round: the page says how to open
-/// the round again, and does not reconnect (RFC 6455 §7.4.2, the private range).
 pub(crate) const TOKEN_ENDED: u16 = 4001;
 
-/// How long a message waits for a page that stopped reading.
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The close code of a socket whose round's owner is gone: the page reconnects.
 const GOING_AWAY: u16 = 1001;
 
-/// What the address of a page's socket asks for.
 #[derive(serde::Deserialize)]
 pub(crate) struct SocketQuery {
-    /// The saved round the socket shows in place of the round the page follows.
     past: Option<String>,
 }
 
-/// The upgrade of a page whose cookie carries a round's token.
 pub(crate) async fn upgrade<R: Rounds>(
     State(page): State<Arc<ExplorePage<R>>>,
     Query(query): Query<SocketQuery>,
@@ -93,37 +68,25 @@ pub(crate) async fn upgrade<R: Rounds>(
     })
 }
 
-/// One open page.
 struct Connection<R> {
     page: Arc<ExplorePage<R>>,
-    /// The token the page opened with.
     token: String,
     round: PageRound,
-    /// The saved round the page asked to show, until the socket opened it.
     asked_past: Option<String>,
-    /// The saved round the socket shows, read only, in place of `round`.
     past: Option<PastRound>,
-    /// The number of the latest view sent.
     sent: Option<Seq>,
-    /// The requests the page sent that wait for their reply.
     pending: usize,
 }
 
-/// Whether a page's token still opens a round.
 enum Admission {
     Open,
-    /// It does not, but a request waits for its reply, which may hand the page another token.
     Waiting,
     Ended,
 }
 
-/// Why a connection ends.
 enum End {
-    /// The page closed it, or it broke.
     Closed,
-    /// The token no longer opens a round.
     TokenEnded,
-    /// The round's owner is gone: the reviewer stops.
     OwnerGone,
 }
 
@@ -166,8 +129,6 @@ impl<R: Rounds> Connection<R> {
             let sent = tokio::select! {
                 incoming = socket.recv() => match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        // A token can end with no change of the round, as when the tunnel the
-                        // page came through stops: its requests are not carried out.
                         match self.admission() {
                             Admission::Open => self.receive(text.as_str(), &done),
                             Admission::Waiting => self.refuse(text.as_str(), &done),
@@ -184,8 +145,6 @@ impl<R: Rounds> Connection<R> {
                     }
                     match self.admission() {
                         Admission::Ended => return End::TokenEnded,
-                        // A Reset that ended the token hands the page the next one with its
-                        // reply.
                         Admission::Waiting => Ok(()),
                         Admission::Open => self.send_view(socket).await,
                     }
@@ -201,8 +160,6 @@ impl<R: Rounds> Connection<R> {
                     if let Reply::Result { result: Outcome { reopen: Some(token), .. }, .. } = &reply {
                         self.token.clone_from(token);
                     }
-                    // The view first, so that the page shows what the action changed once it
-                    // has the reply.
                     let sent = match self.send_view(socket).await {
                         Ok(()) => send(socket, &reply).await,
                         Err(error) => Err(error),
@@ -223,7 +180,6 @@ impl<R: Rounds> Connection<R> {
         }
     }
 
-    /// Whether the page's token still opens a round.
     fn admission(&self) -> Admission {
         if self.page.rounds().find(&self.token).is_some() {
             Admission::Open
@@ -234,9 +190,6 @@ impl<R: Rounds> Connection<R> {
         }
     }
 
-    /// Opens the saved round the page asked for, when the page offers past rounds and a saved
-    /// round other than the one the page follows has that identity; the socket shows the round
-    /// the page follows otherwise.
     async fn open_past(&mut self) {
         let (Some(id), Some(past)) = (self.asked_past.take(), self.round.past.clone()) else {
             return;
@@ -247,8 +200,6 @@ impl<R: Rounds> Connection<R> {
         self.past = past.open(id).await;
     }
 
-    /// Reads the past round the socket shows again once the list says it was saved since: a
-    /// round of another workspace may still move.
     async fn reload_past(&mut self) {
         let (Some(shown), Some(past)) = (&self.past, &self.round.past) else {
             return;
@@ -261,9 +212,6 @@ impl<R: Rounds> Connection<R> {
         }
     }
 
-    /// Carries out a request on its own task, so that the socket keeps sending while the round's
-    /// owner works; the reply comes back through `done`. A socket that shows a past round
-    /// answers only pings.
     fn receive(&mut self, text: &str, done: &mpsc::UnboundedSender<Reply>) {
         let request = match serde_json::from_str::<Request>(text) {
             Ok(request) => request,
@@ -297,14 +245,11 @@ impl<R: Rounds> Connection<R> {
         });
     }
 
-    /// Refuses a request sent while the page's token opens no round any more, but an earlier
-    /// request waits for its reply, which may hand the page another token.
     fn refuse(&mut self, text: &str, done: &mpsc::UnboundedSender<Reply>) {
         let message = "The token no longer opens a round".to_owned();
         self.answer_error(text, RpcError::STALE, message, done);
     }
 
-    /// Answers the request `text` with an error, when its ID can be read; drops anything else.
     fn answer_error(
         &mut self,
         text: &str,
@@ -329,7 +274,6 @@ impl<R: Rounds> Connection<R> {
         });
     }
 
-    /// Sends the view, unless the page has this number already.
     async fn send_view(&mut self, socket: &mut WebSocket) -> Result<(), axum::Error> {
         let snapshot = self.round.stages.latest();
         let threads = self
@@ -367,8 +311,6 @@ impl<R: Rounds> Connection<R> {
     }
 }
 
-/// Waits for the next change of the review threads, when the page offers a conversation; never
-/// returns otherwise. False once their publisher is gone, after which it never returns either.
 async fn threads_changed(threads: &mut Option<ThreadsFeed>) -> bool {
     let Some(feed) = threads else {
         return std::future::pending().await;
@@ -380,8 +322,6 @@ async fn threads_changed(threads: &mut Option<ThreadsFeed>) -> bool {
     false
 }
 
-/// Waits for the next list of saved rounds, when the page offers them; never returns otherwise.
-/// False once their publisher is gone, after which it never returns either.
 async fn past_rounds_changed(past: &mut Option<PastRounds>) -> bool {
     let Some(rounds) = past else {
         return std::future::pending().await;
@@ -393,7 +333,6 @@ async fn past_rounds_changed(past: &mut Option<PastRounds>) -> bool {
     false
 }
 
-/// The reply to the request `id`.
 fn reply(id: u64, result: Result<Outcome, Notice>) -> Reply {
     match result {
         Ok(result) => Reply::Result { id, result },
@@ -408,8 +347,6 @@ fn reply(id: u64, result: Result<Outcome, Notice>) -> Reply {
     }
 }
 
-/// Sends `message`, unless the page stops reading for longer than [`SEND_TIMEOUT`]: its socket
-/// then ends, so that it does not hold the connection's other work.
 async fn send(socket: &mut WebSocket, message: &impl serde::Serialize) -> Result<(), axum::Error> {
     let text = serde_json::to_string(message).map_err(axum::Error::new)?;
     tokio::time::timeout(SEND_TIMEOUT, socket.send(Message::Text(text.into())))

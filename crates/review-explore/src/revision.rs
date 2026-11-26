@@ -1,6 +1,3 @@
-//! A revised question: the agent's new version of the open question, posted from the round
-//! conversation when a message there made the question wrong, without waiting for an answer.
-
 use crate::{ConversationTurn, Exploration, Question};
 use review_source::ReviewCheckpoint;
 use serde::{Deserialize, Serialize};
@@ -36,9 +33,6 @@ pub struct Revision {
 }
 
 impl Exploration {
-    /// Replace the open question with `revision`'s version of it. The new turn keeps what the
-    /// turn it follows said and asked to mark, so the reviewer's answer still applies those
-    /// marks; whether the revision was new rather than a retry.
     pub fn revise(&mut self, revision: QuestionRevision) -> eyre::Result<bool> {
         eyre::ensure!(
             revision.instance == self.instance,
@@ -98,7 +92,6 @@ impl Exploration {
             glossary,
             ..previous.update
         };
-        // The marks of the turn it follows wait for the reviewer's answer, as they did there.
         let reviewed = std::mem::take(&mut update.reviewed);
         let reopened = std::mem::take(&mut update.reopened);
         self.validate(&update, &self.comparison)?;

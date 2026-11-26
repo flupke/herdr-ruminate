@@ -1,5 +1,3 @@
-//! Counting one file's lines, and adding files up.
-
 use review_explore::SourceSide;
 use review_repository::repository::DiffStatistics;
 use review_state::FileLines;
@@ -11,7 +9,6 @@ use crate::{
 };
 
 impl FileMarks {
-    /// The file's tally in the round `round`, while answering `answering` waits.
     pub(crate) fn tally(
         &self,
         round: &RoundMarks<'_>,
@@ -76,9 +73,6 @@ impl FileMarks {
 }
 
 impl Tally {
-    /// The tally of `changed` lines of which `marked` are marked, of which answering the
-    /// question the round waits for marks the open lines `pending` and reopens `reopened`
-    /// marked lines.
     pub fn new(
         changed: DiffStatistics,
         marked: MarkedLines,
@@ -97,7 +91,6 @@ impl Tally {
         }
     }
 
-    /// `changed` lines, none of them marked.
     fn left(changed: DiffStatistics) -> Self {
         Self::new(changed, MarkedLines::default(), PendingLines::default(), 0)
     }

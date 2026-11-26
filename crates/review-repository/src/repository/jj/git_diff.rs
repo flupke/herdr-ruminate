@@ -98,8 +98,6 @@ impl<'a> JjGitDiffParser<'a> {
         Ok(())
     }
 
-    /// The lines of `block` before its first hunk: a hunk line can read as a path marker, such
-    /// as a removed line that starts with `-- `.
     fn header(block: &[u8]) -> &[u8] {
         let end = block
             .windows(4)

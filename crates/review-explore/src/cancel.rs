@@ -1,22 +1,13 @@
-//! Cancelling the reviewer's latest answer, or an earlier one with every answer after it: the
-//! interview returns to the question it answered, as if the answers had never been sent.
-
 use crate::{Exploration, ExploreRound, ReviewerAnswer, TurnMarks};
 
-/// An answer the reviewer took back, and the agent turn it discarded.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CancelledAnswer {
     pub answer: ReviewerAnswer,
-    /// The request that carried the answer to the agent.
     pub request: Option<String>,
-    /// The review marks the answer applied, latest first: those of a
-    /// conclusion after it, then those of the question it answered.
     pub marks: Vec<TurnMarks>,
 }
 
 impl Exploration {
-    /// Forget the latest answer and the agent's turn after it, and tell the
-    /// agent with its next request.
     fn cancel_answer(&mut self, id: &str) -> eyre::Result<CancelledAnswer> {
         eyre::ensure!(
             self.answers.last().is_some_and(|answer| answer.id == id),
@@ -39,7 +30,6 @@ impl Exploration {
             self.outstanding = None;
             self.retry = None;
         }
-        // The agent's turn after the answer, and the revisions of the question it asked.
         let answered = self
             .conversation
             .iter()
@@ -53,7 +43,6 @@ impl Exploration {
                 .retain(|turn| turn.answer.as_deref() != Some(id));
             self.replay();
         }
-        // Answers cancelled earlier that only this request would have told the agent about.
         if let Some(pending) = pending {
             self.cancelled.splice(0..0, pending.cancelled);
         }
@@ -65,7 +54,6 @@ impl Exploration {
         })
     }
 
-    /// Rebuild what the conversation's turns decided, after one was removed.
     fn replay(&mut self) {
         self.topics.clear();
         self.interpretations.clear();
@@ -88,14 +76,12 @@ impl Exploration {
 }
 
 impl ExploreRound {
-    /// Cancel the latest answer, unless implementation was already requested.
     pub fn cancel_answer(&mut self, id: &str) -> eyre::Result<CancelledAnswer> {
         eyre::ensure!(
             self.implementations.is_empty(),
             "Implementation was requested; answers can no longer be cancelled"
         );
         let mut cancelled = self.exploration.cancel_answer(id)?;
-        // Every delivery that carried the answer, including interrupted ones.
         let mut requests: Vec<String> = self
             .turns
             .iter()
@@ -115,7 +101,6 @@ impl ExploreRound {
                 self.completion = None;
             }
         }
-        // The marks of the question the answer answered, which it applied.
         let question = &cancelled.answer.in_reply_to;
         if self
             .marks
@@ -127,8 +112,6 @@ impl ExploreRound {
         Ok(cancelled)
     }
 
-    /// Cancel the answer `id` and every answer after it, latest first, unless implementation
-    /// was already requested: the round goes back to the question `id` answered.
     pub fn cancel_answers_from(&mut self, id: &str) -> eyre::Result<Vec<CancelledAnswer>> {
         eyre::ensure!(
             self.exploration

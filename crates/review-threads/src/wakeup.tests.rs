@@ -17,7 +17,6 @@ fn waits(through: u64) -> WakeupNotice {
     })
 }
 
-/// A review with one open thread whose comment waits for a reply.
 fn waiting() -> ReviewThreads {
     let mut book = ReviewThreads::new("change".into());
     book.post(Post::to_round("round-1", "Why a lock?".into(), None, None))

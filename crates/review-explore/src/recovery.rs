@@ -2,7 +2,6 @@ use crate::Exploration;
 use std::collections::HashSet;
 
 impl Exploration {
-    /// Validate stored structure without reopening or checking the freshness of sources.
     fn validate_restored(&self) -> eyre::Result<()> {
         eyre::ensure!(!self.instance.is_empty(), "missing round identity");
         let mut requests = HashSet::new();
@@ -145,8 +144,6 @@ impl Exploration {
         self.retry.as_ref()
     }
 
-    /// The agent's turn whose question the round waits for an answer to: the latest turn,
-    /// unless a turn is pending or waits for Retry.
     pub fn waiting_turn(&self) -> Option<&crate::InterviewUpdate> {
         if self.outstanding.is_some() || self.retry.is_some() {
             return None;
@@ -155,7 +152,6 @@ impl Exploration {
         update.next.is_some().then_some(update)
     }
 
-    /// Runtime dispatch is interrupted by reopening; the posted answer stays posted.
     pub fn pause_delivery(&mut self) {
         self.outstanding = None;
     }

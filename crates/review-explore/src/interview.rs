@@ -17,26 +17,19 @@ pub enum TopicStatus {
     NeedsFollowUp,
 }
 
-/// Who wrote the change a round reviews, as the reviewer says when the round starts.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeAuthor {
-    /// The reviewer: the review settles the reviewer's own decisions, and Implement makes the
-    /// agreed changes.
     #[default]
     Reviewer,
-    /// Someone else: the reviewer learns the change and reviews it for its author, every
-    /// question can be left to the author, and Post review posts the review.
     Other,
 }
 
 impl ChangeAuthor {
-    /// Whether the reviewer wrote the change, which a saved round leaves out.
     pub fn is_reviewer(&self) -> bool {
         *self == Self::Reviewer
     }
 
-    /// Changes to the other author.
     pub fn toggle(&mut self) {
         *self = match self {
             Self::Reviewer => Self::Other,
@@ -45,8 +38,6 @@ impl ChangeAuthor {
     }
 }
 
-/// The choice every question of a review of someone else's change offers: the reviewer leaves
-/// the decision to the change's author, and asks them.
 pub const ASK_AUTHOR: &str = "ask-author";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq, schemars::JsonSchema)]
@@ -112,7 +103,6 @@ pub struct Question {
 }
 
 impl Topic {
-    /// Whether `other` says the same as this topic, whatever the status of each.
     pub(crate) fn same_but_status(&self, other: &Self) -> bool {
         *self
             == Self {
@@ -123,13 +113,11 @@ impl Topic {
 }
 
 impl Question {
-    /// Whether this is version `version` of the question `id`.
     pub fn is_version(&self, id: &str, version: u32) -> bool {
         self.id == id && self.version == version
     }
 }
 
-/// A literal reviewer contribution; choosing an option preserves its stable ID and wording.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReviewerAnswer {
     pub id: String,
@@ -139,24 +127,17 @@ pub struct ReviewerAnswer {
     pub option: Option<Alternative>,
     pub text: String,
     pub author: String,
-    /// The choice, by ID, that the reviewer picked first on a question that hid its
-    /// recommendation until then; the agent's prompt leaves it out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_pick: Option<String>,
-    /// The reviewer sent the agent back to the drawing board in place of answering the
-    /// question: the agent concludes with the changes the design needs.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub drawing_board: bool,
 }
 
 impl ReviewerAnswer {
-    /// Whether the answer to a question sends the agent back to the drawing board, in place of a
-    /// choice: a reply to the conclusion reached there stays there, but sends no one back.
     pub fn sends_to_drawing_board(&self) -> bool {
         self.drawing_board && self.question.is_some()
     }
 
-    /// Whether the answer answers `question`, in that version.
     pub(crate) fn answers(&self, question: &Question) -> bool {
         self.question.as_ref() == Some(question)
     }
@@ -167,9 +148,7 @@ pub struct AnswerInput {
     pub option: Option<String>,
     pub text: String,
     pub in_reply_to: Option<String>,
-    /// The choice, by ID, that the reviewer picked before the recommendation showed.
     pub first_pick: Option<String>,
-    /// Back to the drawing board, in place of an answer to the question.
     pub drawing_board: bool,
 }
 
@@ -228,7 +207,6 @@ pub struct InterviewUpdate {
     /// Required for `submit_question`. Use `submit_conclusion` to finish the interview.
     #[schemars(required)]
     pub next: Option<Question>,
-    // Stored conclusions share this internal type; the question tool never accepts them.
     #[schemars(skip)]
     pub conclusion: Option<crate::Conclusion>,
     pub limitations: Vec<String>,
@@ -241,21 +219,15 @@ pub struct TurnRequest {
     pub request: String,
     pub checkpoint: ReviewCheckpoint,
     pub answer: Option<ReviewerAnswer>,
-    /// Answers the reviewer cancelled since the agent's previous request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cancelled: Vec<String>,
     pub response_error: Option<String>,
-    /// The round has a challenger, so the prompt carries its script.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub challenger: bool,
-    /// Who wrote the change, as the round started with it.
     #[serde(default, skip_serializing_if = "ChangeAuthor::is_reviewer")]
     pub author: ChangeAuthor,
-    /// The reviewer's name, when the reviewer gave one at the start of a review of someone
-    /// else's change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewer: Option<String>,
-    /// How the agent writes the texts the reviewer reads, as the round started with it.
     #[serde(
         default = "before_writing_styles",
         skip_serializing_if = "WritingStyle::is_plain"
@@ -263,19 +235,15 @@ pub struct TurnRequest {
     pub writing: WritingStyle,
 }
 
-/// The writing style of a round saved before writing styles existed, and of a new round until
-/// its start gives it the reviewer's setting: the agent's own.
 fn before_writing_styles() -> WritingStyle {
     WritingStyle::Plain
 }
 
 impl TurnRequest {
-    /// Whether the request opens its round: it carries no answer.
     pub fn is_kickoff(&self) -> bool {
         self.answer.is_none()
     }
 
-    /// Whether the request sends the agent back to the drawing board.
     pub fn at_drawing_board(&self) -> bool {
         self.answer
             .as_ref()
@@ -283,7 +251,6 @@ impl TurnRequest {
     }
 }
 
-/// The sole decision owner. Agent updates can interpret only the outstanding human answer.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Exploration {
     pub instance: String,
@@ -296,40 +263,27 @@ pub struct Exploration {
     pub findings: Vec<String>,
     pub conclusion: Option<crate::Conclusion>,
     pub conversation: Vec<ConversationTurn>,
-    /// Elapsed time from the reviewer posting a request to its accepted agent response.
     #[serde(default)]
     pub agent_elapsed_ms: BTreeMap<String, u64>,
     pub(crate) outstanding: Option<TurnRequest>,
     pub(crate) retry: Option<TurnRequest>,
-    /// Cancelled answers the next request tells the agent about.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) cancelled: Vec<String>,
-    /// A fresh-context subagent of the agent reviews the change beside it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub challenger: bool,
-    /// Who wrote the change, as the reviewer said when the round started.
     #[serde(default, skip_serializing_if = "ChangeAuthor::is_reviewer")]
     pub author: ChangeAuthor,
-    /// The reviewer's name, when the reviewer gave one at the start of a review of someone
-    /// else's change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewer: Option<String>,
-    /// How the agent writes the texts the reviewer reads. The reviewer's setting gives it when
-    /// the round starts, and the round keeps it.
     #[serde(
         default = "before_writing_styles",
         skip_serializing_if = "WritingStyle::is_plain"
     )]
     pub writing: WritingStyle,
-    /// The terms of the change with their definitions, as the agent's turns sent them, the
-    /// latest definition of a term replacing the one before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub glossary: BTreeMap<String, String>,
-    /// The diagrams of posted questions that the Explore page could not draw.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagram_errors: Vec<crate::DiagramError>,
-    /// What the reviewer did with the quiz of each conclusion, by the request of the agent's
-    /// turn that posted it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) quiz_answers: BTreeMap<String, crate::QuizAnswers>,
 }
@@ -361,7 +315,6 @@ impl Exploration {
         }
     }
 
-    /// The recorded status of the topic `id`, when the round has the topic.
     pub(crate) fn topic_status(&self, id: &str) -> Option<TopicStatus> {
         self.topics.get(id).map(|topic| topic.status)
     }
@@ -370,27 +323,20 @@ impl Exploration {
         self.outstanding.is_some()
     }
 
-    /// Whether the reviewer cancelled an answer since the agent's latest turn. No turn came
-    /// after the cancellation, so the round asks again what the latest cancelled answer
-    /// answered.
     pub fn cancelled_since_last_turn(&self) -> bool {
         !self.cancelled.is_empty()
     }
 
-    /// Whether an agent turn took up the answer `answer`.
     pub fn took_up(&self, answer: &str) -> bool {
         self.turn_after(answer).is_some()
     }
 
-    /// The agent's turn that took up the answer `answer`, if one did.
     pub(crate) fn turn_after(&self, answer: &str) -> Option<&ConversationTurn> {
         self.conversation
             .iter()
             .find(|turn| turn.answer.as_deref() == Some(answer))
     }
 
-    /// How the agent interpreted the answer `answer`, the latest time, if it
-    /// did.
     pub fn interpretation(&self, answer: &str) -> Option<&Interpretation> {
         self.interpretations
             .iter()
@@ -407,7 +353,6 @@ impl Exploration {
         let answer = input
             .map(|input| self.record(input, question))
             .transpose()?;
-        // A superseded request may not have told the agent about its cancelled answers.
         let mut cancelled = self
             .retry
             .take()
@@ -452,7 +397,6 @@ impl Exploration {
             })
             .ok_or_else(|| eyre::eyre!("Unknown question or conversation context"))?;
         let in_reply_to = context.update.request.clone();
-        // A reply to a conclusion at the drawing board stays there: the code is still to change.
         let replies_at_drawing_board = question.is_none()
             && context.answer.as_ref().is_some_and(|answer| {
                 self.answers
@@ -563,8 +507,6 @@ impl Exploration {
         Ok(true)
     }
 
-    /// Take an accepted agent turn, following `answer`, into the interview's
-    /// topics, questions, decisions and report.
     pub(crate) fn absorb(&mut self, update: InterviewUpdate, answer: Option<&ReviewerAnswer>) {
         self.glossary.extend(update.glossary);
         for mut topic in update.topics {
@@ -601,7 +543,6 @@ impl Exploration {
         }
     }
 
-    /// MCP retries acknowledge an identical accepted turn without replaying it.
     pub fn submit(&mut self, update: InterviewUpdate) -> eyre::Result<bool> {
         eyre::ensure!(
             update.instance == self.instance,

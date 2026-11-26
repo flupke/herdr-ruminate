@@ -1,4 +1,3 @@
-//! Normal citations use strings; byte arrays preserve non-UTF-8 Unix paths.
 use review_repository::repository::RepoPath;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

@@ -1,5 +1,3 @@
-//! Jujutsu change snapshots.
-
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
@@ -26,9 +24,7 @@ mod records;
 use git_diff::{DESCRIPTION_DIFF_PATHS, JjGitDiffParser};
 use reader::JjReader;
 
-/// The change, its commit, its description and its abbreviation, then its local bookmarks and the
-/// names of the workspaces whose working copy it is, each list one name a line. jj names the
-/// workspaces only in a repository that has more than one.
+// jj names the workspaces only in a repository that has more than one.
 const IDENTITY_TEMPLATE: &str = concat!(
     r#"change_id ++ "\0" ++ commit_id ++ "\0" ++ description ++ "\0" ++ "#,
     r#"change_id.shortest(8) ++ "\0" ++ "#,
@@ -51,13 +47,11 @@ const REVISION_CANDIDATE_TEMPLATE: &str = concat!(
     r#"change_id ++ "\0" ++ change_id.shortest(8) ++ "\0" ++ "#,
     r#"description.first_line() ++ "\0""#,
 );
-/// `jj edit` would put this workspace's working copy on the commit another workspace is writing.
 macro_rules! other_workspaces_revset {
     () => {
         "(working_copies() ~ @)"
     };
 }
-/// The mutable changes the reviewer can make this workspace's working-copy commit.
 macro_rules! editable_revset {
     () => {
         concat!("(mutable() ~ ", other_workspaces_revset!(), ")")
@@ -72,8 +66,6 @@ const REVISION_HISTORY_REVSET: &str = concat!(
 );
 const REVISION_HISTORY_TEMPLATE: &str = concat!(
     r#""\x1e" ++ change_id ++ ":" ++ commit_id ++ ":" ++ change_id.shortest(8) ++ ":" ++ if(current_working_copy, "1", "0") ++ ":" ++ if(immutable, "1", "0") ++ "\x1f" ++ "#,
-    // The bookmarks and tags, each a kind letter, its name and a separator, without the colours
-    // of `--color=always`, whose stripping would drop the separators.
     r#"stringify(bookmarks.map(|b| "b" ++ b ++ "\x1c").join("") ++ tags.map(|t| "t" ++ t ++ "\x1c").join("")) ++ "#,
     r#""\x1d" ++ "#,
     r#"change_id.shortest(8) ++ " " ++ description.first_line() ++ "\n""#,
@@ -85,7 +77,6 @@ pub(super) struct JjBackend {
 }
 
 impl JjBackend {
-    /// Find the jj workspace that contains `start`, if any.
     pub(super) fn workspace_root(
         start: &Path,
         cancellation: &Cancellation,
@@ -127,9 +118,7 @@ impl RepositoryBackend for JjBackend {
 
     fn set_state_root(&self, _repository_root: &Path, _state_root: &Path) {}
 
-    /// Watch jj operation heads; every jj command that changes the repository adds one.
-    ///
-    /// Without readable operation heads, fall back to the colocated Git metadata.
+    // Every jj command that changes the repository adds an operation head.
     fn watch_plan(&self, root: &Path) -> WatchPlan {
         let mut plan = WatchPlan::new(root);
         let operation_heads = resolve_directory_or_link_file(&root.join(".jj/repo"))
@@ -189,7 +178,6 @@ impl RepositoryBackend for JjBackend {
         repository: &Repository,
         identity: &SnapshotIdentity,
     ) -> Result<Vec<ChangedFile>> {
-        // The identity names its commit: the files are read from it, not from the working copy.
         ChangedFile::parse_jj(
             &repository
                 .run_jj([
@@ -369,8 +357,6 @@ impl RepositoryBackend for JjBackend {
         if log_lines(repository, &format!("{change} & mutable()"), "change_id")?.is_empty() {
             return Ok(RevisionEdit::Unavailable);
         }
-        // The other workspaces whose working-copy commit the change is: none for a change this
-        // workspace may edit. This workspace is never among them, since the revset leaves @ out.
         let mut workspaces = log_lines(
             repository,
             &format!("{change} & {}", other_workspaces_revset!()),
@@ -398,7 +384,6 @@ impl RepositoryBackend for JjBackend {
 }
 
 impl Repository {
-    /// Run jj in the workspace and reject a failed command.
     pub(super) fn run_jj<I, S>(&self, arguments: I) -> Result<Output>
     where
         I: IntoIterator<Item = S>,
@@ -421,7 +406,6 @@ impl Repository {
     }
 }
 
-/// The lines `template` renders for each commit of `revset`, without reading the working copy.
 fn log_lines(repository: &Repository, revset: &str, template: &str) -> Result<Vec<String>> {
     let output = repository.run_jj([
         "--ignore-working-copy",
@@ -454,7 +438,6 @@ fn baseline_exists(repository: &Repository, baseline: &str) -> Result<bool> {
         .success())
 }
 
-/// The error of a jj command that read the repository and failed.
 fn command_failed(output: &Output) -> Error {
     Error::CommandFailed {
         operation: "read jj repository".to_owned(),
@@ -462,7 +445,7 @@ fn command_failed(output: &Output) -> Error {
     }
 }
 
-/// Whether several visible commits have `change_id`, which jj refuses to resolve to one.
+// jj refuses to resolve a change ID that several visible commits have.
 fn is_divergent(repository: &Repository, change_id: &ChangeId) -> Result<bool> {
     let output = repository.output_jj([
         "--ignore-working-copy",
@@ -473,7 +456,6 @@ fn is_divergent(repository: &Repository, change_id: &ChangeId) -> Result<bool> {
         "-T",
         r#"commit_id ++ "\n""#,
     ])?;
-    // A second line names a second commit.
     let mut lines = output.stdout.iter().filter(|byte| **byte == b'\n');
     Ok(output.status.success() && lines.nth(1).is_some())
 }
@@ -578,7 +560,6 @@ fn parse_revision_history_line(line: &[u8]) -> Result<RevisionHistoryLine> {
     })
 }
 
-/// The identity of the revision of a history row, from its record's metadata.
 struct RevisionRecord {
     change_id: ChangeId,
     commit_id: SnapshotId,
@@ -587,8 +568,6 @@ struct RevisionRecord {
     is_immutable: bool,
 }
 
-/// The metadata of a history record, without its colours: the change ID, the commit ID, the
-/// short change ID, then the current and immutable markers, separated by colons.
 fn parse_revision_record(metadata: &[u8]) -> Result<RevisionRecord> {
     let mut fields = metadata.rsplitn(5, |byte| *byte == b':');
     let immutable_marker = fields.next();
@@ -642,8 +621,6 @@ fn parse_revision_record(metadata: &[u8]) -> Result<RevisionRecord> {
     })
 }
 
-/// The bookmarks and tags of a history record: each a kind letter, `b` or `t`, then its name,
-/// then `\x1c`.
 fn parse_revision_refs(section: &[u8]) -> Result<Vec<RevisionRef>> {
     let invalid = || Error::Protocol {
         operation: "read jj revision history".to_owned(),

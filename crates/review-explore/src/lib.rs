@@ -1,5 +1,3 @@
-//! Durable interviews over the complete working-copy change, retaining compact diff patches.
-
 mod durable;
 mod implementation_state;
 mod presentation;
@@ -69,11 +67,9 @@ pub use sections::QuestionSection;
 pub use source::{CodeLocation, EvidenceRef, Source, SourceSide};
 pub use start::{RoundChoices, StartBlock};
 
-/// Work requested explicitly from Explore.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
     Start,
-    /// Close the round and return to the start screen.
     Reset,
     Retry(Box<TurnRequest>),
     SaveView(Box<ViewSave>),
@@ -81,6 +77,5 @@ pub enum Command {
     Implement(ImplementationRequest),
     CancelImplementation,
     Cancel,
-    /// Cancel the reviewer's latest answer, by ID.
     CancelAnswer(String),
 }

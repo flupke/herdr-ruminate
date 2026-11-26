@@ -1,5 +1,3 @@
-//! The numbers of the meter, from review marks the tests write down line by line.
-
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,7 +16,6 @@ use super::*;
 
 const FILE: &str = "src/queue.rs";
 
-/// One file's lines: `open` lines on each side, and reviewed lines by author.
 struct Lines {
     open_removed: Vec<u32>,
     open_added: Vec<u32>,
@@ -91,7 +88,6 @@ fn explore(answer: &str) -> MarkAuthor {
     }
 }
 
-/// A round whose reviewer gave `answers`, and whose turns marked `marks`, by request.
 fn round(
     answers: &[&str],
     marks: impl IntoIterator<Item = (&'static str, TurnMarks)>,
@@ -135,8 +131,6 @@ fn round(
     }
 }
 
-/// The agent's turn that posts a question citing `cited`, and asks to mark `reviewed`,
-/// `not_relevant` and to reopen `reopened` once it is answered.
 fn question(
     cited: &[CodeLocation],
     reviewed: Vec<CodeLocation>,
@@ -253,8 +247,6 @@ fn without_a_round_every_explore_mark_is_another_rounds() {
 
 #[test]
 fn the_question_adds_the_open_lines_its_answer_marks() {
-    // The reference capture's numbers: 135 changed lines, 52 marked, the question marks 15.
-    // Its "39% → 50%" rounds to the nearest; the reviewer rounds every share down.
     let round = round(&["a1"], [("kickoff", TurnMarks::default())]);
     let queue = Lines::open(0..10, 52..125)
         .added_by(0..29, &explore("a1"))
@@ -358,7 +350,6 @@ fn the_question_takes_back_the_marked_lines_its_answer_reopens() {
     let file = Lines::open([], [0, 1])
         .added_by([2, 3], &MarkAuthor::Jev)
         .of(FILE);
-    // Line 3 reopens and is marked again: it stays marked.
     let update = question(
         &[],
         vec![
@@ -434,7 +425,6 @@ fn a_binary_file_is_marked_and_left_whole() {
         ]
     );
     assert!(tally.files[2].cited);
-    // A whole file has no lines: the share counts the text lines only.
     assert_eq!(tally.change.changed.lines_added, 1);
     assert_eq!(
         tally.change.share,

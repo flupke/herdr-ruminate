@@ -1,5 +1,3 @@
-//! The design of the change, which the first turn of a round explains before its first question.
-
 use std::borrow::Cow;
 use std::ops::Range;
 
@@ -48,8 +46,6 @@ pub struct DesignPart {
     body: String,
 }
 
-/// A part of the design as the reviewer reads it: under its heading, its thesis, then the rest
-/// of its Markdown.
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 pub struct DesignSection<'a> {
     pub title: &'static str,
@@ -74,9 +70,6 @@ impl Design {
         }
     }
 
-    /// The change in one sentence. A design saved before theses existed has none: the first
-    /// paragraph of "What it adds and where" stands in, the part closest to a statement of the
-    /// whole change.
     pub fn thesis(&self) -> Cow<'_, str> {
         match &self.thesis {
             Some(thesis) => Cow::Borrowed(thesis),
@@ -84,9 +77,6 @@ impl Design {
         }
     }
 
-    /// The parts, in reading order, under their headings, each with its thesis, or the stand-in
-    /// for a design saved before theses existed. A page message carries these and
-    /// [`Design::thesis`], never the design itself, which saves such a design as it was.
     pub fn parts(&self) -> [DesignSection<'_>; 4] {
         [
             ("What it adds and where", self.overview_text()),
@@ -101,9 +91,6 @@ impl Design {
         })
     }
 
-    /// The overview's text. In a design saved before theses existed, its first paragraph stands
-    /// in for the change's thesis, so the next one stands in for the overview's. Without a next
-    /// one, the overview shares the change's thesis.
     fn overview_text(&self) -> PartText<'_> {
         let text = self.overview.text();
         if self.thesis.is_some() || Lead::of(&text.body).paragraph.is_none() {
@@ -116,9 +103,6 @@ impl Design {
         }
     }
 
-    /// About how many minutes the design takes to read: the words of its theses and parts at
-    /// 230 a minute, rounded to the nearest minute, and never less than one. A diagram's source,
-    /// or any other block of code, is not read as text and does not count.
     pub fn reading_minutes(&self) -> usize {
         const WORDS_A_MINUTE: usize = 230;
         let thesis = self.thesis();
@@ -131,7 +115,6 @@ impl Design {
         ((words + WORDS_A_MINUTE / 2) / WORDS_A_MINUTE).max(1)
     }
 
-    /// The agent's design: a thesis for the change, and a thesis and text for every part.
     pub(crate) fn validate(&self) -> eyre::Result<()> {
         eyre::ensure!(
             self.thesis.as_deref().is_some_and(Self::is_one_line),
@@ -156,7 +139,6 @@ impl Design {
         Ok(())
     }
 
-    /// A thesis is one sentence; the tool can tell that it is there and on one line.
     fn is_one_line(thesis: &str) -> bool {
         !thesis.trim().is_empty() && !thesis.trim().contains('\n')
     }
@@ -170,8 +152,6 @@ impl DesignPart {
         }
     }
 
-    /// The part's thesis and the Markdown after it, or, for a part saved before theses existed,
-    /// the text that stands in for its thesis and the rest.
     fn text(&self) -> PartText<'_> {
         match &self.thesis {
             Some(thesis) => PartText {
@@ -183,7 +163,6 @@ impl DesignPart {
     }
 }
 
-/// The words a reader reads in `markdown`: its text and inline code, not its blocks of code.
 fn words_read(markdown: &str) -> usize {
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH;
     let mut in_code = false;
@@ -201,17 +180,12 @@ fn words_read(markdown: &str) -> usize {
     words
 }
 
-/// A part's thesis and the Markdown that follows it.
 struct PartText<'a> {
     thesis: Cow<'a, str>,
     body: Cow<'a, str>,
 }
 
 impl<'a> PartText<'a> {
-    /// The text of `markdown` saved without a thesis: its first paragraph stands in for the
-    /// thesis, on one line, and is left out of the body so that it does not show twice. Without
-    /// a paragraph of its own (outside lists and quotes), its first line of text stands in and
-    /// the body keeps everything.
     fn of(markdown: &'a str) -> Self {
         let Lead { thesis, paragraph } = Lead::of(markdown);
         let Some(paragraph) = paragraph else {
@@ -231,8 +205,6 @@ impl<'a> PartText<'a> {
     }
 }
 
-/// A part saved before theses existed is saved as it was then, one Markdown string, so that its
-/// round is written back unchanged.
 impl Serialize for DesignPart {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
@@ -247,8 +219,6 @@ impl Serialize for DesignPart {
     }
 }
 
-/// A part saved before theses existed takes the agent's text as it was then: one Markdown
-/// string with no thesis. The agent's tool input is always an object.
 impl<'de> Deserialize<'de> for DesignPart {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
@@ -288,19 +258,12 @@ impl<'de> Deserialize<'de> for DesignPart {
     }
 }
 
-/// The text that stands in for the thesis of a part saved without one, and where it lies in its
-/// Markdown.
 struct Lead<'a> {
-    /// The first paragraph that is a block of its own, on one line, or, without one, the first
-    /// line of text.
     thesis: Cow<'a, str>,
-    /// That paragraph, which the body then leaves out.
     paragraph: Option<Range<usize>>,
 }
 
 impl<'a> Lead<'a> {
-    /// A paragraph inside a list or a quote is never taken: its markers would come with it,
-    /// and taking it out would break its block.
     fn of(markdown: &'a str) -> Self {
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
@@ -311,7 +274,6 @@ impl<'a> Lead<'a> {
                 Event::Start(Tag::Paragraph) if depth == 0 => {
                     let paragraph = &markdown[Self::trimmed(markdown, range.clone())];
                     let thesis = if paragraph.contains('\n') {
-                        // A hard break, a backslash at the end of a line, becomes a space too.
                         let lines = paragraph.replace("\\\n", "\n");
                         Cow::Owned(lines.split_whitespace().collect::<Vec<_>>().join(" "))
                     } else {
@@ -322,7 +284,6 @@ impl<'a> Lead<'a> {
                         paragraph: Some(range),
                     };
                 }
-                // The first line of text starts with the first inline element, as written.
                 Event::Start(
                     Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Link { .. },
                 ) if first_text.is_none() => {
@@ -332,7 +293,6 @@ impl<'a> Lead<'a> {
                 Event::Start(_) => depth += 1,
                 Event::End(_) => depth = depth.saturating_sub(1),
                 Event::Text(_) | Event::Code(_) if first_text.is_none() => {
-                    // A backslash escape is not part of the text it escapes.
                     let start = if markdown[..range.start].ends_with('\\') {
                         range.start - 1
                     } else {
@@ -350,14 +310,12 @@ impl<'a> Lead<'a> {
         }
     }
 
-    /// `range` of `text` without its surrounding whitespace.
     fn trimmed(text: &str, range: Range<usize>) -> Range<usize> {
         let slice = &text[range.clone()];
         let start = range.start + (slice.len() - slice.trim_start().len());
         start..start + slice.trim().len()
     }
 
-    /// The first line of `range` in `text` that is not blank, trimmed.
     fn first_line(text: &str, range: Range<usize>) -> Range<usize> {
         let mut start = range.start;
         for line in text[range].split_inclusive('\n') {
@@ -371,7 +329,6 @@ impl<'a> Lead<'a> {
 }
 
 impl Exploration {
-    /// The design the round's first turn explained, if it did.
     pub fn design(&self) -> Option<&Design> {
         let first = self.conversation.first()?;
         if first.answer.is_some() {

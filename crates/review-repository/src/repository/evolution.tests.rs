@@ -5,7 +5,6 @@ fn change(id: &str) -> ChangeId {
     ChangeId::from(id.to_owned())
 }
 
-/// `own` above `a` and `b` on two lines; `a` above `c`, `c` above `d`; `b` above `own` again.
 fn evolution() -> ChangeEvolution {
     let mut evolution = ChangeEvolution::of(change("own"));
     evolution.add(&change("own"), &change("a"));

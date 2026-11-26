@@ -1,5 +1,3 @@
-//! Git-style patch presentation using jj's own hunk algorithm.
-
 use std::io::Write;
 
 use jj_lib::diff_presentation::LineCompareMode;

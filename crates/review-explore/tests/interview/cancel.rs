@@ -1,7 +1,5 @@
 use super::*;
 
-/// A round whose first question was answered with "keep", the agent's
-/// concluding turn after it accepted, and its marks recorded.
 fn concluded() -> (ExploreRound, TurnRequest) {
     let mut round = opened();
     let request = answer(&round, "keep");
@@ -15,7 +13,6 @@ fn concluded() -> (ExploreRound, TurnRequest) {
     });
     response.findings.push("Keep resolved conversations".into());
     assert!(round.submit(&response).unwrap());
-    // The answer applied its question's marks, then the conclusion's.
     let question = request.answer.as_ref().unwrap().in_reply_to.clone();
     round.marks.insert(
         question,
@@ -39,7 +36,6 @@ fn concluded() -> (ExploreRound, TurnRequest) {
     (round, request)
 }
 
-/// A round whose agent asked its first question.
 fn opened() -> ExploreRound {
     let mut round = ExploreRound::new(exploration());
     let kickoff = round.exploration.clone().request(None, None).unwrap();
@@ -50,7 +46,6 @@ fn opened() -> ExploreRound {
     round
 }
 
-/// The reviewer's request choosing `option` on the latest question.
 fn answer(round: &ExploreRound, option: &str) -> TurnRequest {
     let mut copy = round.exploration.clone();
     let question = copy.questions.last().cloned().unwrap();
@@ -74,7 +69,6 @@ fn cancelling_the_latest_answer_rewinds_to_its_question() {
 
     assert_eq!(cancelled.answer, *request.answer.as_ref().unwrap());
     assert_eq!(cancelled.request.as_deref(), Some(request.request.as_str()));
-    // Latest applied first: the conclusion's marks, then the question's.
     let marks = cancelled.marks;
     assert_eq!(marks.len(), 2);
     assert!(marks.iter().all(|marks| marks.answer.as_ref() == Some(&id)));
@@ -97,7 +91,6 @@ fn the_next_request_names_every_cancelled_answer_once() {
     let again = answer(&round, "change");
     round.post(&again).unwrap();
     let second = again.answer.as_ref().unwrap().id.clone();
-    // Cancelled before the agent answered: the pending request is withdrawn.
     round.cancel_answer(&second).unwrap();
     assert!(round.exploration.pending_request().is_none());
     let stale = update(&again, None);
@@ -162,7 +155,6 @@ fn an_interrupted_delivery_of_a_cancelled_answer_is_forgotten_too() {
     );
 }
 
-/// The reviewer's comment `text` on the latest question.
 fn comment(round: &ExploreRound, text: &str) -> TurnRequest {
     let mut copy = round.exploration.clone();
     let question = copy.questions.last().cloned().unwrap();

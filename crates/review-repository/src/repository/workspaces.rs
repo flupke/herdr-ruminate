@@ -7,14 +7,10 @@ use super::watch::resolve_directory_or_link_file;
 use super::{RepoType, Repository, RepositoryProcess};
 use crate::{Error, Result};
 
-/// How many reviews one jj command asks about, so its revset stays far below the 128 KiB that
-/// Linux allows one argument.
+// Linux allows 128 KiB for one argument, which a revset that names many reviews can pass.
 const UNITS_PER_QUERY: usize = 512;
 
 impl Repository {
-    /// The store that every workspace of this repository shares: the canonical directory that
-    /// `.jj/repo` resolves to in a jj workspace (a directory in the main workspace, a link file
-    /// in the others), or the common directory of a Git worktree.
     pub fn shared_store(&self) -> Result<PathBuf> {
         let store = match self.repo_type() {
             RepoType::Jj => resolve_directory_or_link_file(&self.root.join(".jj/repo")),
@@ -26,8 +22,6 @@ impl Repository {
         })
     }
 
-    /// The canonical root of every workspace of this repository that still exists: its jj
-    /// workspaces, or its Git worktrees.
     pub fn workspace_roots(&self) -> Result<Vec<PathBuf>> {
         let output = match self.repo_type() {
             RepoType::Jj => self.run_jj([
@@ -55,9 +49,6 @@ impl Repository {
         Ok(roots)
     }
 
-    /// Whether the repository holds one of `units`: a jj change, hidden ones included, or a
-    /// Git tree. A unit that cannot name one in this kind of repository counts as missing, and
-    /// so does jj's root change, which every jj repository holds.
     pub fn holds_any_review_unit<'a>(
         &self,
         units: impl IntoIterator<Item = &'a ReviewUnit>,
@@ -83,7 +74,7 @@ impl Repository {
 
     fn holds_any_change(&self, changes: &[&str]) -> Result<bool> {
         for chunk in changes.chunks(UNITS_PER_QUERY) {
-            // `<change>/0` finds a hidden change too, where a bare change ID does not.
+            // jj: the revset `<change>/0` finds a hidden change too, where a bare change ID does not.
             let present = chunk
                 .iter()
                 .map(|change| format!("present({change}/0)"))
@@ -124,7 +115,6 @@ impl Repository {
             .any(|line| line == b"tree"))
     }
 
-    /// Run Git in the worktree with the repository's own index, reading `input`.
     fn run_plain_git(&self, arguments: &[&str], input: &[u8]) -> Result<std::process::Output> {
         let output =
             RepositoryProcess::new("git", &self.root, "read Git repository", &self.cancellation)
@@ -140,7 +130,6 @@ impl Repository {
     }
 }
 
-/// Whether `unit` is not empty and every byte of it is in the alphabet `accepts` draws.
 fn in_alphabet(unit: &str, accepts: impl Fn(u8) -> bool) -> bool {
     !unit.is_empty() && unit.bytes().all(accepts)
 }

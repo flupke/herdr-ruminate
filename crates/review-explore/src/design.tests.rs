@@ -66,7 +66,6 @@ fn a_design_saved_before_theses_shows_each_parts_first_paragraph_as_its_thesis()
     assert_eq!(
         shown(&design),
         [
-            // Its first paragraph stands in for the change's thesis, its next one for its own.
             (
                 "What it adds and where",
                 "It lives in cache.rs.".into(),
@@ -82,7 +81,6 @@ fn a_design_saved_before_theses_shows_each_parts_first_paragraph_as_its_thesis()
                 "One hash lookup per file.".into(),
                 String::new()
             ),
-            // No paragraph: the first line of text stands in, and the part keeps all its text.
             (
                 "Rejected alternatives",
                 "No cache".into(),
@@ -90,12 +88,10 @@ fn a_design_saved_before_theses_shows_each_parts_first_paragraph_as_its_thesis()
             ),
         ]
     );
-    // The overview says what the change adds: its first paragraph, on one line.
     assert_eq!(
         design.thesis(),
         "The cache sits between the reader and the parser."
     );
-    // Saved again, it loads the same, still without theses.
     let saved = serde_json::to_value(&design).unwrap();
     assert_eq!(serde_json::from_value::<Design>(saved).unwrap(), design);
 }
@@ -142,13 +138,11 @@ fn a_paragraph_in_a_quote_or_a_list_stays_in_its_block() {
     }))
     .unwrap();
 
-    // The first paragraph of its own, on one line, as written.
     assert_eq!(
         design.thesis(),
         "It lives in \\*cache\\*.rs, beside the parser."
     );
     let [overview, data_flow, ..] = design.parts();
-    // Nothing follows it, so the overview shares the change's thesis, and keeps its quote.
     assert_eq!(overview.thesis, design.thesis());
     assert_eq!(overview.body, "> The cache sits\n> before the parser.");
     assert_eq!(data_flow.thesis, "The cache keeps the tree.");
@@ -175,7 +169,6 @@ fn a_saved_part_without_a_paragraph_shows_its_first_line_as_written() {
     assert_eq!(part.text().thesis, "First line, then the rest.");
 }
 
-/// A design whose parts hold `words` words of prose each, after one-word theses.
 fn design_of(words: usize, extra: &str) -> Design {
     let body = format!("{}\n\n{extra}", "word ".repeat(words));
     let part = || DesignPart::new("Thesis.", body.clone());
@@ -184,15 +177,12 @@ fn design_of(words: usize, extra: &str) -> Design {
 
 #[test]
 fn the_reading_time_counts_the_words_of_the_theses_and_the_parts() {
-    // 5 theses and 4 × 280 words: 1,125 words, about 4.9 minutes at 230 words a minute.
     assert_eq!(design_of(280, "").reading_minutes(), 5);
-    // 5 + 4 × 200 = 805 words: 3.5 minutes, rounded up.
     assert_eq!(design_of(200, "").reading_minutes(), 4);
 }
 
 #[test]
 fn the_words_of_a_table_and_of_inline_code_are_read() {
-    // 1 + 146 + 2 words in each part's table, as many as in a paragraph of 149 words.
     let table = format!(
         "| `ReplyQueue` | {}|\n| --- | --- |\n| a | b |",
         "word ".repeat(146)

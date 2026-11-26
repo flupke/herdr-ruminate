@@ -33,8 +33,8 @@ fn reads_current_and_base_file_content(repository_type: RepoType) {
 fn reads_a_path_the_revision_lacks_as_no_file(repository_type: RepoType) {
     let context = RepositoryTestContext::new(repository_type);
     let files = &context.repository_files;
-    // A wildcard or a leading colon in a path would read as a pattern or pathspec magic to
-    // `git show` and `git ls-tree`; `colon` is what `:colon` would match.
+    // `git show` and `git ls-tree` read a wildcard or a leading colon in a path as a pattern or
+    // pathspec magic.
     for path in ["deleted.txt", "replaced", "star*.txt", ":colon", "colon"] {
         files.write(path, b"base content\n");
     }

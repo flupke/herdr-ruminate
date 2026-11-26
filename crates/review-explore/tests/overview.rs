@@ -1,26 +1,5 @@
-//! The overview of saved rounds, read from synthetic fixtures in `overview/`, each a round as
-//! the store saves it, over a change to `store.rs`:
-//!
-//! - `kickoff.json`: the round's first turn is on its way.
-//! - `working.json`: question 1 ("cache", two-way door) answered with the recommended choice;
-//!   question 2 ("lock", one-way door) answered with the recommendation after a first pick of
-//!   another choice, and on its way.
-//! - `cancelled.json`: as `working.json`, then the agent asked question 3 and the reviewer
-//!   cancelled the answer to question 2.
-//! - `quiz.json`: as `working.json`, then question 3 ("flush") answered with None of the above,
-//!   clarified as its version 2 and answered with a comment only; question 4 ("crash")
-//!   answered with None of the above after a first pick; the conclusion with a quiz of three
-//!   items, the first answered correctly. Answers 1 to 3 applied review marks.
-//! - `concluded.json`: as `quiz.json`, with the two other items answered wrongly.
-//! - `replied.json`: as `concluded.json`, then the reviewer replied to the conclusion and the
-//!   agent asked question 5 ("readers").
-//! - `reasked.json`: question 1 answered with None of the above, question 2 answered, then
-//!   version 2 of question 1 waiting.
-//! - `legacy.json`: a round saved before rounds had a design, a quiz, first picks and review
-//!   marks: one question answered with a choice and a comment, then a conclusion.
 use review_explore::*;
 
-/// The round saved in the fixture `name`.
 fn saved(name: &str) -> ExploreRound {
     let path = format!("{}/tests/overview/{name}.json", env!("CARGO_MANIFEST_DIR"));
     let mut file: serde_json::Value =
@@ -44,7 +23,6 @@ const LATER_QUIZ: Step = Step::Quiz {
     stage: QuizStage::Later,
 };
 
-/// The request of the turn `round` waits for.
 fn pending(round: &ExploreRound) -> String {
     round.exploration.pending_request().unwrap().request.clone()
 }
@@ -150,7 +128,6 @@ fn the_answered_question_is_working_while_the_session_delivers_its_turn() {
         ]
     );
     assert_eq!(overview.title, TabTitle::AgentWorking);
-    // The answer on its way is a decision; the question is not behind the round yet.
     assert_eq!(numbers(&overview), (vec![1, 2], vec![1]));
 }
 
@@ -184,7 +161,6 @@ fn a_failed_turn_needs_a_retry() {
 fn a_cancelled_answer_returns_its_question_to_the_reviewer() {
     let overview = RoundOverview::of(&saved("cancelled"), None);
 
-    // The question the agent asked after the cancelled answer is gone.
     assert_eq!(
         overview.rail,
         vec![
@@ -253,8 +229,6 @@ fn the_decisions_tag_the_kept_choice() {
                 "Keep a write cache in front of the store?",
                 &kept(Some("Keep the cache"), "", &[DecisionTag::AsRecommended])
             ),
-            // The reviewer first picked "A queue per writer", then took the recommendation: both
-            // tags show.
             (
                 2,
                 "How do writers share the cache?",
@@ -267,7 +241,6 @@ fn the_decisions_tag_the_kept_choice() {
                     ]
                 )
             ),
-            // Clarified once: the decision is the answer to the second version, a comment.
             (
                 3,
                 "When does the cache flush: on a timer or on size?",
@@ -310,7 +283,6 @@ fn an_earlier_question_holds_its_latest_version_and_what_the_agent_recorded() {
         record.recorded.reply.as_deref(),
         Some("A timer bounds the loss in time.")
     );
-    // One set of marks for the answer to each version: lines 4, then line 5.
     let marked: Vec<_> = record
         .marks
         .iter()
@@ -338,7 +310,6 @@ fn a_question_asked_again_after_another_is_a_step_of_its_own() {
         (first.question.id.as_str(), first.question.version),
         ("cache", 1)
     );
-    // "None of the above" is the kept choice, with no tag.
     assert_eq!(
         first.answer,
         Some(kept(
@@ -350,7 +321,6 @@ fn a_question_asked_again_after_another_is_a_step_of_its_own() {
     assert_eq!(numbers(&overview), (vec![1, 2], vec![1, 2]));
 }
 
-/// `legacy.json` was saved before rounds had a design, a quiz, first picks and review marks.
 #[test]
 fn a_round_saved_before_designs_and_quizzes_has_neither_step() {
     let overview = RoundOverview::of(&saved("legacy"), None);
@@ -440,11 +410,9 @@ fn a_question_after_a_reply_to_the_conclusion_opens_a_step_before_the_quiz() {
         ]
     );
     assert_eq!(overview.title, TabTitle::YourTurn { question: 5 });
-    // The reply to the conclusion answers no question: it is no decision.
     assert_eq!(numbers(&overview), (vec![1, 2, 3, 4], vec![1, 2, 3, 4]));
 }
 
-/// The rail and the tab title of `overview`.
 fn rail_and_title(overview: &RoundOverview) -> (Vec<RailStep>, TabTitle) {
     (overview.rail.clone(), overview.title)
 }
@@ -494,8 +462,6 @@ fn a_round_told_as_plain_facts_has_the_rail_and_the_title_of_its_saved_state() {
     );
 }
 
-/// The number of a question is the one its step has on the rail: a clarification that follows
-/// its question keeps the number, a version asked again after another question takes its own.
 #[test]
 fn a_question_has_the_number_of_its_step_on_the_rail() {
     let numbers = |name: &str| {
@@ -507,7 +473,6 @@ fn a_question_has_the_number_of_its_step_on_the_rail() {
             .collect::<Vec<_>>()
     };
 
-    // reasked: cache 1, lock 1, cache 2; quiz: cache 1, lock 1, flush 1, flush 2, crash 1.
     assert_eq!(numbers("reasked"), [Some(1), Some(2), Some(3)]);
     assert_eq!(
         numbers("quiz"),

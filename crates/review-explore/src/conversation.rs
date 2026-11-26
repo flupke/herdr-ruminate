@@ -8,19 +8,15 @@ pub struct Reply {
     pub evidence: Vec<EvidenceRef>,
 }
 
-/// Immutable agent output, linked to the exact reviewer contribution it responds to.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ConversationTurn {
     pub answer: Option<String>,
     pub update: InterviewUpdate,
-    /// Why the agent revised the open question from the round conversation, for a turn that
-    /// did: it follows the same answer as the turn it revised.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<crate::Revision>,
 }
 
 impl Exploration {
-    /// Append-only reference order keeps native viewer identities stable as replies arrive.
     pub fn evidence(&self, turn: usize) -> Vec<EvidenceRef> {
         let Some(question) = self.questions.get(turn) else {
             return Vec::new();

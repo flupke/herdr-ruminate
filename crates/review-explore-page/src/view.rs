@@ -1,9 +1,3 @@
-//! What the page's client draws: the round as typed data, built from the latest stage the
-//! round's owner published. The client draws every screen from a [`PageView`]; the agent's
-//! Markdown travels rendered to HTML (fields named `..._html`), and cited code as rows of
-//! tokens with their colour roles. The TypeScript declarations of these types are generated
-//! (`crate::typescript`), so that the client is checked against them.
-
 mod conclusion;
 mod conversation;
 mod earlier;
@@ -28,98 +22,54 @@ use crate::past::{PastChange, PastRound};
 use crate::round::{LatestAnswer, ReviewName, RoundSnapshot, RoundStage, TurnResponse};
 use crate::status::StatusCard;
 
-/// The round as the page shows it.
 #[derive(Debug, Serialize, TS)]
 pub(crate) struct PageView {
-    /// The review the page belongs to, once its owner named it.
     review: Option<ReviewName>,
-    /// The start cover, when no round is running.
     start: Option<StartView>,
-    /// The status cards above the round's stage: that the round is an earlier one, and the
-    /// stage when it is not a question. A refused action's notice travels in its reply.
     cards: Vec<StatusCard>,
-    /// The reviewer's latest answer, when the page offers to cancel it.
     cancellable: Option<LatestAnswer>,
-    /// The number on the rail of the question the latest answer answered, when known.
     answered: Option<usize>,
-    /// The design of the change, as the round's first turn explained it.
     design: Option<DesignView>,
-    /// What the agent's turn said back to the reviewer's previous answer, above its question or
-    /// conclusion; `None` when it said nothing.
     response: Option<ResponseView>,
     question: Option<QuestionView>,
     conclusion: Option<ConclusionView>,
-    /// The round Reset closes, when the page offers it.
     reset: Option<String>,
-    /// Whether the round is an earlier one, which the reviewer can only Reset.
     earlier: bool,
-    /// The address of Mermaid's script, which draws the diagrams.
     mermaid: String,
-    /// The steps of the round rail, in order; empty when no round is running.
     rail: Vec<RailStep>,
-    /// What the browser tab's title says before the review's name; `None` when no round is
-    /// running, and when the review tool cannot save the round, which then waits for nothing.
     title: Option<TabTitle>,
-    /// How much of the change the review marks cover, for the meter on the masthead's hairline
-    /// and the start cover's size of the change; `None` until the owner counted them.
     tally: Option<MarkTally>,
-    /// The questions the reviewer answered before, each a done step of the rail, in its order.
     earlier_questions: Vec<EarlierQuestionView>,
-    /// The reviewer's answer that the agent's turn carries, while the agent works on the turn
-    /// or the turn waits for Retry, with the turn's status card.
     sent: Option<SentView>,
-    /// The round's conversation with the agent; `None` when no round is running, and when the
-    /// page offers no conversation.
     conversation: Option<ConversationView>,
-    /// The terms of the change with their definitions, which the page marks wherever they
-    /// appear, and lists at the end of the design; empty when no round is running.
     glossary: std::collections::BTreeMap<String, String>,
-    /// The past round the page shows in place of the round it follows, read only.
     past: Option<PastView>,
-    /// The saved rounds of the repository, without the round the page follows, which the list of
-    /// past rounds shows by change; `None` on a page that offers none, as the page on the network.
     past_rounds: Option<Vec<PastChange>>,
 }
 
-/// The past round the page shows, read only, and the round the page follows meanwhile.
 #[derive(Debug, Serialize, TS)]
 struct PastView {
-    /// The past round's identity, which the page's address names.
     round: String,
-    /// When the round was last saved, in milliseconds since the epoch.
     saved_at_ms: u64,
-    /// Whether the round the page follows waits for the reviewer meanwhile.
     current_waits: bool,
-    /// The pull request and the tickets of the change the past round reviewed, which the line
-    /// above the screens links to.
     references: ChangeReferences,
 }
 
-/// The start cover, when no round is running.
 #[derive(Debug, Serialize, TS)]
 struct StartView {
-    /// The identity of the start the cover offers, which a Start carries back.
     start: String,
-    /// Whether no status card says the cover's state, so that the cover says that no round is
-    /// running.
     idle: bool,
-    /// The ID of the status card that says why the reviewer cannot start a round: the start
-    /// buttons are inactive, and it describes them.
     block: Option<String>,
 }
 
-/// One titled part of the agent's Markdown, rendered: its lead, which shows while the part is
-/// folded, then the rest.
 #[derive(Debug, Serialize, TS)]
 pub(crate) struct SectionView {
     title: String,
     lead_html: String,
-    /// `None` when the part is its lead alone.
     details_html: Option<String>,
 }
 
 impl SectionView {
-    /// `section`, rendered to sit under a heading of `level`.
     pub(crate) fn new(section: &QuestionSection, level: usize) -> Self {
         Self {
             title: section.title.to_owned(),
@@ -129,42 +79,29 @@ impl SectionView {
     }
 }
 
-/// The design of the change, which the design screen shows: it opens the round, and the
-/// reviewer can open it again at any later stage.
 #[derive(Debug, Serialize, TS)]
 struct DesignView {
-    /// The change's thesis, as inline HTML for a heading.
     thesis_html: String,
-    /// The four parts, in reading order.
     parts: Vec<DesignPartView>,
-    /// About how many minutes the design takes to read.
     minutes: usize,
-    /// How many files the change touches.
     changed_files: usize,
 }
 
-/// One part of the design, under its heading: its thesis, then the rest of its text.
 #[derive(Debug, Serialize, TS)]
 struct DesignPartView {
     title: String,
-    /// The part's thesis, as inline HTML for one line.
     thesis_html: String,
     body_html: String,
 }
 
-/// What the agent's turn said back to the reviewer's previous answer, and, when run-ahead
-/// watched the question, one quiet line on the turn: prepared while the reviewer was thinking,
-/// or why not.
 #[derive(Debug, Serialize, TS)]
 struct ResponseView {
     interpretations: Vec<InterpretationView>,
     reply_html: Option<String>,
     path_line: Option<String>,
-    /// Why the review marks of the answer were not all applied, when they were not.
     marks_problem: Option<String>,
 }
 
-/// The agent's recap of the answer, and the follow-ups it recorded.
 #[derive(Debug, Serialize, TS)]
 struct InterpretationView {
     recap_html: Option<String>,
@@ -172,14 +109,11 @@ struct InterpretationView {
 }
 
 impl PageView {
-    /// The view of `round`, with the reviewer's first picks `picks` kept by this page, and the
-    /// round's conversation from the review threads `threads`, when the page offers one.
     pub(crate) fn new(
         round: &RoundSnapshot,
         picks: &FirstPicks,
         threads: Option<&ThreadsSnapshot>,
     ) -> Self {
-        // An earlier round offers Reset only, and a past round nothing.
         let offers_actions = !round.earlier;
         let cards = StatusCard::above_stage(round, offers_actions);
         let start = round.stage.offered_start().map(|start| StartView {
@@ -220,7 +154,6 @@ impl PageView {
                 .filter(|_| !storage_failed)
                 .map(|overview| overview.title),
             earlier_questions: round.overview.as_ref().map_or_else(Vec::new, |overview| {
-                // An earlier answer can be cancelled while the latest one can.
                 let cancellable = offers_actions && round.cancellable.is_some();
                 EarlierQuestionView::all(&overview.earlier, &round.earlier_citations, cancellable)
             }),
@@ -237,9 +170,6 @@ impl PageView {
         }
     }
 
-    /// The view of the past round `past`, shown in place of the round `followed`, which the page
-    /// follows. Its conversation comes from the review threads `live` of the page when they hold
-    /// its review, which they keep current, else from the threads read with the round.
     pub(crate) fn of_past(
         past: &PastRound,
         followed: &RoundSnapshot,
@@ -264,7 +194,6 @@ impl PageView {
         }
     }
 
-    /// The view, whose list of past rounds shows `past_rounds`, the saved rounds of the repository.
     pub(crate) fn listing(self, past_rounds: Option<Vec<PastChange>>) -> Self {
         Self {
             past_rounds,
@@ -274,8 +203,6 @@ impl PageView {
 }
 
 impl DesignView {
-    /// The design as `Design::thesis` and `Design::parts` give it, which stand in for the theses
-    /// of a design saved before it had any, of a change of `changed_files` files.
     fn new(design: &Design, changed_files: usize) -> Self {
         let inline = |text: &str| {
             HtmlRenderer::under_heading(3)
@@ -300,8 +227,6 @@ impl DesignView {
 }
 
 impl ResponseView {
-    /// What the agent recorded of an earlier answer: its latest interpretation, and the reply
-    /// of the turn that took the answer up.
     fn of_record(record: &AgentRecord) -> Self {
         Self::new(&TurnResponse {
             interpretations: record.interpretation.iter().cloned().collect(),
@@ -329,14 +254,12 @@ impl ResponseView {
     }
 }
 
-/// The agent's Markdown `text` as HTML that sits under a heading of `level`.
 pub(crate) fn markdown(text: &str, level: usize) -> String {
     HtmlRenderer::under_heading(level)
         .render(text)
         .into_string()
 }
 
-/// `text` as HTML under a heading of `level`, or `None` when it is empty.
 pub(crate) fn markdown_if_any(text: &str, level: usize) -> Option<String> {
     (!text.is_empty()).then(|| markdown(text, level))
 }

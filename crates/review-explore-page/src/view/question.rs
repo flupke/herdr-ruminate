@@ -1,7 +1,3 @@
-//! The agent's question, as the page shows it: the text, the explanation, the choices with the
-//! agent's recommendation (hidden until the reviewer's first pick on a blind question), the
-//! lines an answer marks, and the citations.
-
 use review_explore::{Alternative, Assessments, Door, MarkCounts, MarkPhrase, MarkTense, Question};
 use review_explore_citations::{Citation, CodeColors, HighlightedRow, Token};
 use review_explore_tally::{Gain, MarkTally, WholeChange};
@@ -15,110 +11,69 @@ use crate::round::{AnsweredQuestion, QuestionMarks, RoundSnapshot, RoundStage};
 
 #[derive(Debug, Serialize, TS)]
 pub(crate) struct QuestionView {
-    /// The identity of the round that asks the question, which the answer carries back: a
-    /// question of the same ID in a later round is another question.
     round: Option<String>,
-    /// The question's step on the round rail, from 1: a clarified question keeps its number.
     number: usize,
     id: String,
     version: u32,
     text_html: String,
-    /// How hard the decision is to reverse, as the agent assessed it; `None` when it did not.
     door: Option<Door>,
-    /// The Context section; `None` when the question has none.
     context_html: Option<String>,
-    /// The Door and Blast radius sections, folded away until the reviewer opens them, each
-    /// showing its lead.
     sections: Vec<SectionView>,
-    /// When the page shows the agent's recommendation.
     recommendation: Recommendation,
-    /// The agent's alternatives, then None of the above; once the recommendation shows after
-    /// the first pick, the choice picked first is the checked one.
     choices: Vec<ChoiceView>,
-    /// The question's citations, most decisive first.
     citations: Vec<CitationView>,
-    /// The lines an answer marks, `None` when it marks none.
     marks: Option<MarksView>,
-    /// The reviewed share of the change before and after the answer; `None` until the tool
-    /// counted the marks.
     gain: Option<GainView>,
-    /// Whether the page offers to answer: not in an earlier round.
     answerable: bool,
-    /// How the agent revised the question from the round conversation, when it did.
     revision: Option<RevisionView>,
 }
 
-/// The notice above a question the agent revised from the round conversation.
 #[derive(Debug, Serialize, TS)]
 struct RevisionView {
-    /// What changed in the question and why.
     reason_html: String,
-    /// The version it replaced, whose comment draft the answer's box takes over.
     replaced_version: u32,
 }
 
-/// When the page shows the agent's recommendation for a question.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 enum Recommendation {
-    /// At once, with the choices in the agent's order.
     Shown,
-    /// Not yet, on a blind question: the choices in a mixed order, and a form that sends the
-    /// reviewer's first pick.
     HiddenUntilPick,
-    /// After the first pick of a blind question: the choices in the same mixed order, the pick
-    /// selected, and the answer's form.
     ShownAfterPick,
 }
 
-/// One choice of a question.
 #[derive(Debug, Serialize, TS)]
 pub(super) struct ChoiceView {
     id: String,
     text: String,
-    /// Why the agent recommends the choice, when it does and the page shows it.
     recommendation: Option<String>,
-    /// Whether the choice is selected: the reviewer's first pick.
     checked: bool,
 }
 
-/// What an answer to the question marks: a summary, and the lines on request.
 #[derive(Debug, Serialize, TS)]
 struct MarksView {
-    /// "Answering marks", then "15 lines reviewed": the lines marked not relevant count as
-    /// reviewed, as in the meter; the lists below keep them apart.
     summary: MarkPhrase,
     reviewed: Vec<String>,
-    /// Each with why it is not relevant.
     not_relevant: Vec<String>,
     reopened: Vec<String>,
 }
 
-/// The reviewed share of the change before and after the answer, in whole percent, as the
-/// reviewer's file list rounds it: "39% → 50%".
 #[derive(Debug, Serialize, TS)]
 struct GainView {
     before: u64,
     after: u64,
 }
 
-/// One citation: its location, its note, and the cited lines of the change, colored on the
-/// server.
 #[derive(Debug, Serialize, TS)]
 pub(crate) struct CitationView {
-    /// The path, side and lines: `src/main.rs new 7-9`.
     location: String,
-    /// The path alone: `src/main.rs`.
     path: String,
-    /// The side and lines alone: `new 7–9`, or `whole file`.
     span: String,
     notes: String,
     rows: Vec<RowView>,
-    /// Why the citation shows no rows.
     limitation: Option<String>,
 }
 
-/// One row of the cited lines.
 #[derive(Debug, Serialize, TS)]
 struct RowView {
     kind: RowKind,
@@ -138,12 +93,10 @@ enum RowKind {
 #[derive(Debug, Serialize, TS)]
 struct TokenView {
     text: String,
-    /// The palette role of the token's color, or `None` for the page's text color.
     role: Option<String>,
 }
 
 impl QuestionView {
-    /// The question `round` asks, with the reviewer's first pick of it from `picks`.
     pub(crate) fn of(round: &RoundSnapshot, picks: &FirstPicks) -> Option<Self> {
         let RoundStage::Question {
             question,
@@ -155,7 +108,6 @@ impl QuestionView {
         else {
             return None;
         };
-        // A past round shows the recommendation it showed the reviewer then.
         let blind = round.stage.blind().filter(|_| !round.past);
         let picked = blind.as_ref().and_then(|blind| {
             let round = round.round.as_deref()?;
@@ -179,8 +131,6 @@ impl QuestionView {
         )
     }
 
-    /// The question `answered` of the round `round`, number `number` on the rail, as the reviewer
-    /// answered it: the page shows it read only, beside the answer.
     pub(crate) fn answered(
         round: Option<String>,
         number: usize,
@@ -202,8 +152,6 @@ impl QuestionView {
         view
     }
 
-    /// `blind` is the question when it hides the agent's recommendation until the first pick;
-    /// `picked` the choice the reviewer picked first.
     fn new(
         round: Option<String>,
         number: usize,
@@ -262,7 +210,6 @@ impl QuestionView {
         self
     }
 
-    /// The question with the choice `kept` (its text), which the reviewer sent, selected.
     pub(super) fn keeping(mut self, kept: Option<&str>) -> Self {
         for choice in &mut self.choices {
             choice.keep(kept);
@@ -270,10 +217,6 @@ impl QuestionView {
         self
     }
 
-    /// What answering marks as `tally` counts it, once counted: the open lines it marks and
-    /// the marked lines it reopens, not the lines the agent named, which take in unchanged lines,
-    /// lines already marked and files whose diff changed since the round started. With the share
-    /// the answer adds; no marks when it adds none.
     fn counted(mut self, tally: Option<&MarkTally>) -> Self {
         let Some((tally, gain)) = tally.and_then(|tally| Some((tally, tally.gain.as_ref()?)))
         else {
@@ -295,7 +238,6 @@ impl QuestionView {
         self
     }
 
-    /// "Answering marks 12 lines reviewed · reopens 1 whole file", from the tally.
     fn answering(tally: &MarkTally, gain: &Gain) -> MarkPhrase {
         let lines = |count: u64| u32::try_from(count).unwrap_or(u32::MAX);
         let whole = |change: WholeChange| {
@@ -319,8 +261,6 @@ impl QuestionView {
 }
 
 impl ChoiceView {
-    /// The choices of `question` the reviewer answered, in the agent's order and with its
-    /// recommendation, the choice `kept` (its text) selected.
     pub(super) fn kept(question: &Question, kept: Option<&str>) -> Vec<Self> {
         question
             .choices()
@@ -332,7 +272,6 @@ impl ChoiceView {
             .collect()
     }
 
-    /// Selects the choice when it is the one `kept`, by its text, as the round keeps an answer.
     fn keep(&mut self, kept: Option<&str>) {
         self.checked = kept == Some(self.text.as_str());
     }
@@ -352,8 +291,6 @@ impl ChoiceView {
 
 impl MarksView {
     fn new(marks: &QuestionMarks) -> Option<Self> {
-        // What answering covers as a whole, as the meter counts it; the list of lines keeps the
-        // split between reviewed and not relevant.
         let summary = marks.counts().covered_phrase(MarkTense::Answering);
         if summary.parts.is_empty() {
             return None;
@@ -414,7 +351,6 @@ impl RowView {
 }
 
 impl CitationView {
-    /// "7", or "7–9" for the lines `first` to `last`: with an en dash, as the handoff's code frames write it.
     fn span(first: u32, last: u32) -> String {
         if first == last {
             first.to_string()
@@ -425,8 +361,6 @@ impl CitationView {
 }
 
 impl RowView {
-    /// `rows` without the indentation they all share (design review, finding 15): a phone shows
-    /// the code, not the spaces before it. Blank rows do not count.
     fn dedented(mut rows: Vec<Self>) -> Vec<Self> {
         let shared = rows.iter().filter_map(Self::indentation).min().unwrap_or(0);
         if shared > 0 {
@@ -437,7 +371,6 @@ impl RowView {
         rows
     }
 
-    /// How many spaces or tabs open the row, or `None` for a blank row.
     fn indentation(&self) -> Option<usize> {
         let mut count = 0;
         for character in self.tokens.iter().flat_map(|token| token.text.chars()) {
@@ -450,7 +383,6 @@ impl RowView {
         None
     }
 
-    /// Takes up to `count` leading spaces or tabs off the row.
     fn strip(&mut self, mut count: usize) {
         for token in &mut self.tokens {
             if count == 0 {

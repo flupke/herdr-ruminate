@@ -9,7 +9,6 @@ use crate::Error;
 
 #[test]
 fn a_jj_revision_splits_where_jj_colours_its_prefix_and_its_rest() {
-    // `jj log --color=always -T 'change_id.shortest(8)'`
     let display_id = "\u{1b}[1m\u{1b}[38;5;5mm\u{1b}[0m\u{1b}[38;5;8mtsvqnzp\u{1b}[39m";
 
     assert_eq!(
@@ -23,7 +22,6 @@ fn a_jj_revision_splits_where_jj_colours_its_prefix_and_its_rest() {
 
 #[test]
 fn a_revision_without_a_prefix_coloured_apart_is_all_rest() {
-    // A Git abbreviation, then a jj one whose prefix and rest share a colour.
     for (display_id, plain) in [
         ("3f2a9c1", "3f2a9c1"),
         ("\u{1b}[38;5;5mmtsvqnzp\u{1b}[39m", "mtsvqnzp"),
@@ -79,10 +77,8 @@ fn cancellation_stops_a_child_command() {
     assert!(matches!(error, Error::CommandCancelled { .. }));
 }
 
-/// How long a test waits for a woken command before it fails; it fires only on a hang.
 const HANG_GUARD: Duration = Duration::from_secs(10);
 
-/// Run `work` on another thread: where its result arrives.
 fn in_thread<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Receiver<T> {
     let (finished, result) = mpsc::channel();
     thread::spawn(move || {
@@ -91,7 +87,6 @@ fn in_thread<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Re
     result
 }
 
-/// A command that runs a script in `sh`, as a repository command runs jj or git.
 fn shell(cancellation: &Cancellation) -> RepositoryProcess<'_> {
     RepositoryProcess {
         options: &["-c"],
@@ -139,7 +134,6 @@ fn a_cancellation_stops_a_running_child_that_closed_its_output() {
             ])
         }
     });
-    // The script writes to the FIFO once it runs; reading it waits for that.
     in_thread(move || std::fs::read(started))
         .recv_timeout(HANG_GUARD)
         .expect("the command starts")
@@ -154,7 +148,6 @@ fn a_cancellation_stops_a_running_child_that_closed_its_output() {
     assert!(matches!(error, Error::CommandCancelled { .. }));
 }
 
-/// How a command waits for its child on Linux, where a watcher thread wakes it.
 #[cfg(target_os = "linux")]
 mod wakes {
     use std::sync::Arc;
@@ -162,8 +155,6 @@ mod wakes {
 
     use super::*;
 
-    /// A command waiting on `cancellation` on another thread until `settled`: where it reports
-    /// whether it was cancelled, once it has checked `settled` the first time.
     fn waiting_command(cancellation: &Cancellation, settled: &Arc<AtomicBool>) -> Receiver<bool> {
         let (started, waiting) = mpsc::channel();
         let (finished, result) = mpsc::channel();

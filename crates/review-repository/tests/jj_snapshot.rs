@@ -34,7 +34,6 @@ fn discovers_a_git_only_repository() {
 
 #[test]
 fn discovers_a_nested_git_repository_before_an_enclosing_jj_repository() {
-    // This test needs the Jj root so it can create a nested Git repository.
     let fixture = JjFixture::new(JjLayout::NonColocated);
     let nested = fixture.root().join("nested");
     let output = std::process::Command::new("git")
@@ -70,7 +69,6 @@ fn jj_watch_plan_follows_operation_heads_and_ignores_git_excludes(layout: JjLayo
 #[test_case(JjLayout::NonColocated; "non_colocated")]
 #[test_case(JjLayout::Colocated; "colocated")]
 fn excludes_change_descriptions_from_file_interdiffs(layout: JjLayout) {
-    // This test uses JjFixture directly because it runs Jj-only commands and checks each layout.
     let context = JjRepositoryTestContext::new(layout);
     let fixture = &context.fixture;
     let repository = &context.repository;
@@ -120,7 +118,6 @@ fn excludes_change_descriptions_from_file_interdiffs(layout: JjLayout) {
 #[test_case(JjLayout::NonColocated; "non_colocated")]
 #[test_case(JjLayout::Colocated; "colocated")]
 fn reports_conflicts_from_real_jj_merges(layout: JjLayout) {
-    // This test uses JjFixture directly because it creates a Jj-only merge for each layout.
     let context = JjRepositoryTestContext::new(layout);
     let fixture = &context.fixture;
     let repository = &context.repository;

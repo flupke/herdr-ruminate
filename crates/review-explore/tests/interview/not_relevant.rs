@@ -1,7 +1,6 @@
 use super::*;
 use review_repository::repository::RepoPath;
 
-/// A not-relevant mark on lines of the changed file.
 fn mark(reason: Option<NotRelevantReason>, test: Option<TestLocation>) -> NotRelevantMark {
     NotRelevantMark {
         location: policy_lines(1, 2),
@@ -20,8 +19,6 @@ fn test_lines(path: &str, first_line: u32, last_line: u32) -> TestLocation {
     }
 }
 
-/// The error the kickoff turn gets for `marks`, or `None` when it is
-/// accepted. The working copy holds a three-line `tests/policy.rs`.
 fn kickoff_error(marks: Vec<NotRelevantMark>) -> Option<String> {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("tests")).unwrap();
@@ -51,7 +48,6 @@ fn a_not_relevant_mark_needs_a_reason() {
         NotRelevantReason::FollowsCode,
     ] {
         assert_eq!(kickoff_error(vec![mark(Some(reason), None)]), None);
-        // Any reason may name a test, which must exist.
         let test = |path| Some(test_lines(path, 1, 1));
         assert_eq!(
             kickoff_error(vec![mark(Some(reason), test("tests/policy.rs"))]),

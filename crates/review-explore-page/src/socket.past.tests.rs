@@ -1,6 +1,3 @@
-//! Past rounds on the page's socket: listed beside the round the page follows, and shown read
-//! only on a socket of their own, which refuses every action.
-
 use super::*;
 use change_references::ChangeReferences;
 
@@ -8,13 +5,10 @@ use crate::{PastChange, PastRound, PastRoundEntry, PastRounds, PastRoundsPublish
 
 const PAST: &str = "past-1";
 
-/// The saved round `PAST`, left at a one-way question it asked.
 fn past_round() -> PastRound {
     past_round_at(asking(question("q0", "one_way")))
 }
 
-/// The saved round `PAST`, of the review the page follows, left at `stage`; the threads read with
-/// it hold no message.
 fn past_round_at(stage: RoundStage) -> PastRound {
     let review: ReviewUnit = REVIEW.into();
     let overview = RoundOverview {
@@ -42,7 +36,6 @@ fn past_round_at(stage: RoundStage) -> PastRound {
     PastRound::new(round, stage, name, ChangeReferences::default(), None, 1_000)
 }
 
-/// The change of the saved rounds `rounds`, saved in that order, newest first.
 fn change(rounds: &[&str]) -> PastChange {
     PastChange {
         title: "Name the queue's flush policy".into(),
@@ -58,12 +51,10 @@ fn change(rounds: &[&str]) -> PastChange {
     }
 }
 
-/// `owner`, whose page lists `changes` and opens the round `PAST`.
 fn with_past(owner: Owner, publisher: &PastRoundsPublisher, changes: Vec<PastChange>) -> Owner {
     with_past_round(owner, publisher, changes, past_round)
 }
 
-/// `owner`, whose page lists `changes` and opens the round `PAST` that `past` makes.
 fn with_past_round(
     mut owner: Owner,
     publisher: &PastRoundsPublisher,
@@ -77,7 +68,6 @@ fn with_past_round(
     owner
 }
 
-/// The view of the socket's first message.
 async fn first_view(socket: &mut Socket) -> Value {
     next(socket).await["params"]["view"].clone()
 }
@@ -85,7 +75,6 @@ async fn first_view(socket: &mut Socket) -> Value {
 #[tokio::test]
 async fn the_page_lists_the_saved_rounds_but_the_one_it_follows() {
     let publisher = PastRoundsPublisher::default();
-    // The round the page follows is saved too, with the past round of its change.
     let changes = vec![change(&[ROUND, PAST]), change(&[ROUND])];
     let owner = with_past(Owner::new(no_round()), &publisher, changes);
     let address = serve(owner).await;
@@ -99,7 +88,6 @@ async fn the_page_lists_the_saved_rounds_but_the_one_it_follows() {
     assert_eq!(listed[0]["rounds"].as_array().map(Vec::len), Some(1));
     assert!(view["past"].is_null());
 
-    // A round the reviewer resets is listed at once.
     publisher.publish(vec![change(&["past-2", PAST])]);
     let view = next(&mut socket).await["params"]["view"].clone();
     assert_eq!(view["past_rounds"][0]["rounds"][0]["id"], "past-2");
@@ -123,13 +111,11 @@ async fn a_past_round_shows_read_only_on_a_socket_of_its_own() {
     let view = first_view(&mut socket).await;
 
     assert_eq!(view["past"]["round"], PAST);
-    // The round the page follows asks a question meanwhile.
     assert_eq!(view["past"]["current_waits"], true);
     assert_eq!(view["review"]["title"], "Name the queue's flush policy");
     let question = &view["question"];
     assert_eq!(question["id"], "q0");
     assert_eq!(question["answerable"], false);
-    // A one-way question of a past round shows the recommendation it showed then.
     assert_eq!(question["recommendation"], "shown");
     assert!(view["reset"].is_null());
     assert!(
@@ -156,7 +142,6 @@ async fn a_socket_that_shows_a_past_round_refuses_every_action_but_a_ping() {
         .unwrap();
     next(&mut socket).await;
 
-    // The same question as the one the page follows, by its identity: still refused.
     let answer =
         json!({ "round": ROUND, "question": "q0", "version": 1, "choice": "keep", "comment": "" });
     let card = refusal(&mut socket, 1, "answer", answer).await;
@@ -202,7 +187,6 @@ async fn a_socket_for_a_round_no_one_saved_shows_the_round_the_page_follows() {
 
 #[tokio::test]
 async fn a_page_that_offers_no_past_round_neither_lists_nor_opens_one() {
-    // As the page on the network: its round has no past rounds.
     let address = serve(Owner::new(asking(question("q1", "two_way")))).await;
     let path = format!("/ws?past={PAST}");
     let mut socket = Upgrade::of(address)
@@ -243,7 +227,6 @@ async fn a_past_round_that_stopped_on_a_turn_says_so_with_no_action() {
         "The agent had not answered when the round was saved"
     );
     assert_eq!(cards[0]["actions"], json!([]), "{}", cards[0]);
-    // The round the page follows waits for no answer.
     assert_eq!(view["past"]["current_waits"], false);
 }
 
@@ -252,7 +235,6 @@ async fn a_socket_asked_for_the_round_the_page_follows_shows_it_live() {
     let publisher = PastRoundsPublisher::default();
     publisher.publish(vec![change(&[ROUND])]);
     let mut owner = Owner::new(asking(question("q1", "two_way")));
-    // A store that would open any round, the followed one too.
     owner.past = Some(PastRounds::new(&publisher, |_| Some(past_round())));
     let address = serve(owner).await;
     let path = format!("/ws?past={ROUND}");
@@ -293,7 +275,6 @@ async fn a_past_rounds_conversation_follows_the_threads_the_page_holds() {
     );
     assert_eq!(view["conversation"]["writable"], false);
 
-    // A message posted meanwhile, in another review pane, shows at once.
     post("And the old drafts?");
     let view = next(&mut socket).await["params"]["view"].clone();
     assert_eq!(
@@ -306,7 +287,6 @@ async fn a_past_rounds_conversation_follows_the_threads_the_page_holds() {
 async fn a_past_round_saved_again_shows_again_on_the_open_socket() {
     let publisher = PastRoundsPublisher::default();
     publisher.publish(vec![change(&[PAST])]);
-    // The round, as another review pane saves it: at a turn, then at its next question.
     let saved = Arc::new(Mutex::new(interrupted("turn-1", "attempt-1")));
     let store = saved.clone();
     let mut owner = Owner::new(no_round());

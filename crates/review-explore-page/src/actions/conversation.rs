@@ -1,10 +1,3 @@
-//! The reviewer's actions in the round's conversation with the agent. The conversation is a
-//! review thread: each action becomes the thread command the pane would send, for the owner of
-//! the review threads, never a command of the round's owner, so that a message reaches the agent
-//! as a thread's comment does and never answers the round's question. A message names the round
-//! the page showed: one sent after that round was reset or replaced is refused as stale. A
-//! message carries the identity the page chose for it, so that a repeat posts nothing.
-
 use review_threads::{AskedUnder, MessageId, Post, ThreadCommand};
 use review_types::ReviewUnit;
 
@@ -14,12 +7,10 @@ use crate::conversation::{PageConversation, ThreadsSnapshot};
 use crate::notice::{Action, Notice, Problem};
 use crate::rpc::{ConversationCall, MessageParams, Outcome, ReadParams, RetryMessagesParams};
 
-/// The conversation of the round a page showed, as the round and the review threads stand now.
 struct Shown<'a> {
     unit: ReviewUnit,
     link: &'a PageConversation,
     threads: ThreadsSnapshot,
-    /// Whether the reviewer can write: not in an earlier round.
     writable: bool,
 }
 
@@ -32,7 +23,6 @@ impl<R: Rounds> Actions<'_, R> {
         }
     }
 
-    /// The conversation of the round `round`, while the page's round is that one.
     fn shown_conversation(&self, round: &str) -> Option<Shown<'_>> {
         let link = self.round.conversation.as_ref()?;
         let snapshot = self.round.stages.latest();
@@ -48,8 +38,6 @@ impl<R: Rounds> Actions<'_, R> {
         })
     }
 
-    /// Posts the reviewer's message in the conversation of the round the page showed. A repeat
-    /// of a message the threads hold already changes nothing.
     async fn send_message(&self, params: MessageParams) -> Result<Outcome, Notice> {
         let failed = |reason: &str| Notice::new(Action::Message, Problem::Failed(reason.into()));
         let id = MessageId::parse(&params.id).map_err(|error| failed(&error))?;
@@ -74,8 +62,6 @@ impl<R: Rounds> Actions<'_, R> {
         send(shown.link, command, Action::Message).await
     }
 
-    /// `asked` with the number the page's round gives its question, whatever number the page
-    /// sent: the agent and the pane name the question by it.
     fn numbered(&self, asked: AskedUnder) -> AskedUnder {
         match asked {
             AskedUnder::Question {
@@ -94,7 +80,6 @@ impl<R: Rounds> Actions<'_, R> {
         }
     }
 
-    /// Whether the review threads of the page's round hold the message `id` already.
     fn posted(&self, id: &MessageId) -> bool {
         let Some(link) = self.round.conversation.as_ref() else {
             return false;
@@ -106,7 +91,6 @@ impl<R: Rounds> Actions<'_, R> {
             .is_some_and(|unit| link.threads.latest().holds(unit, id))
     }
 
-    /// Marks the agent's replies of the conversation read, through the position the view gave.
     async fn read_messages(&self, params: ReadParams) -> Result<Outcome, Notice> {
         let Some(shown) = self.shown_conversation(&params.round) else {
             return Ok(Outcome::default());
@@ -126,8 +110,6 @@ impl<R: Rounds> Actions<'_, R> {
         send(shown.link, command, Action::Message).await
     }
 
-    /// Wakes the agent again for the reviewer's messages that wait for a reply, as Retry agent
-    /// does for a thread in the pane, unless none waits.
     async fn retry_messages(&self, params: RetryMessagesParams) -> Result<Outcome, Notice> {
         let stale = || Notice::new(Action::RetryMessages, Problem::Stale);
         let shown = self
@@ -150,8 +132,6 @@ impl<R: Rounds> Actions<'_, R> {
     }
 }
 
-/// Sends `command` to the owner of the review threads; `action` words the notice when it did not
-/// go through.
 async fn send(
     link: &PageConversation,
     command: ThreadCommand,

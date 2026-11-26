@@ -7,7 +7,6 @@ fn exploration() -> Exploration {
     exploration_at(std::env::temp_dir())
 }
 
-/// A round over a change to `policy.rs`, whose working copy is `root`.
 fn exploration_at(repository_root: std::path::PathBuf) -> Exploration {
     let path = ChangedFile::modified("policy.rs").review_path().clone();
     Exploration::new(Arc::new(Comparison {
@@ -118,7 +117,6 @@ fn design() -> Design {
     )
 }
 
-/// The agent's design as JSON, to leave out what the tool requires.
 fn design_input() -> serde_json::Value {
     serde_json::to_value(design()).unwrap()
 }
@@ -473,8 +471,6 @@ fn agent_choices_cannot_duplicate_the_builtin_none_choice() {
 
 #[test]
 fn a_choice_whose_text_says_it_is_recommended_is_refused() {
-    // A started round, after the agent posts its question again with its first choice's text
-    // `text`, the recommended choice.
     let submit = |text: &str| {
         let mut exploration = started();
         let request = exploration.request(None, None).unwrap();
@@ -506,7 +502,6 @@ fn a_choice_whose_text_says_it_is_recommended_is_refused() {
     }
 }
 
-/// A conclusion with `summary`, and an empty quiz.
 fn conclusion(summary: &str) -> review_explore::Conclusion {
     review_explore::Conclusion {
         summary: summary.into(),
@@ -615,7 +610,6 @@ fn marks_follow_a_human_answer_and_name_changed_lines() {
 
     response.reviewed = vec![policy_lines(1, 2)];
     response.reopened = vec![policy_lines(3, 3)];
-    // The topic was just decided: conclude rather than ask on it again.
     response.next = None;
     response.conclusion = Some(conclusion("Resolved conversations stay resolved"));
     assert!(exploration.apply(response).unwrap());

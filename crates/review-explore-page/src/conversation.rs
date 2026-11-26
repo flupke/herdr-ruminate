@@ -1,9 +1,3 @@
-//! The round's conversation on the page: the review thread attached to the round
-//! (`review_round_conversation`), as the owner of the review threads publishes the threads, and
-//! the reviewer's messages, which the page sends that owner as thread commands. The conversation
-//! is a review thread like any other: the page stores nothing of it, and a message is never an
-//! Explore turn.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -15,18 +9,14 @@ use tokio::sync::watch;
 use crate::command::{CommandReply, await_reply};
 use crate::notice::Problem;
 
-/// The review threads as their owner holds them, for the pages: the latest threads of each
-/// review, and what became of the latest wakeup for each review's pending comments.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ThreadsSnapshot {
-    /// Changes with every change the pages show.
     pub(crate) revision: u64,
     by_review: HashMap<ReviewUnit, Arc<ReviewThreads>>,
     notices: HashMap<ReviewUnit, WakeupNotice>,
 }
 
 impl ThreadsSnapshot {
-    /// The snapshot that holds `threads`, the threads of one review, or none.
     pub(crate) fn of(threads: Option<ReviewThreads>) -> Self {
         Self {
             revision: 0,
@@ -38,19 +28,15 @@ impl ThreadsSnapshot {
         }
     }
 
-    /// The threads of the review `unit`, once their owner loaded them.
     pub(crate) fn threads(&self, unit: &ReviewUnit) -> Option<&ReviewThreads> {
         self.by_review.get(unit).map(Arc::as_ref)
     }
 
-    /// Whether the threads of the review `unit` hold the message `id`.
     pub(crate) fn holds(&self, unit: &ReviewUnit, id: &MessageId) -> bool {
         self.threads(unit)
             .is_some_and(|threads| threads.message(id).is_some())
     }
 
-    /// The conversation of the round `round` of the review `unit`: empty until the owner loaded
-    /// the review's threads, or until the round's first message.
     pub(crate) fn conversation(&self, unit: &ReviewUnit, round: &str) -> RoundConversation {
         let notice = self.notices.get(unit);
         match self.threads(unit) {
@@ -60,12 +46,9 @@ impl ThreadsSnapshot {
     }
 }
 
-/// The owner's side of the review threads: publishes them to every page.
 pub struct ThreadsPublisher(watch::Sender<ThreadsSnapshot>);
 
 impl ThreadsPublisher {
-    /// The owner loaded or changed `threads`, the whole threads of their review. The same
-    /// threads again change nothing.
     pub fn loaded(&self, threads: ReviewThreads) {
         self.0.send_if_modified(|snapshot| {
             if snapshot.threads(&threads.review_unit) == Some(&threads) {
@@ -79,9 +62,6 @@ impl ThreadsPublisher {
         });
     }
 
-    /// The latest wakeup for the pending comments of the review `unit` is on its way to the
-    /// agent (`None`), or `notice` says why it waits to reach it or did not reach it. The same
-    /// again changes nothing.
     pub fn wakeup(&self, unit: ReviewUnit, notice: Option<WakeupNotice>) {
         self.0.send_if_modified(|snapshot| {
             if snapshot.notices.get(&unit) == notice.as_ref() {
@@ -101,14 +81,12 @@ impl ThreadsPublisher {
     }
 }
 
-/// No threads loaded yet.
 impl Default for ThreadsPublisher {
     fn default() -> Self {
         Self(watch::Sender::new(ThreadsSnapshot::default()))
     }
 }
 
-/// The page's side of the review threads: the latest the owner published.
 #[derive(Clone, Debug)]
 pub struct ThreadsFeed(watch::Receiver<ThreadsSnapshot>);
 
@@ -117,21 +95,15 @@ impl ThreadsFeed {
         self.0.borrow().clone()
     }
 
-    /// The conversation of the round `round` of the review `unit`, as the latest threads hold
-    /// it.
     pub fn conversation(&self, unit: &ReviewUnit, round: &str) -> RoundConversation {
         self.0.borrow().conversation(unit, round)
     }
 
-    /// Waits for the next change. Returns false once the publisher is gone.
     pub(crate) async fn changed(&mut self) -> bool {
         self.0.changed().await.is_ok()
     }
 }
 
-/// Where a page sends the reviewer's commands on the round's conversation: to the owner of the
-/// review threads, the one that carries out the pane's, which replies to each once it carried it
-/// out (a post, once the threads hold it).
 #[derive(Clone)]
 pub struct ThreadSender(Arc<dyn Fn(ThreadCommand, CommandReply) + Send + Sync>);
 
@@ -140,7 +112,6 @@ impl ThreadSender {
         Self(Arc::new(deliver))
     }
 
-    /// Sends `command` to the owner and waits for its reply.
     pub(crate) async fn send(&self, command: ThreadCommand) -> Result<bool, Problem> {
         let (reply, replied) = CommandReply::channel();
         (self.0)(command, reply);
@@ -148,7 +119,6 @@ impl ThreadSender {
     }
 }
 
-/// The review threads, as a page reaches them for its round's conversation.
 #[derive(Clone)]
 pub struct PageConversation {
     pub(crate) threads: ThreadsFeed,

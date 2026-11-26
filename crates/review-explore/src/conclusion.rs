@@ -85,7 +85,6 @@ impl ConclusionSubmission {
     }
 }
 
-/// Explicit human authorization, bound to the conclusion that supplied the editor.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ImplementationRequest {
     pub instance: String,

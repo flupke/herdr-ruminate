@@ -7,14 +7,11 @@ use review_test_support::{
 };
 use test_case::test_case;
 
-/// A change that rewrites the third line of `policy.rs`, next to an unchanged `caller.rs` and
-/// a changed binary file.
 fn change(kind: RepoType) -> (Box<dyn ReviewRepositoryFixture>, Comparison) {
     let (fixture, comparison, _) = change_in_repository(kind);
     (fixture, comparison)
 }
 
-/// The change of [`change`], with its repository and the directory of the repository's state.
 fn change_in_repository(
     kind: RepoType,
 ) -> (
@@ -52,7 +49,6 @@ fn location(path: &str, side: SourceSide, lines: Option<(u32, u32)>) -> CodeLoca
     }
 }
 
-/// Each row as its old line and its new line.
 fn numbers(rows: &[DiffRow]) -> Vec<(Option<u32>, Option<u32>)> {
     rows.iter()
         .map(|row| match row {
@@ -158,7 +154,6 @@ fn a_saved_round_cites_the_code_of_its_checkpoint_once_the_working_copy_moved_on
     let (fixture, comparison, (repository, _state)) = change_in_repository(kind);
     fixture.write("policy.rs", b"fn a() {}\nfn b() {}\nfn c3() {}\n");
     fixture.write("caller.rs", b"fn main() {}\nfn other() {}\n");
-    // The repository takes the working copy's new state: jj hides the round's commit.
     complete_repository_snapshot(&repository);
 
     let changed = comparison
@@ -204,7 +199,6 @@ fn a_saved_round_cites_the_code_of_its_checkpoint_once_the_working_copy_moved_on
 #[test_case(RepoType::Jj; "jj")]
 fn a_saved_round_whose_code_is_gone_cites_its_saved_diff_or_says_it_is_gone(kind: RepoType) {
     let (_fixture, mut comparison, (repository, _state)) = change_in_repository(kind);
-    // The repository no longer holds the round's commit, nor its base.
     comparison.checkpoint.checkpoint = "0123456789abcdef0123456789abcdef01234567".into();
     comparison.base = None;
     let cite = |path: &str, lines| {

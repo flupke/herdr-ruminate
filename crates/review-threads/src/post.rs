@@ -3,12 +3,10 @@ use review_source::DiffRangeAnchor;
 use crate::{Message, MessageId, ThreadId, ThreadSource, ThreadSubject};
 use std::sync::Arc;
 
-/// One explicit publication, shared by the UI and the serial conversation owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Post {
     pub(super) thread_id: ThreadId,
     pub(super) message: Message,
-    /// What the thread discusses, for a post that may start it.
     pub(super) subject: Option<ThreadSubject>,
 }
 
@@ -40,7 +38,6 @@ impl Post {
         }
     }
 
-    /// Reply to a fetched snapshot without consuming comments posted afterward.
     pub fn answer(
         thread_id: ThreadId,
         id: MessageId,
@@ -52,7 +49,6 @@ impl Post {
         post
     }
 
-    /// The same post, as a comment the review pane of Herdr tab `tab` posts.
     #[must_use]
     pub fn from_tab(mut self, tab: String) -> Self {
         self.message.posted_from_tab = Some(tab);

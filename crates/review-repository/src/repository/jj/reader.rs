@@ -1,5 +1,3 @@
-//! In-process reads of pinned jj commits; workspace mutations remain with the CLI.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -94,7 +92,6 @@ impl JjReader {
             Self::check_cancelled(repository)?;
             let commit = self.commit(revision).await?;
             let tree = commit.tree();
-            // A directory where a file was is no file at `path`, as a deleted one is.
             let value = tree
                 .path_value(Self::jj_path(path)?)
                 .await
@@ -174,8 +171,6 @@ impl JjReader {
         }
     }
 
-    /// The repository at its single operation head. Loading a specific operation avoids
-    /// `load_at_head()`, which may reconcile concurrent operations and write repository state.
     async fn head_repo(&self) -> Result<Arc<ReadonlyRepo>> {
         let heads = self
             .loader
@@ -197,9 +192,6 @@ impl JjReader {
             .map_err(|_| Self::error("load operation"))
     }
 
-    /// The evolution of the commit `revision`, by the predecessors jj recorded for each commit.
-    /// A line ends at a commit whose evolution `known` gives, which it adds, or at a commit with
-    /// no predecessor.
     pub(super) fn evolution(
         &self,
         repository: &Repository,
@@ -296,11 +288,8 @@ impl JjReader {
     }
 }
 
-/// The walk of [`JjReader::evolution`], one commit at a time.
 struct EvolutionWalk<'a> {
     start: &'a Commit,
-    /// The commits whose entry is still to come, each with the changes of the lines that
-    /// reached it.
     pending: HashMap<CommitId, Vec<ChangeId>>,
     evolution: ChangeEvolution,
 }
@@ -315,8 +304,6 @@ impl<'a> EvolutionWalk<'a> {
         }
     }
 
-    /// Record the change of `entry` on the lines that reached it, and follow them to its
-    /// predecessors, unless its evolution is known.
     fn visit(
         &mut self,
         entry: &CommitEvolutionEntry,

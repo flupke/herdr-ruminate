@@ -1,6 +1,3 @@
-//! Changed lines the Explore agent read and found to hold no decision for
-//! the reviewer, with the reason, so the reviewer can check each mark.
-
 use review_repository::repository::RepoPath;
 use review_source::SourceLineRange;
 use serde::{Deserialize, Serialize};
@@ -33,7 +30,6 @@ pub struct TestLocation {
 }
 
 impl TestLocation {
-    /// The test's lines as a location in the reviewed code.
     fn location(&self) -> CodeLocation {
         CodeLocation {
             path: self.path.clone(),
@@ -43,14 +39,12 @@ impl TestLocation {
     }
 }
 
-/// `path 7-9`.
 impl std::fmt::Display for TestLocation {
     fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(output, "{} {}", self.path.display(), self.lines)
     }
 }
 
-/// `path new 7-9 (not relevant: follows the code)`: the lines and why.
 impl std::fmt::Display for NotRelevantMark {
     fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(output, "{} ({})", self.location, self.why())
@@ -63,8 +57,6 @@ pub struct NotRelevantMark {
     #[serde(flatten)]
     pub location: CodeLocation,
     /// Why these lines hold no decision.
-    // Required of a submission, but marks saved before reasons existed have
-    // none: serde reads a missing `Option` as `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schemars(with = "NotRelevantReason", required)]
     pub reason: Option<NotRelevantReason>,
@@ -75,13 +67,10 @@ pub struct NotRelevantMark {
 }
 
 impl NotRelevantMark {
-    /// The lines `marks` name.
     pub fn locations(marks: &[Self]) -> impl Iterator<Item = &CodeLocation> {
         marks.iter().map(|mark| &mark.location)
     }
 
-    /// "not relevant: mechanics covered by tests, see tests/lib.rs 3-9": the mark's reason
-    /// and test; only "not relevant" for a mark saved before marks had reasons.
     fn why(&self) -> String {
         let Some(reason) = self.reason else {
             return "not relevant".into();
@@ -97,8 +86,6 @@ impl NotRelevantMark {
         }
     }
 
-    /// Whether the mark gives a reason, and a test, which `tested_mechanics`
-    /// needs, with lines that exist at the checkpoint. Errors name the mark.
     pub(crate) fn validate(&self, comparison: &Comparison) -> eyre::Result<()> {
         let location = &self.location;
         eyre::ensure!(

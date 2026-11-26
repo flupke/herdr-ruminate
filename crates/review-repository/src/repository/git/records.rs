@@ -1,5 +1,3 @@
-//! Parsers for the raw and numstat records printed by `git diff -z`.
-
 use std::collections::BTreeMap;
 
 use crate::repository::{ChangeKind, ChangedFile, DiffStatistics, FileKind, RepoPath};
@@ -86,7 +84,6 @@ impl<'a> GitChangeMetadata<'a> {
 }
 
 impl ChangedFile {
-    /// Parse the records printed by `git diff --raw -z`.
     pub(super) fn parse_git(output: &[u8]) -> Result<Vec<Self>> {
         if output.is_empty() {
             return Ok(Vec::new());
@@ -135,7 +132,6 @@ impl ChangedFile {
         })
     }
 
-    /// Parse the per-path line counts printed by `git diff --numstat -z`.
     pub(super) fn parse_git_stats(output: &[u8]) -> Result<BTreeMap<RepoPath, DiffStatistics>> {
         let fields: Vec<_> = output.split(|byte| *byte == 0).collect();
         if fields.last() != Some(&&[][..]) {
@@ -189,7 +185,6 @@ impl ChangedFile {
         Ok(statistics)
     }
 
-    /// Apply the line counts printed by `git diff --numstat -z`.
     pub(super) fn add_git_stats(files: &mut [Self], output: &[u8]) -> Result<()> {
         let statistics = Self::parse_git_stats(output)?;
         for file in files {

@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-/// A shared projection used by thread placement, badges and navigation.
 #[derive(Default)]
 pub struct ThreadPaths {
     current: HashSet<String>,
@@ -23,8 +22,6 @@ impl ThreadPaths {
         paths
     }
 
-    /// Prefer an exact path; follow a rename only when there is one destination.
-    /// Ambiguous copies retain their original path and saved context.
     pub fn resolve<'a>(&'a self, original: &'a str) -> &'a str {
         if self.current.contains(original) {
             original

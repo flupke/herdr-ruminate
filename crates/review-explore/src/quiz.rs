@@ -1,6 +1,3 @@
-//! The quiz a conclusion carries: questions at whiteboard level that check the reviewer
-//! can explain how the system works after the change, and what the reviewer answered.
-
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
@@ -27,41 +24,28 @@ pub struct QuizItem {
     pub level: String,
 }
 
-/// What the reviewer does with a conclusion's quiz on the Explore page.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum QuizResponse {
-    /// Picks the option `answer` of the item `item`, both zero-based.
     Pick { item: usize, answer: usize },
-    /// Skips the items not answered yet.
     Skip,
 }
 
-/// What the reviewer did with the quiz of one conclusion.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub struct QuizAnswers {
-    /// The reviewer's pick for each item answered, in the order of the quiz.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub picks: Vec<QuizPick>,
-    /// The reviewer skipped the items that have no pick.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skipped: bool,
 }
 
-/// The reviewer's pick for one quiz item, and whether it was the correct option.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct QuizPick {
-    /// The item, zero-based.
     pub item: usize,
-    /// The option picked, zero-based.
     pub answer: usize,
     pub correct: bool,
 }
 
 impl QuizAnswers {
-    /// Records `response` to `quiz`, the reviewer answering its items in order. Returns false
-    /// when the answers already hold it: the same pick again, or a skip of nothing. Refuses a
-    /// pick other than of the next item, a second pick that differs from the first, a pick
-    /// after a skip, and an item or option the quiz does not have.
     pub fn record(&mut self, quiz: &[QuizItem], response: QuizResponse) -> eyre::Result<bool> {
         match response {
             QuizResponse::Skip => {
@@ -70,7 +54,6 @@ impl QuizAnswers {
                 Ok(skips)
             }
             QuizResponse::Pick { item, answer } => {
-                // The indices come from a form post: number them without overflow.
                 if let Some(earlier) = self.pick(item) {
                     eyre::ensure!(
                         earlier.answer == answer,
@@ -104,27 +87,21 @@ impl QuizAnswers {
         }
     }
 
-    /// The reviewer's pick for the item `item`, zero-based.
     pub fn pick(&self, item: usize) -> Option<&QuizPick> {
         self.picks.iter().find(|pick| pick.item == item)
     }
 
-    /// The item the reviewer answers next in a quiz of `items` items, zero-based; `None` once
-    /// every item has a pick or the reviewer skipped the rest.
     pub fn next_item(&self, items: usize) -> Option<usize> {
         let next = self.picks.len();
         (!self.skipped && next < items).then_some(next)
     }
 
-    /// How many picks were the correct option.
     pub fn correct_picks(&self) -> usize {
         self.picks.iter().filter(|pick| pick.correct).count()
     }
 }
 
 impl Conclusion {
-    /// A quiz of any number of items, each with its correct option and its proof, or an empty
-    /// quiz that says why it is empty.
     pub(crate) fn validate_quiz(&self, comparison: &Comparison) -> eyre::Result<()> {
         let reason = self
             .quiz_empty_reason
@@ -183,9 +160,6 @@ impl QuizItem {
 }
 
 impl Exploration {
-    /// Records the reviewer's `response` to the quiz of the round's current conclusion, which
-    /// the agent's turn `conclusion` posted. Returns false when the round already holds it.
-    /// Refuses a response to another conclusion, or to a conclusion without a quiz.
     pub fn answer_quiz(&mut self, conclusion: &str, response: QuizResponse) -> eyre::Result<bool> {
         eyre::ensure!(
             self.conclusion_request() == Some(conclusion),
@@ -202,14 +176,10 @@ impl Exploration {
             .record(quiz, response)
     }
 
-    /// What the reviewer did with the quiz of the conclusion the agent's turn `conclusion`
-    /// posted.
     pub fn quiz_answers(&self, conclusion: &str) -> Option<&QuizAnswers> {
         self.quiz_answers.get(conclusion)
     }
 
-    /// Drops the answers to the quizzes of conclusions the round no longer holds, after a turn
-    /// was removed.
     pub(crate) fn forget_quiz_answers_of_withdrawn_conclusions(&mut self) {
         let conclusions: HashSet<&str> = self
             .conversation

@@ -1,8 +1,3 @@
-//! Who may use the page, as a browser or another site would ask: only the page's own host
-//! names, only a browser that traded the address's token for the cookie of the page's own port,
-//! and never a script or a post of another site. The page's socket follows the same rules
-//! (`socket.tests.rs`).
-
 use std::fmt::Write as _;
 use std::net::SocketAddr;
 
@@ -18,7 +13,6 @@ use crate::{
 
 const TOKEN: &str = "test-token";
 
-/// The rounds of the test's page: one, which the token opens.
 struct OneRound(RoundPublisher);
 
 impl Rounds for OneRound {
@@ -31,8 +25,6 @@ impl Rounds for OneRound {
     }
 }
 
-/// The page, with a route of its caller's (`/test/sessions`, as the standalone server adds),
-/// served on a free loopback port.
 async fn serve() -> SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -55,8 +47,6 @@ async fn serve() -> SocketAddr {
     address
 }
 
-/// A request to the page at `address`, with the page's own host name unless `headers` names
-/// another.
 struct Ask<'a> {
     method: &'a str,
     target: &'a str,
@@ -84,7 +74,6 @@ impl<'a> Ask<'a> {
         self
     }
 
-    /// The status of the page's response.
     async fn status(self, address: SocketAddr) -> u16 {
         let mut request = format!(
             "{} {} HTTP/1.1\r\nConnection: close\r\n",
@@ -109,7 +98,6 @@ impl<'a> Ask<'a> {
     }
 }
 
-/// The cookie of the page at `address` that keeps `token`.
 fn token_cookie(address: SocketAddr, token: &str) -> String {
     format!("explore_token_{}={token}", address.port())
 }
@@ -145,8 +133,6 @@ async fn only_the_token_of_the_address_opens_the_page() {
     );
 }
 
-// Browsers keep a host's cookies for all its ports: the token cookie of another page on this
-// host, on another port, does not stand in for this page's own.
 #[tokio::test]
 async fn the_page_reads_the_token_only_from_the_cookie_of_its_own_port() {
     let address = serve().await;

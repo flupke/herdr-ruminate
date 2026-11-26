@@ -9,7 +9,6 @@ use crate::{CodeLocation, SourceSide};
 const OLD: &str = "a\nb\nc\nd\ne\nf\n";
 const NEW: &str = "a\nb\nC\nd\ne\nf\ng\n";
 
-/// The diff of OLD to NEW, with one line of context: `c` became `C`, `g` was added.
 fn diff() -> Vec<DiffRow> {
     let context = |old_line, new_line, text: &str| DiffRow::Context {
         old_line,
@@ -47,7 +46,6 @@ fn diff() -> Vec<DiffRow> {
     ]
 }
 
-/// Each row as its old line, its new line and its text.
 fn shown(rows: &[DiffRow]) -> Vec<(Option<u32>, Option<u32>, &str)> {
     rows.iter()
         .map(|row| match row {

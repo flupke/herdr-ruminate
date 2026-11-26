@@ -1,10 +1,3 @@
-//! The status card, as data: what the page shows for every state that is not a question. Each
-//! state maps here, and only here, to a kind, a title that says the state, the reason, the next
-//! step and the actions that fit it (docs/design/explore-page/README.md, "Start cover and status
-//! cards"; design-review.md, findings 6 and 23). The action names are the pane's. The page's
-//! client draws a card from these fields (`assets/client/status.js`); a refused action's card
-//! travels in the socket's reply.
-
 use review_explore::StartBlock;
 use serde::Serialize;
 use ts_rs::TS;
@@ -14,35 +7,24 @@ use crate::round::{
     ImplementationState, Interruption, PageImplementation, RoundSnapshot, RoundStage,
 };
 
-/// What a card tells, by its colour and glyph.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 enum StatusKind {
-    /// The review tool or the agent is at work: a moving bar.
     Progress,
-    /// A fact the reviewer should know; nothing is wrong.
     Info,
-    /// Check something before you act.
     Warn,
-    /// Something failed.
     Danger,
-    /// Done, with nothing left to do.
     Ok,
 }
 
-/// How a reader is told of a card.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 enum StatusRole {
-    /// A state the page shows.
     Status,
-    /// A failure, or a refusal of the reviewer's action, which the reviewer has to see at once.
     Alert,
-    /// A lasting fact about the round.
     Note,
 }
 
-/// The tier of an action's button (assets/buttons.css).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 enum ButtonTier {
@@ -50,49 +32,33 @@ enum ButtonTier {
     Secondary,
 }
 
-/// One state that is not a question: the state first, then the next step.
 #[derive(Debug, Serialize, TS)]
 pub(crate) struct StatusCard {
     kind: StatusKind,
-    /// Names the card, once on the page.
     id: &'static str,
     role: StatusRole,
     title: String,
-    /// When the state began, which the reason opens with, in the reader's clock.
     time: Option<CardTime>,
     reason: Option<String>,
-    /// When what the card waits for began, which the reason ends with as the time since then,
-    /// counted in the page: "Sent 0:42 ago".
     since: Option<CardTime>,
-    /// Whether the reason is a verbatim error, shown as code.
     code: bool,
-    /// A next step the reviewer must not miss, in bold before `next`.
     imperative: Option<&'static str>,
     next: Option<&'static str>,
-    /// In a row under the text, primary first.
     actions: Vec<StatusAction>,
 }
 
-/// An action of a card: a request the page sends.
 #[derive(Debug, Serialize, TS)]
 struct StatusAction {
-    /// The method of the page's request, which also names its form: `retry` sends a Retry.
     method: &'static str,
-    /// The identities the request carries.
     fields: Vec<Field>,
     label: &'static str,
     tier: ButtonTier,
-    /// A short line beside the button.
     hint: Option<&'static str>,
 }
 
-/// A time a card's reason tells: "Sent at 14:36.", in the reader's clock, or "Sent 0:42 ago",
-/// counted in the page.
 #[derive(Debug, Serialize, TS)]
 struct CardTime {
-    /// What happened at that time: "Sent at", or "Sent" before the time since then.
     words: &'static str,
-    /// Milliseconds since the epoch.
     ms: u64,
 }
 
@@ -159,13 +125,10 @@ impl StatusCard {
         self
     }
 
-    /// The next step `next`, when `shown`.
     fn next_if(self, shown: bool, next: &'static str) -> Self {
         if shown { self.next(next) } else { self }
     }
 
-    /// Retry of the agent's turn `turn`, its request and its latest attempt, with its next
-    /// step, when there is a turn to send again.
     fn retry(
         self,
         turn: Option<(&str, &str)>,
@@ -183,7 +146,6 @@ impl StatusCard {
         card.action(Some(StatusAction::retry(request, attempt, tier, hint)))
     }
 
-    /// The ID of the card in `cards` that says why no round can start, if any.
     pub(crate) fn start_block(cards: &[Self]) -> Option<&'static str> {
         cards
             .iter()
@@ -191,20 +153,14 @@ impl StatusCard {
             .find(|id| *id == START_BLOCK)
     }
 
-    /// Whether a card in `cards` says the start cover's state: a failed start, or nothing left
-    /// to review.
     pub(crate) fn say_start(cards: &[Self]) -> bool {
         cards
             .iter()
             .any(|card| [START_FAILURE, START_BLOCK].contains(&card.id))
     }
 
-    /// The cards above the round's stage: that the round is an earlier one, then the stage's
-    /// own cards. `offers_actions` tells whether the page offers actions on the round: an
-    /// earlier round offers Reset only, and shows its own card in place of the stage's.
     pub(crate) fn above_stage(round: &RoundSnapshot, offers_actions: bool) -> Vec<Self> {
         let mut cards = Vec::new();
-        // A past round says what it is above the page, with the way back to the round.
         if !offers_actions && !round.past {
             cards.push(Self::earlier());
         }
@@ -212,10 +168,6 @@ impl StatusCard {
         cards
     }
 
-    /// The card of the conclusion's latest implementation request, with the action that
-    /// recovers it. `request` is the agent's turn that posted the conclusion; `offers_actions`
-    /// tells whether the page offers actions on the conclusion, `offers_implement` whether it
-    /// offers a new request.
     pub(crate) fn implementation(
         implementation: &PageImplementation,
         request: &str,
@@ -225,7 +177,6 @@ impl StatusCard {
     ) -> Self {
         use StatusKind::{Danger, Info, Ok, Progress, Warn};
         const ID: &str = "implementation";
-        // For someone else's change, the list is the review that Post review sends.
         let (what, does, again) = if posts_review {
             (
                 "review request",
@@ -240,7 +191,6 @@ impl StatusCard {
             )
         };
         let delivery = || Field::new("delivery", &implementation.delivery);
-        // Sends the request again, as it was saved.
         let resend = |label| StatusAction {
             method: "resend-implementation",
             fields: vec![
@@ -318,9 +268,6 @@ impl StatusCard {
         }
     }
 
-    /// That the agent did not get the reviewer's waiting messages in the conversation of the
-    /// round `round`, because the wakeup that carried them failed with `error`: Retry wakes it
-    /// again, as Retry agent does for a thread in the pane.
     pub(crate) fn undelivered_messages(error: &str, round: &str) -> Self {
         Self::new(
             StatusKind::Danger,
@@ -340,9 +287,6 @@ impl StatusCard {
         }))
     }
 
-    /// Why the reviewer's latest action did not go through. An action the round moved past is
-    /// information; one that failed shows the failure; one the review tool did not answer asks
-    /// the reviewer to check.
     pub(crate) fn of_notice(notice: &Notice) -> Self {
         let words = NoticeWords::of(notice.action);
         let card = match &notice.problem {
@@ -367,7 +311,6 @@ impl StatusCard {
         card.role(StatusRole::Alert)
     }
 
-    /// Why a request about a past round did not go through: the page shows it read only.
     pub(crate) fn read_only() -> Self {
         Self::new(StatusKind::Info, "notice", "This past round is read only")
             .reason("Nothing on a past round can change.")
@@ -385,11 +328,6 @@ impl StatusCard {
             .role(StatusRole::Note)
     }
 
-    /// The cards of a stage that is not a question: the start under way or failed, the agent's
-    /// turn under way or interrupted, a storage failure; and on the start cover, that nothing
-    /// is left to review. `offers_actions` tells whether the page offers actions on the round.
-    /// The card of a turn that carries the reviewer's answer shows beside that answer instead
-    /// ([`Self::of_turn`]).
     fn of_stage(round: &RoundSnapshot, offers_actions: bool) -> Vec<Self> {
         match &round.stage {
             RoundStage::NoRound { .. } => Self::start(round, None),
@@ -399,7 +337,6 @@ impl StatusCard {
                 started_at_ms,
             } => vec![Self::starting(start, *started_at_ms)],
             RoundStage::AgentWorking { .. } | RoundStage::Interrupted { .. } => {
-                // A past round shows the answer its turn carries, with the card beside it.
                 if round.stage.sent().is_some() && (offers_actions || round.past) {
                     Vec::new()
                 } else {
@@ -411,10 +348,6 @@ impl StatusCard {
         }
     }
 
-    /// The card of the agent's turn the round waits for, which it works on or which waits for
-    /// Retry, with the action that fits; for a past round, where the round stopped. `None` in
-    /// another stage, and for an interrupted turn of an earlier round. `offers_actions` tells
-    /// whether the page offers actions on the round.
     pub(crate) fn of_turn(round: &RoundSnapshot, offers_actions: bool) -> Option<Self> {
         let sent = Sent::of(round);
         match &round.stage {
@@ -463,10 +396,6 @@ impl StatusCard {
         }
     }
 
-    /// Where a past round stood when it was last saved, with no action: on a turn the agent had
-    /// not answered, which carries `sent` of the reviewer's, interrupted for `interruption`, or
-    /// with no turn at all when not `any`. The record cannot tell a round that ended there from one
-    /// still running in another review pane.
     fn stopped(any: bool, interruption: &Interruption, sent: Option<Sent>) -> Self {
         use StatusKind::{Danger, Info, Warn};
         const ID: &str = "stopped";
@@ -503,9 +432,6 @@ impl StatusCard {
         .role(StatusRole::Note)
     }
 
-    /// The cards of the start cover: why the reviewer's latest start failed, when it did, and
-    /// that nothing is left to review. A start that failed because nothing is left to review
-    /// shows only that good news.
     fn start(round: &RoundSnapshot, failure: Option<&str>) -> Vec<Self> {
         let failed = failure
             .filter(|failure| {
@@ -538,7 +464,6 @@ impl StatusCard {
         failed.into_iter().chain(blocked).collect()
     }
 
-    /// The start `start`, started at `started_at_ms`, is under way.
     fn starting(start: &str, started_at_ms: Option<u64>) -> Self {
         Self::new(StatusKind::Progress, "waiting", "Preparing the round")
             .reason(
@@ -549,8 +474,6 @@ impl StatusCard {
             .action(Some(StatusAction::stop(Stopped::Start(start))))
     }
 
-    /// The agent works on its turn `working`; `sent` tells what the turn carries of the
-    /// reviewer's, `offers_actions` whether the page offers Stop waiting.
     fn working(
         round: &RoundSnapshot,
         working: Working<'_>,
@@ -584,9 +507,6 @@ impl StatusCard {
         .action(offers_actions.then(|| StatusAction::stop(Stopped::Turn(request, sent))))
     }
 
-    /// The agent finishes, as the turn `request`, the turn a fork started at `since_ms` while
-    /// the reviewer was thinking; `offers_actions` tells whether the page offers Stop waiting,
-    /// which gives the answer to the agent in the pane.
     fn finishing(request: &str, since_ms: u64, offers_actions: bool) -> Self {
         Self::new(
             StatusKind::Progress,
@@ -610,9 +530,6 @@ impl StatusCard {
         .role(StatusRole::Alert)
     }
 
-    /// The agent is not working on the turn the round waits for, if `any`; Retry sends `turn`
-    /// again, its request and latest attempt. `sent` tells what the turn carries of the
-    /// reviewer's.
     fn interrupted(
         any: bool,
         turn: Option<(&str, &str)>,
@@ -684,7 +601,6 @@ impl StatusCard {
 }
 
 impl StatusAction {
-    /// Stop waiting for `stopped`.
     fn stop(stopped: Stopped<'_>) -> Self {
         let (hint, field) = match stopped {
             Stopped::Turn(request, Some(Sent::Answer { .. })) => (
@@ -717,7 +633,6 @@ impl StatusAction {
         }
     }
 
-    /// Retry of the attempt `attempt` of the agent's turn `request`.
     fn retry(request: &str, attempt: &str, tier: ButtonTier, hint: Option<&'static str>) -> Self {
         Self {
             method: "retry",
@@ -732,17 +647,13 @@ impl StatusAction {
     }
 }
 
-/// What an agent's turn carries of the reviewer's, as a card names it.
 #[derive(Clone, Copy)]
 enum Sent {
-    /// An answer to a question, of this number on the rail when known.
     Answer { number: Option<usize> },
-    /// A reply to the conclusion.
     Reply,
 }
 
 impl Sent {
-    /// What the agent's turn of `round` carries of the reviewer's, if anything.
     fn of(round: &RoundSnapshot) -> Option<Self> {
         let answer = round.stage.sent()?;
         Some(match answer.question {
@@ -757,7 +668,6 @@ impl Sent {
         matches!(self, Self::Answer { .. })
     }
 
-    /// "your answer", "your reply".
     fn noun(self) -> &'static str {
         match self {
             Self::Answer { .. } => "your answer",
@@ -765,7 +675,6 @@ impl Sent {
         }
     }
 
-    /// "Your answer", "Your reply", to open a sentence.
     fn subject(self) -> &'static str {
         match self {
             Self::Answer { .. } => "Your answer",
@@ -773,7 +682,6 @@ impl Sent {
         }
     }
 
-    /// "your answer to question 2", or the noun alone when the number is not known.
     fn named(self) -> String {
         match self {
             Self::Answer {
@@ -784,23 +692,17 @@ impl Sent {
     }
 }
 
-/// The agent's turn the round waits for while the agent works on it.
 #[derive(Clone, Copy)]
 struct Working<'a> {
     request: &'a str,
-    /// When its latest attempt went out to the agent.
     sent_at_ms: Option<u64>,
-    /// Why it is not a turn a fork prepared, when the reviewer can use the reason.
     not_prepared: Option<&'a str>,
 }
 
-/// What a Stop waiting stops: a start, or an agent's turn.
 #[derive(Clone, Copy)]
 enum Stopped<'a> {
     Start(&'a str),
-    /// The agent's turn, by its request, with what it carries of the reviewer's.
     Turn(&'a str, Option<Sent>),
-    /// The turn a fork finishes, by its request: the answer goes to the agent in the pane.
     Finishing(&'a str),
 }
 
@@ -813,15 +715,10 @@ impl Field {
     }
 }
 
-/// How a notice words an action that did not go through.
 struct NoticeWords {
-    /// What did not happen, when the action failed.
     title: &'static str,
-    /// The state first, when the round moved past the action.
     moved: &'static str,
-    /// Then what it meant for the action.
     stale: &'static str,
-    /// What to do when the review tool did not reply: the action may have gone through.
     unknown: &'static str,
 }
 
@@ -893,7 +790,6 @@ impl NoticeWords {
         }
     }
 
-    /// How a notice words an action that recovers or closes the round.
     fn recovery(action: RecoveryAction) -> Self {
         match action {
             RecoveryAction::Stop => Self::new(
@@ -932,12 +828,9 @@ impl NoticeWords {
     }
 }
 
-/// The next step after a prompt that did not reach the agent (design review, finding 23).
 const SELECT_AGENT_THEN_RETRY: &str = "Select an agent in the review pane, then Retry.";
 
-/// The IDs of the start cover's cards.
 const START_FAILURE: &str = "start-failure";
 const START_BLOCK: &str = "start-block";
 
-/// The state of a question whose answer or first pick the page refused.
 const QUESTION_ANSWERED: &str = "This question was already answered";

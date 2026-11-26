@@ -1,8 +1,3 @@
-//! A question the reviewer answered earlier in the round, as the page shows it from the round
-//! rail: the question as it was asked, what the reviewer answered and what the agent recorded,
-//! read only, apart from Cancel answer, which takes back its answer and every answer after it
-//! while the round offers to cancel the latest one.
-
 use std::sync::Arc;
 
 use review_explore::{
@@ -15,44 +10,25 @@ use ts_rs::TS;
 use super::question::{ChoiceView, CitationView};
 use super::{ResponseView, SectionView, markdown, markdown_if_any};
 
-/// A question the reviewer answered earlier in the round, as it was answered: read only.
 #[derive(Debug, Serialize, TS)]
 pub(crate) struct EarlierQuestionView {
-    /// The question's step on the round rail, from 1.
     number: usize,
-    /// The question's latest version, as the reviewer answered it.
     text_html: String,
-    /// How hard the decision is to reverse, as the agent assessed it; `None` when it did not.
     door: Option<Door>,
-    /// The Context section; `None` when the question has none.
     context_html: Option<String>,
-    /// The Door and Blast radius sections, folded to their leads.
     sections: Vec<SectionView>,
-    /// The question's choices, the one the reviewer kept selected, read only.
     choices: Vec<ChoiceView>,
-    /// The answer the reviewer kept; `None` for a question the round left unanswered.
     answer: Option<KeptAnswer>,
-    /// What the agent recorded of the answer, and its reply.
     recorded: ResponseView,
-    /// What the answers to the question marked, one summary for each turn that marked lines:
-    /// "Marked", then "15 lines reviewed", the lines marked not relevant counted as reviewed.
     marks: Vec<MarkPhrase>,
-    /// Why the review marks of an answer to the question were not all applied, one for each
-    /// turn whose marks were not.
     marks_problems: Vec<String>,
-    /// The question's citations, most decisive first.
     citations: Vec<CitationView>,
-    /// The question's identity and latest version, which a message of the chat written beside
-    /// it names.
     id: String,
     version: u32,
-    /// What Cancel answer takes back from this question, while the round offers it.
     cancel: Option<CancelFrom>,
 }
 
 impl EarlierQuestionView {
-    /// The view of `record`, whose citations, with their lines, are `citations`, offering
-    /// Cancel answer when `cancellable`.
     fn new(record: &EarlierQuestion, citations: &[Citation], cancellable: bool) -> Self {
         let question = &record.question;
         Self {
@@ -96,8 +72,6 @@ impl EarlierQuestionView {
         }
     }
 
-    /// The earlier questions of `records`, each with its list of `citations`, in the same order,
-    /// offering Cancel answer when `cancellable`.
     pub(crate) fn all(
         records: &[EarlierQuestion],
         citations: &[Arc<[Citation]>],

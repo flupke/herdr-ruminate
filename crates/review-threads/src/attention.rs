@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Author, Message, MessageId, ReviewThread, ReviewThreads, ThreadId};
 
-/// Conversation completion is independent of file review and agent activity.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Resolution {
@@ -14,7 +13,6 @@ pub enum Resolution {
     Resolved,
 }
 
-/// Independent counts of conversations and attention for a logical review.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ThreadCounts {
     pub total: usize,
@@ -41,7 +39,6 @@ impl ReviewThread {
         self.unread_replies().any(|message| &message.id == id)
     }
 
-    /// The agent's first reply that the reviewer has not read.
     pub fn first_unread_reply(&self) -> Option<&Message> {
         self.unread_replies().next()
     }
@@ -59,8 +56,6 @@ impl ReviewThread {
             .is_some_and(|comment| !self.is_answered(comment))
     }
 
-    /// Whether an agent reply took up the reviewer's `comment`: one that acknowledges it or
-    /// a later comment, or, from builds before acknowledgements, one posted after it.
     pub fn is_answered(&self, comment: &Message) -> bool {
         self.messages.iter().any(|message| {
             message.author == Author::Agent
@@ -85,7 +80,6 @@ impl ReviewThread {
 }
 
 impl ReviewThreads {
-    /// Acknowledge individual replies without marking unseen earlier replies read.
     pub fn mark_replies_read(&mut self, ids: &[MessageId]) {
         for thread in &mut self.threads {
             for id in ids {
@@ -104,7 +98,6 @@ impl ReviewThreads {
         counts
     }
 
-    /// Counts grouped by `key`, such as the file each thread belongs to.
     pub fn counts_by<K: Eq + Hash>(
         &self,
         key: impl Fn(&ReviewThread) -> K,
@@ -129,7 +122,6 @@ impl ReviewThreads {
         Ok(())
     }
 
-    /// Acknowledge only the displayed snapshot; a reply arriving later stays unread.
     pub fn mark_read(&mut self, id: &ThreadId, through: u64) -> Result<(), String> {
         let thread = self
             .threads

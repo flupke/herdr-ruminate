@@ -87,8 +87,6 @@ fn paths_reject_invalid_escapes() {
 fn parser_reads_paths_from_the_header_only() {
     let changed = RepoPath::from_bytes(b"plan.md".to_vec());
     let planned = BTreeSet::from([changed.clone()]);
-    // Once diffed, a removed `-- [ ]` line and an added `++ b/x` line look like path markers,
-    // and a removed and an added `-- JJ-COMMIT-DESCRIPTION` like the synthetic description's.
     let output = b"diff --git a/plan.md b/plan.md\n--- a/plan.md\n+++ b/plan.md\n@@ -1,3 +1,3 @@\n--- [ ] Each seed picks a rollout stage\n--- JJ-COMMIT-DESCRIPTION\n+++ JJ-COMMIT-DESCRIPTION\n+++ b/x\n context\n";
 
     assert_eq!(

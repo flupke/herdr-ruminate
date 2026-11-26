@@ -71,7 +71,6 @@ impl Exploration {
                         })
                 })
             {
-                // A subsequent reviewer decision resolves a reconsideration, never erases it.
                 let change = self
                     .conversation
                     .iter()

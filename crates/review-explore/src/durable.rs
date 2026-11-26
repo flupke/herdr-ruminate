@@ -1,4 +1,3 @@
-//! Durable investigation state. Sources and runtime capabilities are never stored here.
 use crate::{Exploration, ImplementationRequest, InterviewUpdate, TurnRequest};
 use herdr_client::protocol::AgentSession;
 use review_repository::repository::SnapshotIdentity;
@@ -7,17 +6,12 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ExploreHistory {
-    /// Indexes saved before the rename call this field `passes`.
     #[serde(alias = "passes")]
     pub rounds: Vec<String>,
     #[serde(default = "latest_editable")]
     pub latest_editable: bool,
-    /// The reviewer reset Explore after the latest round: reopening shows the start
-    /// screen, and the round no longer accepts changes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub closed: bool,
-    /// How many of the first rounds the reviewer reset before starting a later round. A round
-    /// started after a Reset starts over: the decisions of the rounds before it no longer stand.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub reset_rounds: usize,
 }
@@ -46,12 +40,10 @@ impl Default for ExploreHistory {
 }
 
 impl ExploreHistory {
-    /// The most recently started round.
     pub fn latest(&self) -> Option<&str> {
         self.rounds.last().map(String::as_str)
     }
 
-    /// The round reopening restores; none after a reset.
     pub fn restorable(&self) -> Option<&str> {
         if self.closed {
             return None;
@@ -59,8 +51,6 @@ impl ExploreHistory {
         self.latest()
     }
 
-    /// The rounds started before `instance`: how many the reviewer reset before a later round
-    /// started, and those after them, oldest first, whose decisions still stand.
     pub fn before(&self, instance: &str) -> RoundsBefore<'_> {
         let earlier = self
             .rounds
@@ -79,16 +69,12 @@ impl ExploreHistory {
     }
 }
 
-/// The rounds of a review started before one of them (see [`ExploreHistory::before`]).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RoundsBefore<'a> {
-    /// How many of them the reviewer reset before a later round started.
     pub reset: usize,
-    /// The rounds after those, oldest first, whose decisions still stand.
     pub standing: &'a [String],
 }
 
-/// A native conversation identity observed while handling this round.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ConversationBinding {
     agent: Option<String>,
@@ -113,16 +99,12 @@ impl ConversationBinding {
     }
 }
 
-/// What the dispatcher can prove, independently of UI lifecycle or task completion.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub enum DispatchState {
     #[default]
     Queued,
-    /// Written immediately before the external call; recovery must assume it may have sent.
     Attempting,
     Delivered,
-    /// Herdr wrote the prompt into the agent's pane, but the agent did not start on it: the
-    /// text may still wait in its prompt box. Retry sends the same request again.
     NotStarted,
     NotSent(String),
     Cancelled,
@@ -139,7 +121,6 @@ impl DispatchState {
         }
     }
 
-    /// Whether the agent cannot have received the prompt, so that another may take its place.
     pub fn undelivered(&self) -> bool {
         matches!(self, Self::NotSent(_) | Self::Cancelled)
     }
@@ -158,13 +139,10 @@ pub struct ImplementationDelivery {
     pub attempt: String,
     pub request: ImplementationRequest,
     pub state: DispatchState,
-    /// When the agent received the request, in milliseconds since the epoch; `None` until
-    /// then, and for a request saved before rounds kept the time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sent_at_ms: Option<u64>,
 }
 
-/// Identifies a particular queued attempt without changing its logical request.
 #[derive(Clone, Debug)]
 pub enum DispatchId {
     Interview { request: String, attempt: String },
@@ -185,32 +163,24 @@ pub struct InterviewDelivery {
     pub state: DispatchState,
     #[serde(default)]
     pub started_at_ms: Option<u64>,
-    /// The changed files whose diff differed from the round's when the round accepted the
-    /// agent's turn for this request, by review path: the turn's line numbers there may name
-    /// other lines, so its marks never apply there.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diverged: Vec<String>,
 }
 
-/// The first conclusion the round accepted, which authorizes implementation.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReviewCompletion {
     pub request: String,
     pub baseline: String,
 }
 
-/// What names a saved round in a list of rounds: its identity, its review and the change it
-/// reviewed, read from the round's record without the rest of it.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(from = "StoredHeading")]
 pub struct RoundHeading {
     pub instance: String,
     pub review_unit: review_types::ReviewUnit,
-    /// The change as the round captured it; `None` for a round that kept no base.
     pub base: Option<SnapshotIdentity>,
 }
 
-/// The parts of a saved [`ExploreRound`] that a [`RoundHeading`] reads.
 #[derive(Deserialize)]
 struct StoredHeading {
     exploration: HeadingExploration,
@@ -239,7 +209,6 @@ impl From<StoredHeading> for RoundHeading {
     }
 }
 
-/// Domain and deduplication state are committed together, separate from editor autosaves.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ExploreRound {
     pub revision: u64,
@@ -250,32 +219,21 @@ pub struct ExploreRound {
     pub implementations: BTreeMap<String, ImplementationDelivery>,
     #[serde(default)]
     pub completion: Option<ReviewCompletion>,
-    /// The review marks each agent turn changed, by Explore request.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub marks: BTreeMap<String, TurnMarks>,
 }
 
-/// The review marks one agent turn changed.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 pub struct TurnMarks {
-    /// The answer that applied the marks: the one a question turn got, or the
-    /// one a conclusion follows. A conclusion that opens the round has none.
     pub answer: Option<String>,
-    /// The lines an answer settled, marked reviewed, as they were applied.
     pub reviewed: Vec<crate::CodeLocation>,
-    /// The lines the agent read and found to hold no decision, marked
-    /// reviewed, as they were applied, each with the reason and test of the
-    /// mark that applied it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub not_relevant: Vec<crate::NotRelevantMark>,
-    /// The lines reopened, with who had marked them.
     pub reopened: Vec<ReopenedLines>,
-    /// Why some or all of the requested marks were not applied.
     #[serde(default)]
     pub problem: Option<String>,
 }
 
-/// Reviewed lines a turn reopened, and who had marked them.
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ReopenedLines {
     #[serde(flatten)]
@@ -283,7 +241,6 @@ pub struct ReopenedLines {
     pub author: review_types::MarkAuthor,
 }
 
-/// How many lines and whole files a turn marked reviewed and reopened.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MarkCounts {
     pub reviewed_lines: u32,
@@ -295,12 +252,10 @@ pub struct MarkCounts {
 }
 
 impl InterviewUpdate {
-    /// Whether the turn asks for review marks.
     pub fn requests_marks(&self) -> bool {
         !(self.reviewed.is_empty() && self.reopened.is_empty() && self.not_relevant.is_empty())
     }
 
-    /// How much the turn asks to mark, before any of it is applied.
     pub fn requested_marks(&self) -> MarkCounts {
         MarkCounts::count(
             &self.reviewed,
@@ -310,8 +265,6 @@ impl InterviewUpdate {
     }
 }
 
-/// Whether a summary of marks tells what they changed, what they will change, or what answering
-/// the question that asks for them changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MarkTense {
     Applied,
@@ -319,20 +272,13 @@ pub enum MarkTense {
     Answering,
 }
 
-/// A summary of marks in two parts: its verb, and what it marks, each amount on its own, so
-/// that a page can set the first amount apart. `verb` names the first part's action: "Marked"
-/// when it marks lines, "Reopened" when it only reopens them.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, ts_rs::TS)]
 pub struct MarkPhrase {
     pub verb: &'static str,
-    /// "4 lines reviewed", "30 lines not relevant", "reopened 1 line": the parts after the
-    /// first carry their own verb when it differs from `verb`. Empty when nothing changes.
     pub parts: Vec<String>,
 }
 
 impl MarkCounts {
-    /// How many lines and whole files the locations mark reviewed, mark not relevant and
-    /// reopen.
     pub fn count<'a>(
         reviewed: impl IntoIterator<Item = &'a crate::CodeLocation>,
         not_relevant: impl IntoIterator<Item = &'a crate::CodeLocation>,
@@ -357,8 +303,6 @@ impl MarkCounts {
         counts
     }
 
-    /// "Marked 4 lines reviewed · 30 lines not relevant · reopened 1 line", naming only what
-    /// changed; "Will mark … · reopen 1 line" before it did. Empty when nothing changes.
     pub fn summary(self, tense: MarkTense) -> String {
         let phrase = self.phrase(tense);
         if phrase.parts.is_empty() {
@@ -367,9 +311,6 @@ impl MarkCounts {
         format!("{} {}", phrase.verb, phrase.parts.join(" · "))
     }
 
-    /// The phrase of what the marks cover as a whole, as the meter counts it: the lines marked
-    /// not relevant count as reviewed with the others, then what is reopened. The page's gain
-    /// line says it; the split stays in the list of lines.
     pub fn covered_phrase(self, tense: MarkTense) -> MarkPhrase {
         Self {
             reviewed_lines: self.reviewed_lines + self.not_relevant_lines,
@@ -381,7 +322,6 @@ impl MarkCounts {
         .phrase(tense)
     }
 
-    /// The summary's verb, and what it marks.
     pub fn phrase(self, tense: MarkTense) -> MarkPhrase {
         let (mark, reopen, reopen_also) = match tense {
             MarkTense::Applied => ("Marked", "Reopened", "reopened"),
@@ -441,8 +381,6 @@ impl MarkCounts {
 }
 
 impl TurnMarks {
-    /// Who holds the lines these marks applied for the turn `request`: the answer that applied
-    /// them, or the turn itself for a conclusion that opens the round.
     pub fn author(&self, request: &str) -> review_types::MarkAuthor {
         match &self.answer {
             Some(answer) => review_types::MarkAuthor::Explore {
@@ -476,8 +414,6 @@ impl ExploreRound {
         }
     }
 
-    /// Whether the round explores the code of `snapshot`: the code did not change since the
-    /// round started.
     pub fn is_at(&self, snapshot: &SnapshotIdentity) -> bool {
         self.exploration
             .comparison
@@ -485,8 +421,6 @@ impl ExploreRound {
             .matches(snapshot.review_unit(), snapshot.snapshot_id())
     }
 
-    /// Validate on a candidate so rejection retains the pending request and
-    /// answer; whether the update was new.
     pub fn submit(&mut self, update: &InterviewUpdate) -> eyre::Result<bool> {
         let mut candidate = self.exploration.clone();
         let applied = candidate.submit(update.clone())?;
@@ -506,7 +440,6 @@ impl ExploreRound {
         Ok(applied)
     }
 
-    /// Accept an already attributed UI contribution against the latest stored state.
     pub fn post(&mut self, request: &TurnRequest) -> eyre::Result<bool> {
         eyre::ensure!(
             request.instance == self.exploration.instance
@@ -553,8 +486,6 @@ impl ExploreRound {
             text: answer.text.clone(),
             in_reply_to: Some(answer.in_reply_to.clone()),
             first_pick: answer.first_pick.clone(),
-            // A reply to a conclusion reached at the drawing board stays there, which the
-            // request sets again: only an answer to a question sends the agent there.
             drawing_board: answer.sends_to_drawing_board(),
         });
         let validated = candidate.request(
@@ -601,8 +532,6 @@ impl ExploreRound {
         Ok(true)
     }
 
-    /// The review marks that the answers `applied` selects applied, in the order of the agent's
-    /// turns that asked for them.
     pub(crate) fn marks_applied_by<'a>(
         &'a self,
         applied: impl Fn(&crate::ReviewerAnswer) -> bool + 'a,
@@ -620,8 +549,6 @@ impl ExploreRound {
             .filter(move |marks| marks.answer.as_deref().is_some_and(&selected))
     }
 
-    /// The latest implementation request the reviewer authorized for conclusion `conclusion`,
-    /// named by the request of the turn that posted it.
     pub fn latest_implementation(&self, conclusion: &str) -> Option<&ImplementationDelivery> {
         self.implementations
             .values()
@@ -712,7 +639,6 @@ impl ExploreRound {
         Ok(())
     }
 
-    /// Superseded callbacks and duplicate observers cannot overwrite newer dispatch knowledge.
     pub fn finish_dispatch(&mut self, result: &DispatchResult) {
         if let Some(state) = self.dispatch_state(&result.id)
             && ((result.began && *state == DispatchState::Attempting)
@@ -729,7 +655,6 @@ impl ExploreRound {
     }
 }
 
-/// The time now, in milliseconds since the epoch, as rounds save their times.
 pub fn now_ms() -> u64 {
     u64::try_from(
         std::time::SystemTime::now()

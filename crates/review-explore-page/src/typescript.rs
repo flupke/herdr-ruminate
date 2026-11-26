@@ -4,11 +4,9 @@ use ts_rs::{Config, TS, TypeVisitor};
 
 use crate::rpc::{Call, Notification, Reply, Request};
 
-/// The file the client's modules import the types from.
 const FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/client/types.ts");
 
-/// Every type of the socket's messages, each declared once, by name: the order ts-rs visits
-/// them in changes from one build to the next.
+// The order in which ts-rs visits the types changes from one build to the next.
 fn declarations() -> String {
     let mut collected = Declarations {
         config: Config::new().with_large_int("number"),
@@ -28,17 +26,15 @@ fn declarations() -> String {
     lines.join("\n")
 }
 
-/// Declares each type it visits, then the types it depends on.
 struct Declarations {
     config: Config,
-    /// Each declaration, with its documentation, by the type's name.
     declared: BTreeMap<String, String>,
 }
 
 impl TypeVisitor for Declarations {
     fn visit<T: TS + 'static + ?Sized>(&mut self) {
-        // Only the types that derive `TS` have a declaration; a wrapper (`Option`, `Vec`)
-        // declares its contents.
+        // ts-rs declares only the types that derive `TS`; a wrapper (`Option`, `Vec`) declares its
+        // contents.
         if T::output_path().is_some() {
             let name = T::ident(&self.config);
             if self.declared.contains_key(&name) {

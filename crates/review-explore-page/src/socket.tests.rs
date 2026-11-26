@@ -1,7 +1,3 @@
-//! The page's socket, as a browser would use it: admitted like a page request, it sends the
-//! round when it opens and at each change, carries the reviewer's actions to the round's owner,
-//! and closes once its token opens no round.
-
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -32,30 +28,19 @@ const TOKEN: &str = "test-token";
 const ROUND: &str = "round-1";
 const REVIEW: &str = "review-1";
 
-/// The round of the test's page, its owner's commands, and whether its token still opens it.
-/// The owner takes each command as the review tool would, in a few lines: an answer or a Retry
-/// puts the agent to work, a start starts, Stop waiting pauses the turn or drops the start, an
-/// Implement sends the request, a quiz pick is saved.
 #[derive(Clone)]
 struct Owner {
     publisher: Arc<RoundPublisher>,
     commands: Arc<Mutex<Vec<String>>>,
-    /// Signalled each time a command arrives.
     command_arrived: Arc<tokio::sync::Notify>,
     open: Arc<Mutex<bool>>,
     latest: Arc<Mutex<Option<LatestAnswer>>>,
-    /// The answers the page sent, in order.
     answers: Arc<Mutex<Vec<review_explore::AnswerInput>>>,
-    /// The round's overview, which most tests leave empty.
     overview: Arc<Mutex<RoundOverview>>,
-    /// The review's threads, which hold the round's conversation, as their owner keeps them.
     book: Arc<Mutex<ReviewThreads>>,
     threads: Arc<ThreadsPublisher>,
-    /// The thread commands the page sent, by kind, in order.
     thread_commands: Arc<Mutex<Vec<String>>>,
-    /// While set, the owner keeps its replies here and sends none, as an owner still at work.
     held: Arc<Mutex<Option<Vec<CommandReply>>>>,
-    /// The saved rounds the page lists and opens; `None` for a page that offers none.
     past: Option<crate::PastRounds>,
 }
 
@@ -103,12 +88,10 @@ impl Owner {
         self.publisher.publish(Some(round), stage);
     }
 
-    /// The commands the page sent, by kind, in order.
     fn commands(&self) -> Vec<String> {
         lock(&self.commands).clone()
     }
 
-    /// Waits until the page sent a command.
     async fn first_command(&self) {
         while self.commands().is_empty() {
             self.command_arrived.notified().await;
@@ -214,8 +197,6 @@ impl Owner {
 }
 
 impl Owner {
-    /// Carries out a thread command the page sent, as the owner of the review threads would,
-    /// then publishes the threads.
     fn take_thread_command(&self, command: ThreadCommand) -> Result<(), CommandRefusal> {
         let mut book = lock(&self.book);
         let (kind, result) = match command {
@@ -235,7 +216,6 @@ impl Owner {
         lock(&self.thread_commands).clone()
     }
 
-    /// The agent replies `text` to the reviewer's latest message of the round's conversation.
     fn agent_replies(&self, text: &str) {
         let mut book = lock(&self.book);
         let thread = book.round_conversation(ROUND).unwrap();
@@ -249,7 +229,6 @@ impl Owner {
         self.threads.loaded(book.clone());
     }
 
-    /// The wakeup for the reviewer's pending messages did not reach the agent, for `error`.
     fn wakeup_fails(&self, error: &str) {
         let through = lock(&self.book).pending_comment_sequence().unwrap();
         let failure = WakeupFailure {
@@ -315,7 +294,6 @@ fn no_round() -> RoundStage {
     }
 }
 
-/// A conclusion with a quiz of one item.
 fn concluding() -> RoundStage {
     let conclusion = serde_json::from_value(json!({
         "summary": "Keep the draft.",
@@ -344,7 +322,6 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// A question with two choices, whose Door is `door`.
 fn question(id: &str, door: &str) -> Question {
     let assessments = (door != "none").then(|| {
         let lens = json!({ "summary": "Reason.", "evidence": [], "unknowns": ["None known."] });
@@ -378,7 +355,6 @@ fn asking(question: Question) -> RoundStage {
     }
 }
 
-/// The page of `owner`, served on a free loopback port.
 async fn serve(owner: Owner) -> SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -393,7 +369,6 @@ async fn serve(owner: Owner) -> SocketAddr {
     address
 }
 
-/// An upgrade request to the page at `address`, as the page's own script sends it.
 struct Upgrade {
     host: String,
     origin: Option<String>,
@@ -413,7 +388,6 @@ impl Upgrade {
         self.connect_to(address, "/ws").await
     }
 
-    /// Connects to `path` of the page at `address`: the socket's own, with its query.
     async fn connect_to(self, address: SocketAddr, path: &str) -> Result<Socket, Error> {
         let mut request = format!("ws://{address}{path}")
             .into_client_request()
@@ -435,7 +409,6 @@ fn refused(result: Result<Socket, Error>) -> bool {
     matches!(result, Err(Error::Http(response)) if response.status() == 403)
 }
 
-/// The next message of the socket, as JSON; pings are skipped.
 async fn next(socket: &mut Socket) -> Value {
     loop {
         let message = tokio::time::timeout(Duration::from_secs(5), socket.next())
@@ -475,7 +448,6 @@ async fn an_upgrade_without_a_token_that_opens_the_round_is_refused() {
         ..Upgrade::of(address)
     };
     assert!(refused(wrong.connect(address).await));
-    // The cookie of the page on another port of the address.
     let other_port = Upgrade {
         cookie: Some(format!("explore_token_1={TOKEN}")),
         ..Upgrade::of(address)
@@ -531,8 +503,6 @@ async fn the_socket_sends_the_round_when_it_opens_then_at_each_change() {
     assert_eq!(action["fields"][0]["value"], "turn-1");
 }
 
-/// The rail of a round whose question 1 is done and question 2 current, the agent working on it
-/// when `working`.
 fn at_question_2(working: bool) -> RoundOverview {
     RoundOverview {
         rail: vec![
@@ -556,7 +526,6 @@ fn at_question_2(working: bool) -> RoundOverview {
     }
 }
 
-/// The reviewer's latest answer, to the question `question`.
 fn answer_to(question: &str) -> LatestAnswer {
     LatestAnswer {
         id: format!("answer-{question}"),
@@ -579,18 +548,14 @@ async fn the_previous_turn_names_the_question_the_latest_answer_answered_by_the_
     owner.publish(asking(question("q2", "two_way")));
     let address = serve(owner.clone()).await;
     let mut socket = Upgrade::of(address).connect(address).await.unwrap();
-    // Question 2 asks: the latest answer answered the step before it.
     assert_eq!(next(&mut socket).await["params"]["view"]["answered"], 1);
 
-    // The agent works on the answer to question 2: the latest answer answered the current step.
     *lock(&owner.overview) = at_question_2(true);
     *lock(&owner.latest) = Some(answer_to("q2"));
     owner.publish(working("turn-2"));
     assert_eq!(next(&mut socket).await["params"]["view"]["answered"], 2);
 }
 
-/// The reviewer's answer to `question`, sent with "Keep the draft" after a first pick of
-/// "Discard the draft", and the marks it applied.
 fn sent_answer(question: Question) -> crate::SentAnswer {
     let kept = question.alternatives[0].clone();
     crate::SentAnswer {
@@ -623,7 +588,6 @@ async fn a_turn_that_carries_the_answer_shows_it_beside_its_card_with_its_questi
     let address = serve(owner.clone()).await;
     let mut socket = Upgrade::of(address).connect(address).await.unwrap();
 
-    // The turn's card sits beside the answer, not above the stage.
     let view = next(&mut socket).await["params"]["view"].clone();
     assert_eq!(view["cards"], json!([]));
     let sent = &view["sent"];
@@ -643,7 +607,6 @@ async fn a_turn_that_carries_the_answer_shows_it_beside_its_card_with_its_questi
     );
     assert_eq!(sent["marked"]["parts"], json!(["15 lines reviewed"]));
 
-    // The turn did not go through: the same answer, with Retry of the turn.
     owner.publish(RoundStage::Interrupted {
         request: Some("turn-2".into()),
         attempt: Some("attempt-2".into()),
@@ -655,7 +618,6 @@ async fn a_turn_that_carries_the_answer_shows_it_beside_its_card_with_its_questi
     assert_eq!(view["sent"]["card"]["actions"][0]["method"], "retry");
     assert_eq!(view["sent"]["question"]["id"], "q2");
 
-    // A turn that carries no answer, as the kickoff, shows its card above the stage.
     owner.publish(working("turn-3"));
     let view = next(&mut socket).await["params"]["view"].clone();
     assert_eq!(view["sent"], Value::Null);
@@ -746,13 +708,11 @@ async fn the_socket_sends_the_round_again_when_only_its_review_marks_change() {
     );
     assert_eq!(view["tally"]["files"][0]["path"], "src/queue.rs");
 
-    // The same marks again send nothing; the next view is the next change.
     owner.publisher.tally(tally(1));
     owner.publisher.tally(tally(2));
     let view = &next(&mut socket).await["params"]["view"];
     assert_eq!(view["tally"]["change"]["share"]["marked"], 2);
 
-    // A stage and its marks come in one view.
     let overview = lock(&owner.overview).clone();
     let review: ReviewUnit = REVIEW.into();
     let round = PublishedRound {
@@ -797,7 +757,6 @@ async fn a_clarified_question_keeps_the_number_of_its_step_on_the_rail() {
         title: TabTitle::YourTurn { question: 2 },
         glossary: std::collections::BTreeMap::new(),
     };
-    // The round's third version of a question: a clarification of question 2.
     let RoundStage::Question {
         question,
         citations,
@@ -976,7 +935,6 @@ async fn an_action_on_what_the_round_moved_past_is_refused_with_its_notice() {
     assert_eq!(reply["error"]["data"]["role"], "alert");
     assert!(owner.commands().is_empty());
 
-    // A refused answer names the question by the number the page showed.
     let answer = json!({ "round": ROUND, "question": "q1", "version": 1, "choice": "keep", "comment": "", "number": 1 });
     request(
         &mut socket,
@@ -1016,8 +974,6 @@ async fn a_blind_questions_first_pick_shows_its_recommendation_and_is_kept_once(
         hidden["params"]["view"]["question"]["recommendation"],
         "hidden_until_pick"
     );
-    // Nothing the page holds before the first pick tells the recommended choice: not its reason,
-    // nor a mark on the choice.
     assert!(!hidden.to_string().contains("It is cheap."));
     let choices = &hidden["params"]["view"]["question"]["choices"];
     assert!(
@@ -1211,7 +1167,6 @@ async fn a_question_whose_answer_marks_nothing_shows_no_gain() {
     assert_eq!(view["params"]["view"]["question"]["gain"], Value::Null);
 }
 
-/// The tally of a change whose waiting question's answer does as `gain` says.
 fn waiting(gain: review_explore_tally::Gain) -> MarkTally {
     MarkTally {
         gain: Some(gain),
@@ -1219,7 +1174,6 @@ fn waiting(gain: review_explore_tally::Gain) -> MarkTally {
     }
 }
 
-/// What answering marks: the share goes from `before` to `after` marked lines of `changed`.
 fn gain(before: u64, after: u64, changed: u64) -> review_explore_tally::Gain {
     let pending = review_explore_tally::PendingLines {
         reviewed: after - before,
@@ -1228,7 +1182,6 @@ fn gain(before: u64, after: u64, changed: u64) -> review_explore_tally::Gain {
     review_explore_tally::Gain::new(pending, 0, review_explore_tally::Share::of(before, changed))
 }
 
-/// Lines of `path` after the change.
 fn lines(path: &str, first_line: u32, last_line: u32) -> review_explore::CodeLocation {
     serde_json::from_value(json!({
         "path": path,
@@ -1252,7 +1205,6 @@ async fn the_page_asks_whether_the_tool_is_there() {
     assert!(reply["error"].is_null());
 }
 
-/// Opens a socket to the page of `owner`, past its first view.
 async fn open(owner: &Owner) -> Socket {
     let address = serve(owner.clone()).await;
     let mut socket = Upgrade::of(address).connect(address).await.unwrap();
@@ -1260,7 +1212,6 @@ async fn open(owner: &Owner) -> Socket {
     socket
 }
 
-/// Sends `method` with `params` twice, and returns the two replies.
 async fn twice(socket: &mut Socket, method: &str, params: &Value) -> (Value, Value) {
     let mut replies = Vec::new();
     for id in [1, 2] {
@@ -1275,7 +1226,6 @@ async fn twice(socket: &mut Socket, method: &str, params: &Value) -> (Value, Val
     (replies.pop().unwrap(), second)
 }
 
-/// The reply to the request `id`, past the views before it.
 async fn reply(socket: &mut Socket, id: u64) -> Value {
     loop {
         let message = next(socket).await;
@@ -1302,7 +1252,6 @@ async fn a_repeated_answer_is_applied_once() {
         (Some(true), Some(false))
     );
     assert_eq!(owner.commands(), ["answer"]);
-    // Another answer to the same question is no repeat.
     let other = json!({ "round": ROUND, "question": "q1", "version": 1, "choice": "discard", "comment": "Keep it." });
     request(
         &mut socket,
@@ -1324,7 +1273,6 @@ async fn a_repeated_start_starts_one_round_and_a_late_one_none() {
         (Some(true), Some(false))
     );
 
-    // Stop waiting drops the start; the start screen offers the next one.
     request(
         &mut socket,
         json!({ "id": 3, "method": "stop", "params": { "start": "start-1" } }),
@@ -1366,7 +1314,6 @@ async fn a_repeated_retry_sends_the_turn_once_and_a_late_one_never() {
         (Some(true), Some(false))
     );
 
-    // The retried prompt fails at once: its next attempt waits for another Retry.
     owner.publish(interrupted("turn-1", "attempt-2"));
     request(
         &mut socket,
@@ -1407,7 +1354,6 @@ async fn a_repeated_quiz_answer_is_saved_once() {
     assert_eq!(owner.commands(), ["quiz"]);
 }
 
-/// A message of the reviewer's, for the round's conversation, with the identity `id`.
 fn message(id: &str, round: &str) -> Value {
     json!({
         "round": round,
@@ -1420,7 +1366,6 @@ fn message(id: &str, round: &str) -> Value {
 
 const MESSAGE_ID: &str = "4f0c3d1e-58a2-4b6e-9d61-0a9f0f7c2b11";
 
-/// The round's conversation in the latest view the socket sent, past the reply `id`.
 async fn conversation_after(socket: &mut Socket, id: u64) -> (Value, Value) {
     let mut conversation = Value::Null;
     loop {
@@ -1452,7 +1397,6 @@ async fn a_message_joins_the_rounds_conversation_and_leaves_its_question_waiting
     let (reply, conversation) = conversation_after(&mut socket, 1).await;
 
     assert_eq!(applied(&reply), Some(true));
-    // A message is a thread's comment, never a command of the round's owner.
     assert_eq!(owner.commands(), Vec::<String>::new());
     assert_eq!(owner.thread_commands(), ["post"]);
     let thread = lock(&owner.book).round_conversation(ROUND).unwrap().clone();
@@ -1631,7 +1575,6 @@ async fn a_message_that_did_not_reach_the_agent_offers_retry_once() {
     )
     .await;
     assert_eq!(applied(&reply(&mut socket, 2).await), Some(true));
-    // Once the agent replied, no message waits: a late Retry wakes nothing.
     owner.agent_replies("Sorry, here it is.");
     request(
         &mut socket,
@@ -1642,8 +1585,6 @@ async fn a_message_that_did_not_reach_the_agent_offers_retry_once() {
     assert_eq!(owner.thread_commands(), ["post", "retry"]);
 }
 
-/// The conclusion of [`concluding`], whose implementation request the pane sent and is in
-/// `state`.
 fn implemented(state: ImplementationState) -> RoundStage {
     let RoundStage::Conclusion {
         request,
@@ -1670,7 +1611,6 @@ fn implemented(state: ImplementationState) -> RoundStage {
     }
 }
 
-/// The status card of the notice that refused the request `id`, which reached no owner.
 async fn refusal(socket: &mut Socket, id: u64, method: &str, params: Value) -> Value {
     request(
         socket,
@@ -1685,19 +1625,16 @@ async fn refusal(socket: &mut Socket, id: u64, method: &str, params: Value) -> V
 
 #[tokio::test]
 async fn each_action_the_round_moved_past_is_refused_with_a_notice_that_says_what_moved() {
-    // A round started in the pane while the page showed the start screen.
     let owner = Owner::new(working("turn-1"));
     let mut socket = open(&owner).await;
     let start = json!({ "challenger": false, "start": "start-1" });
     let card = refusal(&mut socket, 1, "start", start).await;
     assert_eq!(card["title"], "A round was started meanwhile");
-    // A Retry of a turn that is no longer interrupted.
     let retry = json!({ "request": "turn-0", "attempt": "attempt-1" });
     let card = refusal(&mut socket, 2, "retry", retry).await;
     assert_eq!(card["title"], "The turn is no longer interrupted");
     assert_eq!(owner.commands(), Vec::<String>::new());
 
-    // A first pick of a blind question the pane answered while the page showed it.
     let owner = Owner::new(asking(question("q2", "one_way")));
     let mut socket = open(&owner).await;
     let pick =
@@ -1708,7 +1645,6 @@ async fn each_action_the_round_moved_past_is_refused_with_a_notice_that_says_wha
     assert!(reason.contains("pick"), "{reason}");
     assert_eq!(owner.commands(), Vec::<String>::new());
 
-    // An Implement of a conclusion whose request the pane sent.
     let owner = Owner::new(implemented(ImplementationState::Sent));
     let mut socket = open(&owner).await;
     let implement = json!({ "conclusion": "turn-9", "replaces": null, "text": "Another list." });
@@ -1796,7 +1732,6 @@ async fn a_blind_question_asked_again_after_cancel_answer_shows_its_recommendati
     assert_eq!(owner.commands(), Vec::<String>::new());
 }
 
-/// The IDs and roles of the status cards of the latest view the socket sent.
 fn cards(view: &Value) -> Vec<(&str, &str)> {
     view["params"]["view"]["cards"]
         .as_array()
@@ -1823,7 +1758,6 @@ async fn a_start_that_failed_because_nothing_is_left_to_review_shows_only_that_o
     });
     assert_eq!(cards(&next(&mut socket).await), blocked);
 
-    // Another failure says why, beside the block.
     owner.publish(RoundStage::StartFailed {
         failure: "Repository comparison is not ready".into(),
         start: "start-1".into(),
@@ -1840,7 +1774,6 @@ async fn a_request_the_agent_may_have_received_is_sent_again_only_in_place_of_it
     let address = serve(owner.clone()).await;
     let mut socket = Upgrade::of(address).connect(address).await.unwrap();
 
-    // The page offers no Implement, and one action that names the request it replaces.
     let view = next(&mut socket).await;
     let conclusion = &view["params"]["view"]["conclusion"];
     assert_eq!(conclusion["list"]["kind"], "request");
