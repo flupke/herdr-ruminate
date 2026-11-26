@@ -5,362 +5,60 @@ Review progress and those discussions remain meaningful across code changes.
 
 ## Language
 
-**Review**:
-One logical unit of code being examined. Its identity continues across changes to
-that code.
-_Avoid_: review session
-
-**Review checkpoint**:
-A particular version of the code within a review.
-_Avoid_: review
-
-**Review thread**:
-A discussion about a code selection within one review, or the round conversation of
-one Explore round. It remains part of the review when the selected code changes or
-disappears.
-_Avoid_: agent thread, conversation without qualification
-
-**Text selection**:
-The text the reviewer drags over in the pane, with Alt held over the diff's code, where a
-plain drag comments on lines, copied to the clipboard when the button is released: the
-content a pane shows, without its gutters and borders, and with the lines the pane wrapped
-joined back.
-_Avoid_: selection without qualification (the code a review thread is about), copy mode
-
-**Thread message**:
-A posted contribution to a review thread, written by the reviewer or an agent.
-Messages form the thread's conversation in posting order.
-
-**Review comment**:
-A thread message containing the reviewer's question or feedback.
-_Avoid_: agent prompt
-
-**Agent reply**:
-A thread message from an agent responding to the conversation. It may address
-several review comments.
-
-**Draft**:
-Review-comment text that the author is still composing. It is not part of the
-shared review thread.
-_Avoid_: unposted text, queued comment, saved-but-unsent comment
-
-**Posting**:
-The reviewer's publication of a comment to a review thread.
-_Avoid_: saving a draft
-
-**Agent session**:
-One ongoing conversation with a coding agent, which may address several review
-threads.
-_Avoid_: review thread, review session
-
-**Review mark**:
-The record that some changed lines of a file are reviewed, and who marked them:
-the reviewer, Jev, or the Explore agent, after one of the reviewer's answers or
-for lines it found not relevant.
-_Avoid_: coverage, credit
-
-**Reviewed version**:
-A file as the reviewer has read it: the base with the changed lines accepted as
-reviewed. A whole-file mark makes it the file at that review checkpoint.
-_Avoid_: baseline (a baseline is the commit a mark was made at)
-
-**Unreviewed lines**:
-The changed lines of a review checkpoint that no review mark covers.
-_Avoid_: gaps, uncovered regions, remaining coverage
-
-**Jev**:
-The classifier that marks changed lines too insignificant to need a reviewer's
-attention.
-
-**Open hunk**:
-A change from the reviewed version to the current file, still waiting for
-review. It is "changed since review" when it rewrites reviewed lines.
-
-**Reviewed hunk**:
-A change from the base that the reviewed version holds and the current file
-still matches. The diff folds it into one row.
-
-**Linear issue**:
-An issue of the Linear tracker that the reviewed change names, by its identifier (a team's
-key, a dash and a number) in the change's description, its bookmarks or the name of its jj
-workspace. The pane's header and the Explore page's masthead link to its page, for the
-teams that the reviewer's `config.toml` lists. It is one kind of ticket, which a past
-round also finds by a link to linear.app, whatever its team.
-_Avoid_: task
-
-**Ticket**:
-The issue of a tracker that a reviewed change is for: a GitHub issue, which the change's
-description or its pull request's body names after a word such as "Fixes" or by its link,
-or herdr-bowtie's `t<N>-<slug>` bookmark or workspace; or a Linear issue. A past round
-links to it by its number.
-_Avoid_: task, issue (alone, which also names a GitHub issue that is no ticket)
-
-**Change references**:
-The pull request and the tickets of the change an Explore round reviewed, which the
-reviewer looks for with jj and `gh` once the round starts, without making the start wait,
-and saves beside the round. They name the round among the past rounds.
-_Avoid_: links, metadata
+- **Review**: one logical unit of code being examined, whose identity continues across changes to that code. _Avoid_: review session.
+- **Review checkpoint**: a particular version of the code within a review. _Avoid_: review.
+- **Review thread**: a discussion about a code selection within one review, or the round conversation of one Explore round, which stays part of the review when its code changes or disappears. _Avoid_: agent thread, conversation without qualification.
+- **Text selection**: the text the reviewer drags over in the pane with Alt held, copied to the clipboard without gutters and borders and with wrapped lines joined back. _Avoid_: selection without qualification (the code a review thread is about), copy mode.
+- **Thread message**: a posted contribution to a review thread, written by the reviewer or an agent.
+- **Review comment**: a thread message containing the reviewer's question or feedback. _Avoid_: agent prompt.
+- **Agent reply**: a thread message from an agent responding to the conversation, possibly to several review comments.
+- **Draft**: review-comment text that the author is still composing, not yet part of the shared review thread. _Avoid_: unposted text, queued comment, saved-but-unsent comment.
+- **Posting**: the reviewer's publication of a comment to a review thread. _Avoid_: saving a draft.
+- **Agent session**: one ongoing conversation with a coding agent, which may address several review threads. _Avoid_: review thread, review session.
+- **Review mark**: the record that some changed lines of a file are reviewed, and who marked them: the reviewer, Jev or the Explore agent. _Avoid_: coverage, credit.
+- **Reviewed version**: a file as the reviewer has read it: the base with the changed lines accepted as reviewed. _Avoid_: baseline (the commit a mark was made at).
+- **Unreviewed lines**: the changed lines of a review checkpoint that no review mark covers. _Avoid_: gaps, uncovered regions, remaining coverage.
+- **Jev**: the classifier that marks changed lines too insignificant to need a reviewer's attention.
+- **Open hunk**: a change from the reviewed version to the current file, still waiting for review ("changed since review" when it rewrites reviewed lines).
+- **Reviewed hunk**: a change from the base that the reviewed version holds and the current file still matches, folded into one row of the diff.
+- **Linear issue**: an issue of the Linear tracker that the reviewed change names by its identifier, in its description, bookmarks or jj workspace name; one kind of ticket. _Avoid_: task.
+- **Ticket**: the issue of a tracker that a reviewed change is for: a GitHub issue, herdr-bowtie's `t<N>-<slug>` bookmark or workspace, or a Linear issue. _Avoid_: task, issue (alone).
+- **Change references**: the pull request and tickets of the change an Explore round reviewed, found with jj and `gh` once the round starts and saved beside the round. _Avoid_: links, metadata.
 
 ## Explore
 
-**Explore round**:
-One interview in which an agent questions the reviewer about a review
-checkpoint, and marks or reopens changed lines according to the answers. A new
-round keeps earlier rounds as history.
-_Avoid_: Explore pass, Explore session
-
-**Design explanation**:
-What the first turn of an Explore round explains before its first question, so the
-reviewer could explain the change at a whiteboard: a thesis for the change, then four
-parts, each with its own thesis: what it adds and where, its types and data flow, its
-algorithm and cost, and the alternatives the implementer rejected.
-_Avoid_: map (the provisional map of the first reply, which it replaces)
-
-**Thesis**:
-One sentence of a design explanation, the one you would say at a whiteboard: one for
-the whole change, and one that opens each of its four parts. The reviewer reads the
-five theses first; each part's text comments on its thesis. In a round saved before
-theses existed, the first paragraph of the first part stands in for the change's thesis,
-and the first paragraph of each part (the next one for the first part) for its own.
-_Avoid_: summary, lead paragraph
-
-**Writing style**:
-How the Explore agent writes every text the reviewer reads in a round: plain (the agent's own
-style), Simplified Technical English (the writing rules of ASD-STE100, without its controlled
-dictionary) or concise (as short as the agent can write, at the cost of grammar). The
-reviewer's setting gives it to a round when the round starts, and the round keeps it on every
-turn.
-_Avoid_: tone, language
-
-**Challenger**:
-A subagent with fresh context that the Explore agent starts for a round, to
-review the same change without the implementer's knowledge of why it was
-written. The two take turns proposing the round's questions.
-_Avoid_: adversary, second reviewer, critic
-
-**Challenger proposal**:
-A question the Challenger proposes for a turn, and what became of it: asked,
-merged with the implementer's question, retired because a fact settles it, or
-kept for a later turn. The Explore prompts call each side's question for the
-turn its candidate, so a proposal is a Challenger's candidate other than
-"conclude". Retiring a proposal is not retiring an agenda topic, which needs an
-invalidated premise.
-_Avoid_: suggestion, Challenger question (which may never be asked)
-
-**Citation**:
-A path, side and line range that a question puts before the reviewer as
-evidence, most decisive first. Citing lines does not mark them reviewed.
-_Avoid_: source reference, inspection, supporting reference
-
-**Quiz**:
-The questions at whiteboard level (architecture, algorithms, data storage, the
-data model), one for each key aspect of the change, that the Explore agent submits
-with its conclusion, each with its correct answer, why, and the lines that prove it.
-The Explore page asks them one at a time before the conclusion and says at once
-whether each pick is correct; the reviewer may skip them. The round saves the picks.
-A change with nothing at that level gets no quiz.
-_Avoid_: test, exam, check
-
-**Glossary**:
-The terms of an Explore round's change, each with a one-sentence definition, which the agent
-sends as it uses them. The Explore page marks every use of a term, in prose and inline code,
-shows its definition on hover or tap, and lists the terms at the end of the design.
-_Avoid_: dictionary, definitions, terms list
-
-**Callout**:
-A quote in the agent's Markdown that opens with a marker, such as `[!TIP]`, for a
-conclusion, a tip, a warning or an error. It shows as a block titled with its kind.
-_Avoid_: alert, admonition
-
-**Diagram**:
-A fenced `mermaid` block in the agent's Markdown, which the Explore page draws
-with Mermaid. A diagram Mermaid cannot parse shows as its source, and the error
-of a question's diagram is saved with the question.
-_Avoid_: chart, figure
-
-**Status mark**:
-A good, bad or warning mark at the start of a table cell in the agent's Markdown,
-written as a marker such as `[!good]`.
-_Avoid_: badge, emoji
-
-**Not relevant**:
-What the Explore agent calls changed lines it read that hold no decision for the
-reviewer. They get a review mark without a question of their own, and a reason:
-removed code the change is about, mechanics a named test covers, or tests, docs
-and manifests that follow the code.
-_Avoid_: skipped, ignored, insignificant (which is Jev's judgement)
-
-**Round conversation**:
-The review thread attached to one Explore round instead of a code selection, where
-the reviewer asks, challenges or adds context beside the round's questions. Each of
-the reviewer's messages names the question, by identity and version, or the stage
-(the design, the conclusion) it was asked under, and may quote a passage of the round.
-A message never answers the question, which stays open; the agent answers with a
-thread reply. The round's first message starts it, and each round, including one
-started after a Reset, has its own. The Explore page calls its view of it the chat.
-_Avoid_: chat thread, agent chat (in the domain model), Explore turn
-
-**Revised question**:
-A higher version of the open question that the agent posts from the round
-conversation, when a message there made the question wrong, in place of the version
-the reviewer was about to answer. It says why above the question, and is possible only
-while no answer to the question is on its way.
-_Avoid_: replaced question, edited question, re-ask
-
-**Cancel answer**:
-Withdrawing one of the reviewer's answers in an Explore round with every answer after
-it, which returns the round to its state before that answer, including the review marks
-they led to. The pane offers it on the latest answer; the Explore page also on an
-earlier question.
-_Avoid_: cancel (which stops a pending turn), correction, undo, defer
-
-**Back to the drawing board**:
-The reviewer's answer, in place of a choice, when they disagree with the
-change's design itself: the agent stops asking and concludes at once, with the changes
-the design needs as the list to implement, no quiz and no review marks. The comment
-typed in the answer goes with it, as the reviewer's reason, which the list answers first.
-Implement reopens the lines the round marked reviewed, and once those changes are in, a
-new round reviews the new code. The Explore page offers it while a question
-waits: on the design screen, under the answer and in the masthead's menu. Cancel answer
-takes it back.
-_Avoid_: redesign, reject, start over (which is Reset)
-
-**Explore page**:
-A browser page, served by the open review pane, that shows the current state of
-its Explore round: no round, a round starting or failing to start, the agent
-working, the agent's question with its choices, a turn the agent is no longer
-working on, or the conclusion with its quiz; and, on screens of their own, the
-design explanation, each earlier question and the answered quiz. It follows the round as
-it changes.
-The reviewer can run the whole round there, as in the pane: start it, answer,
-stop waiting, retry, cancel an answer, implement it and reset it; and write in the
-round conversation. Its address carries a token, and the page refuses requests without it.
-The pane serves it on this machine, for the Herdr action and for Start and Start
-with Challenger, which open it in the browser (Start in the pane does not), behind a
-token that the next pane of the same review keeps, so that an open page reconnects
-after a restart, and on the network, behind a new token for each round, for the QR code in the pane; while
-no round runs, the start screen's token is the one the next round keeps, and a
-Reset from the page hands that page the next one. While the reviewer shares the running round
-over a tunnel, the page is also served at the tunnel's public address, behind the round's
-network token, until the round ends.
-_Avoid_: web UI, Explore web, browser view
-
-**Round on the page**:
-An Explore round started with Start or Start with Challenger, or on the Explore
-page. The pane shows only that it runs on the page, where it stands, and the
-page's address, until the reviewer chooses Continue in the pane. A round started
-with Start in the pane is a round in the pane, which shows its interview.
-_Avoid_: web session, web round
-
-**Round rail**:
-The steps of an Explore round as the Explore page lists them: the design
-explanation, each question the agent posted with its clarified versions, the
-quiz and the conclusion, each done, current or later. Each done question opens its
-earlier question, and the done quiz the quiz as the reviewer answered it, unless the
-reviewer skipped it without an answer. Its question steps are numbered Q1, Q2 and so on, and the agent
-names each question of the round by that number.
-_Avoid_: stepper, breadcrumb, progress bar (the meter is the lines reviewed)
-
-**Earlier question**:
-A question of the current Explore round that the reviewer already answered: a done
-step of the round rail. The Explore page shows it read only, with the answer kept,
-the review marks it led to, and what the agent recorded of the answer.
-_Avoid_: previous question, history, earlier round (a round that a newer round of
-the review replaced), past round (a whole round other than the current one)
-
-**Past round**:
-A saved Explore round of the repository other than the one the Explore page follows:
-of any change, from any workspace, reset, replaced or still running elsewhere. The
-page on this machine lists them, grouped by change and named by the title of the
-change's pull request, else of its ticket, else of its description, with the numbers of
-its pull request and tickets as links, each by when it was saved, in a column at the
-window's left that its ⋯ menu opens, and opens one read only, as it was last saved, at an
-address of its own: its design, each
-question with the answer kept, the quiz, the conclusion and its round conversation, with
-the code it cited as the round saw it.
-Nothing on it acts. The pane's start screen opens the page on that list, without a
-round. The page on the network and through the tunnel offers none.
-_Avoid_: archive, old round, earlier round (a round of the current review that a
-newer one replaced, which the pane still shows)
-
-**Meter**:
-The line under the Explore page's masthead that shows the share of the changed lines
-that review marks cover, split by who marked them, with the lines the question that
-waits marks once answered and the lines left; its window gives the numbers for the
-change and for each file.
-_Avoid_: coverage, progress bar
-
-**First pick**:
-The choice the reviewer picks on the Explore page before it shows the agent's
-recommendation, on a question whose Door is one-way, mixed or unknown, which the page
-marks "Blind pick". A question asked
-again after a Cancel answer has none: the reviewer has seen its recommendation. The
-reviewer then keeps it or changes it before confirming the answer; the saved answer keeps the
-first pick beside the sent choice. A comment typed with the first pick stays in the answer's
-comment box, and is part of the answer only once the reviewer confirms it. Also called the blind
-first pick.
-_Avoid_: initial answer, draft choice
-
-**Someone else's change**:
-An Explore round on a change the reviewer did not write, as the reviewer says at Start
-on the Explore page or on the pane's start screen. The reviewer first learns the change,
-then reviews it for its author: every question offers Ask the author, which leaves the
-decision to the author, and the conclusion's list is the review to post, which Post
-review, in place of Implement, asks the agent to post on the change's pull request. On
-the page, the reviewer may give their name, which the kickoff carries.
-_Avoid_: external change, foreign change, PR mode
-
-**Reviewer notes**:
-What the reviewer asks of every Explore round, written in a file beside the reviewer's
-settings, which each kickoff quotes.
-_Avoid_: custom instructions, preferences
-
-**Decision**:
-A question the reviewer answered in an Explore round, with the answer kept (the latest
-answer to the question's latest version): its choice, or its comment when it has no
-choice, and whether the choice was the agent's recommendation ("as recommended") or not
-the reviewer's first pick ("changed after your first pick"). The conclusion lists the
-round's decisions.
-_Avoid_: verdict, outcome
-
-**Reset**:
-Closing the current Explore round and returning to the start screen. The round's
-records stay saved, and it stays readable as a past round on the Explore page, but
-the pane no longer reopens it, and its agent can no longer post to it. The next round starts over: the decisions of the rounds reset
-before it no longer stand, and its agent is told so.
-_Avoid_: new round (which is what Start begins), clear, restart
-
-**Run-ahead**:
-Preparing the agent's next turn while a question of an Explore round waits for the reviewer:
-the review tool forks the agent's session once per choice the reviewer's setting names, and
-each fork takes the turn that would follow that answer. What a fork submits is kept for its
-choice and shown to nobody. The interview stays the agent's in its pane. The setting is off,
-the recommended choice, or every choice.
-_Avoid_: prefetch, speculation, preparation (the earlier, discarded approaches)
-
-**Fork**:
-A copy of the agent's session that run-ahead starts in the background for one choice of the
-question that waits, with its own access value, which lets it submit only the turn it was
-forked for. A fork is discarded, stopped and its session deleted, once its question no
-longer waits, unless the agent in the pane continues as it, and as soon as the reviewer writes
-in the round conversation: forks are taken again once the agent replied and the round
-conversation has been quiet for a minute.
-_Avoid_: branch, clone, subagent
-
-**Prepared turn**:
-The turn a fork submitted for its choice. When the reviewer answers with that choice, with no
-comment, and nothing changed since the forks were taken, the agent in the pane continues as the
-fork (it resumes the fork's session), and the prepared turn becomes the round's: the pane and the
-Explore page say that it was prepared while the reviewer was thinking. A fork that has not
-submitted yet is waited for: the pane and the page say that the agent is finishing a turn it
-started while the reviewer was thinking.
-_Avoid_: cached turn, speculative turn
-
-**Plain chain**:
-The path of a turn without run-ahead: the reviewer's answer goes to the agent in the pane, which
-takes the turn. Every answer that cannot use a prepared turn runs the plain chain; when run-ahead
-watched the question, the pane and the Explore page say with the turn, in one quiet line, why.
-_Avoid_: fallback, normal path
+- **Explore round**: one interview in which an agent questions the reviewer about a review checkpoint, and marks or reopens changed lines according to the answers. _Avoid_: Explore pass, Explore session.
+- **Design explanation**: what the first turn of an Explore round explains before its first question: a thesis for the change, then four parts (what and where, types and data flow, algorithm and cost, rejected alternatives). _Avoid_: map.
+- **Thesis**: the one sentence you would say at a whiteboard, for the whole change and for each part of its design explanation. _Avoid_: summary, lead paragraph.
+- **Writing style**: how the Explore agent writes every text the reviewer reads in a round: plain, Simplified Technical English or concise, fixed when the round starts. _Avoid_: tone, language.
+- **Challenger**: a subagent with fresh context that reviews the same change without the implementer's knowledge, taking turns with it to propose the round's questions. _Avoid_: adversary, second reviewer, critic.
+- **Challenger proposal**: a question the Challenger proposes for a turn, and what became of it: asked, merged, retired or kept for later. _Avoid_: suggestion, Challenger question.
+- **Citation**: a path, side and line range that a question puts before the reviewer as evidence, most decisive first; it marks nothing reviewed. _Avoid_: source reference, inspection, supporting reference.
+- **Quiz**: the whiteboard-level questions, one per key aspect of the change, that the Explore agent submits with its conclusion, each with its correct answer and proof. _Avoid_: test, exam, check.
+- **Glossary**: the terms of an Explore round's change, each with a one-sentence definition, which the Explore page marks in the text and lists after the design. _Avoid_: dictionary, definitions, terms list.
+- **Callout**: a quote in the agent's Markdown that opens with a marker such as `[!TIP]`, shown as a block titled with its kind. _Avoid_: alert, admonition.
+- **Diagram**: a fenced `mermaid` block in the agent's Markdown, which the Explore page draws with Mermaid. _Avoid_: chart, figure.
+- **Status mark**: a good, bad or warning mark at the start of a table cell in the agent's Markdown, written as a marker such as `[!good]`. _Avoid_: badge, emoji.
+- **Not relevant**: changed lines the Explore agent read that hold no decision for the reviewer, marked reviewed without a question, with a reason. _Avoid_: skipped, ignored, insignificant (Jev's judgement).
+- **Round conversation**: the review thread of one Explore round, where the reviewer asks, challenges or adds context beside the round's questions without answering them; the Explore page calls it the chat. _Avoid_: chat thread, agent chat (in the domain model), Explore turn.
+- **Revised question**: a higher version of the open question that the agent posts when a message of the round conversation made the question wrong. _Avoid_: replaced question, edited question, re-ask.
+- **Cancel answer**: withdrawing one of the reviewer's answers with every answer after it, which returns the round, review marks included, to its state before that answer. _Avoid_: cancel (which stops a pending turn), correction, undo, defer.
+- **Back to the drawing board**: the reviewer's answer when they disagree with the change's design itself, which makes the agent conclude at once with the changes the design needs. _Avoid_: redesign, reject, start over (which is Reset).
+- **Explore page**: a browser page, served by the open review pane behind a token, that shows the current Explore round and lets the reviewer run it as in the pane. _Avoid_: web UI, Explore web, browser view.
+- **Round on the page**: an Explore round started with Start or Start with Challenger, or on the Explore page, whose interview the pane does not show until the reviewer chooses Continue. _Avoid_: web session, web round.
+- **Round rail**: the steps of an Explore round as the Explore page lists them: the design explanation, each question (Q1, Q2 …), the quiz and the conclusion, each done, current or later. _Avoid_: stepper, breadcrumb, progress bar.
+- **Earlier question**: a question of the current Explore round that the reviewer already answered, shown read only as a done step of the round rail. _Avoid_: previous question, history, earlier round, past round.
+- **Past round**: a saved Explore round of the repository other than the one the Explore page follows, which the page on this machine lists and opens read only. _Avoid_: archive, old round, earlier round.
+- **Meter**: the line under the Explore page's masthead that shows the share of the changed lines review marks cover, split by who marked them. _Avoid_: coverage, progress bar.
+- **First pick**: the choice the reviewer picks on the Explore page before it shows the agent's recommendation, on a question whose Door is one-way, mixed or unknown; also called the blind first pick. _Avoid_: initial answer, draft choice.
+- **Someone else's change**: an Explore round on a change the reviewer did not write, reviewed for its author, whose conclusion is a review to post on its pull request. _Avoid_: external change, foreign change, PR mode.
+- **Reviewer notes**: what the reviewer asks of every Explore round, written in a file beside the reviewer's settings and quoted by each kickoff. _Avoid_: custom instructions, preferences.
+- **Decision**: a question the reviewer answered in an Explore round, with the answer kept, which the conclusion lists. _Avoid_: verdict, outcome.
+- **Reset**: closing the current Explore round and returning to the start screen; the round stays readable as a past round, and its decisions no longer stand. _Avoid_: new round (which is what Start begins), clear, restart.
+- **Run-ahead**: preparing the agent's next turn in forks while a question of an Explore round waits for the reviewer. _Avoid_: prefetch, speculation, preparation.
+- **Fork**: a copy of the agent's session that run-ahead starts in the background for one choice of the question that waits. _Avoid_: branch, clone, subagent.
+- **Prepared turn**: the turn a fork submitted for its choice, which becomes the round's when the reviewer answers with that choice and nothing changed. _Avoid_: cached turn, speculative turn.
+- **Plain chain**: the path of a turn without run-ahead: the reviewer's answer goes to the agent in the pane, which takes the turn. _Avoid_: fallback, normal path.
 
 ## Testing
 
