@@ -490,7 +490,7 @@ impl Server {
     }
 
     #[tool(
-        description = "End a fork's turn without a submit (no turn), or make it crash with crash (it exits with a failure and no result). Either way the fork's process ends, and the reviewer counts a failure of run-ahead: three in a row stop it for the round. A bare answer that waits for this fork, or comes after, goes to the agent in the pane. Returns the reviewer's screen once the fork's process ended; wait_for what the reviewer shows of it."
+        description = "End a fork's turn without a submit (no turn), or make it crash with crash (it exits with a failure and no result). Either way the fork's process ends, and the reviewer counts a failure of run-ahead: three in a row stop it for the round. A bare answer that waits for this fork, or comes after, goes to the agent in the pane. Returns the reviewer's screen once the fork's process ended and the reviewer logged its end; wait_for what the reviewer shows of it."
     )]
     async fn fork_end(
         &self,

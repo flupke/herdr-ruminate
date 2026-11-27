@@ -8,6 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, anyhow, ensure};
 use app_sandbox::{AppSandbox, Isolation, Options, Programs};
 use fake_agent::{Command, Event, Events, Reported, Role};
+use notify::Watcher as _;
 use review_repository::repository::RepoType;
 use serde_json::{Value, json};
 use vision_mcp::{Input, Screen, Vision};
@@ -65,6 +66,7 @@ impl Session {
                 isolation: Isolation::Bubblewrap,
                 display_size: DISPLAY_SIZE,
                 environment: scratch.sandbox_environment(),
+                ..Options::default()
             },
         )
         .map_err(from_eyre)?;
@@ -253,6 +255,10 @@ impl Session {
                     .any(|reported| reported.from == fork && reported.event == Event::Disconnected)
             })
             .map_err(|error| anyhow!(error))?;
+        let ended = format!("({session}) ended");
+        wait_logged(&self.scratch.run_ahead_log(), "the fork's end", |log| {
+            log.contains(&ended)
+        })?;
         self.settle(vision)
     }
 
@@ -513,6 +519,36 @@ fn tab_of<'a>(listed: &'a Value, address: &str) -> Option<&'a str> {
     listed_tabs(listed)
         .find(|tab| tab_terminals(tab).any(|terminal| terminal["terminal"] == address))?["id"]
         .as_str()
+}
+
+fn wait_logged(log: &Path, what: &str, holds: impl Fn(&str) -> bool) -> Result<()> {
+    let (written, writes) = mpsc::channel();
+    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+        if event.is_ok_and(|event| {
+            matches!(
+                event.kind,
+                notify::EventKind::Create(_) | notify::EventKind::Modify(_)
+            )
+        }) {
+            let _ = written.send(());
+        }
+    })?;
+    let directory = log.parent().context("the log is in no directory")?;
+    watcher.watch(directory, notify::RecursiveMode::NonRecursive)?;
+    let deadline = Instant::now() + REACTION_GUARD;
+    loop {
+        let logged = fs::read_to_string(log).unwrap_or_default();
+        if holds(&logged) {
+            return Ok(());
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() || writes.recv_timeout(remaining).is_err() {
+            return Err(anyhow!(
+                "waited {} ms for the reviewer to log {what}; it logged:\n{logged}",
+                REACTION_GUARD.as_millis()
+            ));
+        }
+    }
 }
 
 fn wait_app(vision: &Vision, what: &str, holds: impl FnMut(&Value) -> bool) -> Result<()> {

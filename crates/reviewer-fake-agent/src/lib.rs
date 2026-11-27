@@ -1,10 +1,17 @@
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-pub const APP: fake_agent::App = fake_agent::App {
-    hook_arguments: &[claude_hooks::SUBCOMMAND],
-    read_prompt: review_test_support::turn::with_turn,
-};
+#[allow(
+    clippy::needless_update,
+    reason = "herdr-common's next field of App would otherwise break the build of tests/tui, which takes fake-agent by path"
+)]
+pub fn app() -> fake_agent::App {
+    fake_agent::App {
+        hook_arguments: &[claude_hooks::SUBCOMMAND],
+        read_prompt: review_test_support::turn::with_turn,
+        ..fake_agent::App::default()
+    }
+}
 
 const PROGRAM: &str = "reviewer-fake-agent";
 
