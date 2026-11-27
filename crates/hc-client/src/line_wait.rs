@@ -26,6 +26,18 @@ enum Reader {
     Unread(String),
 }
 
+impl Reader {
+    fn for_agent(agent: Option<&str>) -> Self {
+        match agent {
+            Some("claude") => Self::Reads(InputAgent::ClaudeCode),
+            Some("codex") => Self::Reads(InputAgent::Codex),
+            Some("antigravity") => Self::Reads(InputAgent::Antigravity),
+            Some(other) => Self::Unread(other.to_owned()),
+            None => Self::Unread("a program that reports no agent".to_owned()),
+        }
+    }
+}
+
 struct Offer<'a> {
     pane: &'a PaneId,
     text: &'a str,
@@ -105,12 +117,7 @@ impl HcClient {
 
     fn input_agent(&self, pane: &PaneId) -> Result<Reader> {
         let agent = self.get_agent(pane)?.and_then(|agent| agent.agent);
-        Ok(match agent.as_deref() {
-            Some("claude") => Reader::Reads(InputAgent::ClaudeCode),
-            Some("codex") => Reader::Reads(InputAgent::Codex),
-            Some(other) => Reader::Unread(other.to_owned()),
-            None => Reader::Unread("a program that reports no agent".to_owned()),
-        })
+        Ok(Reader::for_agent(agent.as_deref()))
     }
 
     fn offer(

@@ -59,6 +59,7 @@ plugin. The scratch home holds:
 
 - `.claude.json` with `herdr_reviewer`;
 - the Claude Code plugin (`.claude/plugins`);
+- `.gemini/config/mcp_config.json` with `herdr_reviewer` when `agy` is on `PATH` (skipped with a note when it is not);
 - the link `.local/share/herdr-progressive-reviewer/reviewer`;
 - the two mods and their keys in `.config/herdr-app`;
 - no `.codex`.

@@ -706,6 +706,89 @@ fn a_dialog_opened_while_herdr_core_waits_out_its_pause_withdraws_the_prompt() {
     assert_eq!(told, [Some(PromptWait::NoInputLine), None]);
 }
 
+#[test]
+#[ignore = "needs herdr-core: hc on the PATH or TEST_HC_BIN_PATH"]
+fn an_antigravity_agent_takes_a_prompt_only_on_an_empty_line_and_starts_on_it() {
+    let core = PrivateCore::holding_unsent_typing_for(Duration::ZERO);
+    let folder = tempfile::tempdir().unwrap();
+    let client = core.client();
+    // agy 1.5.18: OSC 7501 app=antigravity, rule-coloured placeholder, cursor hidden (`?25l`) on panels.
+    let script = r#"stty -echo -icanon; typed=''; mode=line
+draw() {
+  if [ "$mode" = line ]; then
+    printf '\033[?25h\033[H\033[2J\033[38;5;8m────────────────────────\033[0m\r\n'
+    if [ -z "$typed" ]; then
+      printf '\033[38;5;12m> \033[0m\033[38;5;8mAuto mode: edits & safe commands auto-approved\033[0m\r\n'
+    else
+      printf '\033[38;5;12m> \033[0m%s\r\n' "$typed"
+    fi
+    printf '\033[38;5;8m────────────────────────\033[0m\r\n'
+  else
+    printf '\033[?25l\033[H\033[2J\033[38;5;8m────────────────────────\033[0m\r\n\033[38;5;12m>\033[0m\r\n\033[38;5;8m────────────────────────\033[0m\r\nAntigravity CLI help\r\n'
+  fi
+}
+draw; printf '\033]7501;state=idle:app=antigravity\033\\'
+while IFS= read -rsn1 -d '' key; do
+  printf '%s' "$key" >> keys
+  if [ "$mode" = panel ]; then
+    if [ "$key" = $'\x1b' ]; then mode=line; draw; else printf '%s' "$key" >> panel; fi
+    continue
+  fi
+  case "$key" in
+    $'\n') printf '%s\n' "$typed" >> lines; typed=''; printf '\033]7501;state=working:app=antigravity\033\\'; draw; printf '\033]7501;state=done:app=antigravity\033\\' ;;
+    $'\x12') mode=panel ;;
+    $'\x15') typed='' ;;
+    $'\x7f') typed="${typed%?}" ;;
+    *) typed+="$key" ;;
+  esac
+  draw
+done"#;
+    let agent = core.run(folder.path(), script);
+    wait_for(&client, &agent, AgentStatus::Idle);
+    assert_eq!(
+        client
+            .get_agent(&agent)
+            .unwrap()
+            .and_then(|listed| listed.agent)
+            .as_deref(),
+        Some("antigravity")
+    );
+    client
+        .prompt_agent(&agent, "First prompt to Antigravity")
+        .unwrap();
+    assert_eq!(
+        written(folder.path(), "lines"),
+        "First prompt to Antigravity\n"
+    );
+
+    let mut person = core.person_at(&agent);
+    person.types("zzdraft", Duration::from_millis(50));
+    wait_until_read(folder.path(), 'z');
+    let (sender, waits) = send_telling_waits(&client, &agent, "Second prompt");
+    assert_eq!(waits.recv().unwrap(), Some(PromptWait::TypedText));
+    person.erases_line();
+    let (sent, _) = sender.join().unwrap();
+    sent.unwrap();
+    assert_eq!(
+        written(folder.path(), "lines"),
+        "First prompt to Antigravity\nSecond prompt\n"
+    );
+
+    core.hc(&["keys", &agent.0, "ctrl+r"]);
+    wait_until_read(folder.path(), '\x12');
+    let (sender, waits) = send_telling_waits(&client, &agent, "Third prompt");
+    assert_eq!(waits.recv().unwrap(), Some(PromptWait::NoInputLine));
+    person.presses_esc();
+    let (sent, told) = sender.join().unwrap();
+    sent.unwrap();
+    assert_eq!(written(folder.path(), "panel"), "");
+    assert_eq!(
+        written(folder.path(), "lines"),
+        "First prompt to Antigravity\nSecond prompt\nThird prompt\n"
+    );
+    assert_eq!(told, [Some(PromptWait::NoInputLine), None]);
+}
+
 const SEND_TO: &str = "PRIVATE_CORE_SEND_TO";
 
 #[test]

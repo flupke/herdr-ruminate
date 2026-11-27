@@ -43,6 +43,10 @@ fn registration_preserves_settings_comments_permissions_and_repeat_runs() {
         Client::Claude,
         r#"{"setting":"keep","mcpServers":{"existing":{"type":"stdio","command":"other","args":["a"]}}}"#,
     );
+    fixture.write(
+        Client::Antigravity,
+        r#"{"mcpServers":{"existing":{"command":"other","args":["a"]}}}"#,
+    );
     for client in Client::ALL {
         assert!(fixture.configuration(client).install().unwrap());
         let installed = fixture.read(client);
@@ -64,6 +68,12 @@ fn registration_preserves_settings_comments_permissions_and_repeat_runs() {
     assert_eq!(
         claude["mcpServers"]["herdr_reviewer"]["args"],
         serde_json::json!([])
+    );
+    let agy: serde_json::Value = serde_json::from_str(&fixture.read(Client::Antigravity)).unwrap();
+    assert_eq!(agy["mcpServers"]["existing"]["args"][0], "a");
+    assert_eq!(
+        agy["mcpServers"]["herdr_reviewer"],
+        serde_json::json!({"command": "/fixture/reviewer-mcp", "args": []})
     );
 }
 
@@ -87,10 +97,13 @@ fn concurrent_setup_registers_each_client_once_without_adding_lock_files() {
                 .into_iter()
                 .map(|handle| handle.join().unwrap())
                 .sum::<usize>(),
-            2
+            Client::ALL.len()
         );
     });
-    assert_eq!(fs::read_dir(fixture.directory.path()).unwrap().count(), 2);
+    assert_eq!(
+        fs::read_dir(fixture.directory.path()).unwrap().count(),
+        Client::ALL.len()
+    );
 }
 
 #[test]
@@ -118,6 +131,9 @@ fn invalid_configuration_and_symlinks_are_left_untouched() {
         (Client::Claude, "{unfinished"),
         (Client::Claude, "[]"),
         (Client::Claude, "{\"mcpServers\":123}"),
+        (Client::Antigravity, "{unfinished"),
+        (Client::Antigravity, "[]"),
+        (Client::Antigravity, "{\"mcpServers\":123}"),
     ] {
         fixture.write(client, text);
         assert!(fixture.configuration(client).install().is_err());
@@ -154,9 +170,41 @@ fn existing_http_and_explicit_port_registrations_are_left_untouched() {
             Client::Claude,
             r#"{"mcpServers":{"herdr_reviewer":{"type":"stdio","command":"/fixture/reviewer-mcp","args":["59123"]}}}"#,
         ),
+        (
+            Client::Antigravity,
+            r#"{"mcpServers":{"herdr_reviewer":{"url":"http://127.0.0.1:59123/mcp"}}}"#,
+        ),
+        (
+            Client::Antigravity,
+            r#"{"mcpServers":{"herdr_reviewer":{"serverUrl":"http://127.0.0.1:59123/mcp"}}}"#,
+        ),
+        (
+            Client::Antigravity,
+            r#"{"mcpServers":{"herdr_reviewer":{"command":"/fixture/reviewer-mcp","args":["59123"]}}}"#,
+        ),
+        (
+            Client::Antigravity,
+            r#"{"mcpServers":{"herdr_reviewer":{"command":"/fixture/reviewer-mcp","cwd":"/other/repo"}}}"#,
+        ),
     ] {
         fixture.write(client, text);
         assert!(fixture.configuration(client).install().is_err());
         assert_eq!(fixture.read(client), text);
     }
+}
+
+#[test]
+fn antigravity_registration_accepts_agy_mcp_add_shape_and_preserves_disabled() {
+    let fixture = Fixture::new();
+    let existing =
+        r#"{"mcpServers":{"herdr_reviewer":{"command":"/fixture/reviewer-mcp","disabled":true}}}"#;
+    fixture.write(Client::Antigravity, existing);
+
+    assert!(
+        !fixture
+            .configuration(Client::Antigravity)
+            .install()
+            .unwrap()
+    );
+    assert_eq!(fixture.read(Client::Antigravity), existing);
 }

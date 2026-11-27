@@ -64,6 +64,22 @@ scripts/dev-shell cargo nextest run -p reviewer --test claude_code_under_hc --ru
 It passed with Claude Code 2.1.318 and herdr-core 0.1.18, and with Claude Code 2.1.327 and
 herdr-core 0.1.20.
 
+## The Antigravity contract check under herdr-core
+
+`crates/reviewer/tests/antigravity_under_hc.rs` checks that real Antigravity CLI (`agy`) takes
+the reviewer's prompts through herdr-core, receives wakeups and replies through `reviewer-mcp`,
+publishes user words on `herdr-bus`, and respects typed text and cursor-hidden panels (`/help`).
+It registers `reviewer-mcp` in a scratch `HOME`'s `.gemini/config/mcp_config.json` (leaving the
+owner's `~/.gemini/config` untouched) and authenticates through the owner's system keyring on a
+private herdr-core. Three low-effort Gemini turns on the user's Google AI Pro subscription.
+
+```sh
+scripts/dev-shell cargo build -p review-mcp-config --bin reviewer-mcp
+scripts/dev-shell cargo nextest run -p reviewer --test antigravity_under_hc --run-ignored only
+```
+
+It passed with Antigravity CLI 1.5.18 and herdr-core 0.1.20.
+
 ## Run-ahead with real Claude Code under herdr-app
 
 Checked once with herdr-app 0.1.13, herdr-core 0.1.18 and Claude Code 2.1.318. Run it again

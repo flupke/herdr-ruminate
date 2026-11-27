@@ -24,6 +24,7 @@ impl<'a> Configuration<'a> {
         match self.client {
             Client::Codex => self.codex(original),
             Client::Claude => self.claude(original),
+            Client::Antigravity => self.antigravity(original),
         }
     }
 
@@ -78,6 +79,40 @@ impl<'a> Configuration<'a> {
     }
 
     fn claude(&self, original: &str) -> Result<Option<String>, String> {
+        Self::json_server(
+            original,
+            |server| {
+                server.get("command").and_then(Value::as_str) == Some(self.command)
+                    && server.get("args") == Some(&json!([]))
+                    && server.get("type").and_then(Value::as_str) == Some("stdio")
+                    && server.get("url").is_none()
+            },
+            json!({"type": "stdio", "command": self.command, "args": []}),
+        )
+    }
+
+    fn antigravity(&self, original: &str) -> Result<Option<String>, String> {
+        Self::json_server(
+            original,
+            |server| {
+                server.get("command").and_then(Value::as_str) == Some(self.command)
+                    && server.get("args").is_none_or(|args| args == &json!([]))
+                    && server
+                        .get("type")
+                        .is_none_or(|kind| kind.as_str() == Some("stdio"))
+                    && server.get("url").is_none()
+                    && server.get("serverUrl").is_none()
+                    && server.get("cwd").is_none()
+            },
+            json!({"command": self.command, "args": []}),
+        )
+    }
+
+    fn json_server(
+        original: &str,
+        matches_existing: impl Fn(&Value) -> bool,
+        entry: Value,
+    ) -> Result<Option<String>, String> {
         let mut document: Value = if original.trim().is_empty() {
             json!({})
         } else {
@@ -92,19 +127,12 @@ impl<'a> Configuration<'a> {
             .as_object_mut()
             .ok_or("mcpServers must be an object; configuration was left unchanged")?;
         if let Some(server) = servers.get(MCP_SERVER) {
-            if server.get("command").and_then(Value::as_str) == Some(self.command)
-                && server.get("args") == Some(&json!([]))
-                && server.get("type").and_then(Value::as_str) == Some("stdio")
-                && server.get("url").is_none()
-            {
+            if matches_existing(server) {
                 return Ok(None);
             }
             return Err(Self::conflict());
         }
-        servers.insert(
-            MCP_SERVER.into(),
-            json!({"type": "stdio", "command": self.command, "args": []}),
-        );
+        servers.insert(MCP_SERVER.into(), entry);
         Ok(Some(format!(
             "{}\n",
             serde_json::to_string_pretty(&document).expect("a JSON value serializes")

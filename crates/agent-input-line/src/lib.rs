@@ -2,12 +2,14 @@ use std::str::Chars;
 
 const CLAUDE_PROMPT: char = '❯';
 const CODEX_PROMPT: char = '›';
+const ANTIGRAVITY_PROMPT: char = '>';
 const RULE: char = '─';
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Agent {
     ClaudeCode,
     Codex,
+    Antigravity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18,10 +20,11 @@ pub enum Line {
 }
 
 pub fn read(agent: Agent, screen: &str) -> Line {
-    let rows = rows(screen);
+    let screen = parse_screen(screen);
     let input = match agent {
-        Agent::ClaudeCode => claude_input(&rows),
-        Agent::Codex => codex_input(&rows),
+        Agent::ClaudeCode => claude_input(&screen.rows),
+        Agent::Codex => codex_input(&screen.rows),
+        Agent::Antigravity => antigravity_input(&screen),
     };
     let Some((placeholder, cells)) = input else {
         return Line::Missing;
@@ -47,14 +50,8 @@ pub fn read(agent: Agent, screen: &str) -> Line {
 
 // Claude Code may draw a placeholder in the style of its `❯`.
 fn claude_input(rows: &[Vec<Cell>]) -> Option<(Option<Style>, Vec<Cell>)> {
-    let start = rows
-        .iter()
-        .rposition(|row| first_visible(row).is_some_and(|cell| cell.text == CLAUDE_PROMPT))?;
-    if start == 0 || !is_rule(&rows[start - 1]) {
-        return None;
-    }
-    let end = rows[start + 1..].iter().position(|row| is_rule(row))?;
-    let (placeholder, cells) = after_prompt(&rows[start..=start + end], CLAUDE_PROMPT)?;
+    let (start, end) = ruled_box(rows, CLAUDE_PROMPT)?;
+    let (placeholder, cells) = after_prompt(&rows[start..end], CLAUDE_PROMPT)?;
     Some((
         placeholder.filter(|style| *style != Style::default()),
         cells,
@@ -72,6 +69,36 @@ fn codex_input(rows: &[Vec<Cell>]) -> Option<(Option<Style>, Vec<Cell>)> {
         .map_or(rows.len() - 1, |blank| start + blank);
     let (_, cells) = after_prompt(&rows[start..=end], CODEX_PROMPT)?;
     Some((None, cells))
+}
+
+// Antigravity draws its placeholder in the style of its top rule, and hides the terminal cursor
+// (`ESC [ ? 25 l`) while a dialog or panel takes keys (agy 1.5.18).
+fn antigravity_input(screen: &Screen) -> Option<(Option<Style>, Vec<Cell>)> {
+    if screen.cursor_hidden {
+        return None;
+    }
+    let (start, end) = ruled_box(&screen.rows, ANTIGRAVITY_PROMPT)?;
+    let (_, cells) = after_prompt(&screen.rows[start..end], ANTIGRAVITY_PROMPT)?;
+    let placeholder = first_visible(&screen.rows[start - 1])
+        .map(|cell| cell.style)
+        .filter(|style| *style != Style::default());
+    Some((placeholder, cells))
+}
+
+fn ruled_box(rows: &[Vec<Cell>], prompt: char) -> Option<(usize, usize)> {
+    let start = rows.iter().enumerate().rposition(|(index, row)| {
+        index > 0
+            && is_rule(&rows[index - 1])
+            && first_visible(row).is_some_and(|cell| cell.text == prompt)
+    })?;
+    let end = start + 1 + rows[start + 1..].iter().position(|row| is_rule(row))?;
+    if rows[end + 1..]
+        .iter()
+        .any(|row| first_visible(row).is_some_and(|cell| cell.text == prompt))
+    {
+        return None;
+    }
+    Some((start, end))
 }
 
 fn after_prompt(rows: &[Vec<Cell>], prompt: char) -> Option<(Option<Style>, Vec<Cell>)> {
@@ -103,14 +130,20 @@ struct Style {
 
 type Colour = [u16; 5];
 
+struct Screen {
+    rows: Vec<Vec<Cell>>,
+    cursor_hidden: bool,
+}
+
 // In a terminal, as in herdr-core's paint, a style set on one row holds on the next.
-fn rows(screen: &str) -> Vec<Vec<Cell>> {
+fn parse_screen(screen: &str) -> Screen {
     let mut style = Style::default();
+    let mut cursor_hidden = false;
     let mut rows = vec![Vec::new()];
     let mut chars = screen.chars();
     while let Some(text) = chars.next() {
         match text {
-            '\u{1b}' => escape(&mut chars, &mut style),
+            '\u{1b}' => escape(&mut chars, &mut style, &mut cursor_hidden),
             '\n' => rows.push(Vec::new()),
             text if text.is_control() => {}
             text => rows
@@ -119,18 +152,19 @@ fn rows(screen: &str) -> Vec<Vec<Cell>> {
                 .push(Cell { text, style }),
         }
     }
-    rows
+    Screen {
+        rows,
+        cursor_hidden,
+    }
 }
 
 // In a terminal, an OSC runs to a BEL or to the ESC of its `ESC \`; a character set's
 // designation takes one more character.
-fn escape(chars: &mut Chars<'_>, style: &mut Style) {
+fn escape(chars: &mut Chars<'_>, style: &mut Style, cursor_hidden: &mut bool) {
     match chars.next() {
         Some('[') => {
             let (params, end) = csi(chars);
-            if end == Some('m') {
-                apply_sgr(style, &params);
-            }
+            apply_csi(&params, end, style, cursor_hidden);
         }
         Some(']') => {
             if chars.find(|next| *next == '\u{7}' || *next == '\u{1b}') == Some('\u{1b}') {
@@ -140,8 +174,31 @@ fn escape(chars: &mut Chars<'_>, style: &mut Style) {
         Some('(' | ')' | '*' | '+') => {
             chars.next();
         }
+        Some('c') => {
+            *style = Style::default();
+            *cursor_hidden = false;
+        }
         _ => {}
     }
+}
+
+fn apply_csi(params: &str, end: Option<char>, style: &mut Style, cursor_hidden: &mut bool) {
+    match end {
+        Some('m') => apply_sgr(style, params),
+        Some('l') if has_private_mode(params, "25") => *cursor_hidden = true,
+        Some('h') if has_private_mode(params, "25") => *cursor_hidden = false,
+        Some('p') if params == "!" => {
+            *style = Style::default();
+            *cursor_hidden = false;
+        }
+        _ => {}
+    }
+}
+
+fn has_private_mode(params: &str, mode: &str) -> bool {
+    params
+        .strip_prefix('?')
+        .is_some_and(|modes| modes.split(';').any(|item| item == mode))
 }
 
 fn csi(chars: &mut Chars<'_>) -> (String, Option<char>) {

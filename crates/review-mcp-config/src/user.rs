@@ -19,14 +19,13 @@ impl UserConfig {
     }
 
     pub fn from_env(client: Client, bridge: PathBuf) -> Result<Self, String> {
-        let (variable, default) = match client {
-            Client::Codex => ("CODEX_HOME", ".codex"),
-            Client::Claude => ("CLAUDE_CONFIG_DIR", ""),
+        let directory = match client {
+            Client::Codex => env_or_home("CODEX_HOME", ".codex")?,
+            Client::Claude => env_or_home("CLAUDE_CONFIG_DIR", "")?,
+            Client::Antigravity => std::env::var_os("HOME")
+                .map(|home| PathBuf::from(home).join(".gemini/config"))
+                .ok_or_else(|| "HOME must be set".to_owned())?,
         };
-        let directory = std::env::var_os(variable)
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(default)))
-            .ok_or_else(|| format!("{variable} or HOME must be set"))?;
         Ok(Self::new(client, &directory, bridge))
     }
 
@@ -50,6 +49,13 @@ impl UserConfig {
             &configuration,
         )
     }
+}
+
+fn env_or_home(variable: &str, default: &str) -> Result<PathBuf, String> {
+    std::env::var_os(variable)
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(default)))
+        .ok_or_else(|| format!("{variable} or HOME must be set"))
 }
 
 #[cfg(test)]

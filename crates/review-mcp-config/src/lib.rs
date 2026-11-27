@@ -9,19 +9,21 @@ use std::str::FromStr;
 pub use user::UserConfig;
 
 /// A native client supported by the reviewer.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Client {
     Codex,
     Claude,
+    Antigravity,
 }
 
 impl Client {
-    pub const ALL: [Self; 2] = [Self::Codex, Self::Claude];
+    pub const ALL: [Self; 3] = [Self::Codex, Self::Claude, Self::Antigravity];
 
     fn file_name(self) -> &'static str {
         match self {
             Self::Codex => "config.toml",
             Self::Claude => ".claude.json",
+            Self::Antigravity => "mcp_config.json",
         }
     }
 }
@@ -33,7 +35,8 @@ impl FromStr for Client {
         match value {
             "codex" => Ok(Self::Codex),
             "claude" => Ok(Self::Claude),
-            _ => Err("Expected codex or claude".into()),
+            "antigravity" => Ok(Self::Antigravity),
+            _ => Err("Expected codex, claude or antigravity".into()),
         }
     }
 }

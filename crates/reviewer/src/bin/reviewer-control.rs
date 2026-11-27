@@ -31,7 +31,7 @@ impl Control {
             Some("toggle") => PaneAction::Toggle,
             _ => {
                 eyre::bail!(
-                    "usage: reviewer-control <open|close|toggle|explore-page|explore-page-address|explore-page-wait|open-url|mcp-install [codex|claude]|codex-plugin <install|uninstall>|stats>"
+                    "usage: reviewer-control <open|close|toggle|explore-page|explore-page-address|explore-page-wait|open-url|mcp-install [codex|claude|antigravity]|codex-plugin <install|uninstall>|stats>"
                 );
             }
         };

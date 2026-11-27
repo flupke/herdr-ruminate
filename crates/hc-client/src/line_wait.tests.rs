@@ -19,6 +19,22 @@ fn a_prompt_to_claude_code_waits_for_what_its_line_shows(screen: &str, wait: Opt
     );
 }
 
+fn antigravity_line(line: &str) -> String {
+    format!(
+        "\u{1b}[38;5;8m────\u{1b}[0m\r\n\u{1b}[38;5;12m> \u{1b}[0m{line}\r\n\u{1b}[38;5;8m────\u{1b}[0m\r\n"
+    )
+}
+
+#[test_case(&antigravity_line(""), None; "an empty line")]
+#[test_case(&antigravity_line("fix the"), Some(&PromptWait::TypedText); "typed text")]
+#[test_case(&format!("\u{1b}[?25l{}", antigravity_line("")), Some(&PromptWait::NoInputLine); "a panel hiding the cursor")]
+fn a_prompt_to_antigravity_waits_for_what_its_line_shows(screen: &str, wait: Option<&PromptWait>) {
+    assert_eq!(
+        wait_for(&Reader::for_agent(Some("antigravity")), screen).as_ref(),
+        wait
+    );
+}
+
 #[test]
 fn a_prompt_to_an_agent_whose_line_is_not_read_waits() {
     assert_eq!(

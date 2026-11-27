@@ -170,6 +170,18 @@ fn a_codex_agent_keeps_its_name() {
 }
 
 #[test]
+fn an_antigravity_agent_keeps_its_name() {
+    let mut agy = claude_code();
+    agy["status"]["app"] = json!("antigravity");
+    agy["foreground"] = json!({"argv": ["agy"], "cwd": "/src", "name": "agy", "pid": 42});
+
+    assert_eq!(
+        terminal(agy).agent().unwrap().agent.as_deref(),
+        Some("antigravity")
+    );
+}
+
+#[test]
 fn the_foreground_leader_names_the_process_group() {
     let info = terminal(claude_code()).process_info();
 
