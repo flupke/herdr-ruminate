@@ -1,6 +1,7 @@
 use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -10,6 +11,7 @@ use std::thread;
 #[cfg(target_os = "linux")]
 use nix::{
     errno::Errno,
+    sys::signal::{Signal, killpg},
     sys::wait::{Id, WaitPidFlag, waitid},
     unistd::Pid,
 };
@@ -640,6 +642,15 @@ impl Repository {
         self.cancellation.cancel();
     }
 
+    #[must_use]
+    pub fn without_cancellation(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+            backend: Arc::clone(&self.backend),
+            cancellation: Cancellation::default(),
+        }
+    }
+
     pub fn poll(&self) -> Result<PollResult> {
         let identity = self.current_identity()?;
         let mut files = self.backend.read_files(self, &identity)?;
@@ -746,6 +757,12 @@ impl<'a> RepositoryProcess<'a> {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
+        if self.cancellation.is_cancelled() {
+            return Err(Error::CommandCancelled {
+                operation: self.operation.to_owned(),
+                path: self.cwd.to_owned(),
+            });
+        }
         let mut child = Command::new(self.program)
             .args(self.options)
             .args(arguments)
@@ -758,6 +775,7 @@ impl<'a> RepositoryProcess<'a> {
             })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .process_group(0)
             .spawn()
             .map_err(|source| Error::Spawn {
                 operation: self.operation.to_owned(),
@@ -835,6 +853,9 @@ impl<'a> RepositoryProcess<'a> {
         let exit = Self::watch_exit(child, Arc::clone(progress), self.cancellation.clone());
         let cancelled = self.cancellation.wait_until(|| progress.settled()) && !progress.exceeded();
         if cancelled || progress.exceeded() {
+            if let Ok(pid) = i32::try_from(child.id()) {
+                let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
+            }
             let _ = child.kill();
         }
         // `waitid` with `WNOWAIT` leaves the child unreaped: its process ID stays the child's until

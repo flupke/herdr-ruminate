@@ -354,3 +354,81 @@ fn a_kickoff_is_not_sent_once_jev_marked_every_changed_line() {
         Some(review_explore::StartBlock::NothingToReview.reason())
     );
 }
+
+fn shutdown_and_load(
+    fixture: EffectsFixture,
+    hold: crossbeam_channel::Sender<()>,
+    checkpoint: &ReviewCheckpoint,
+) -> review_store::LoadResult {
+    fixture.effects.begin_shutdown();
+    drop(hold);
+    let store = fixture.store.clone();
+    let _files = fixture.files;
+    let _state = fixture.state;
+    drop(fixture.effects);
+    store.load(&checkpoint.review_unit, b"file.rs").unwrap()
+}
+
+fn fixture_with_reviewed_file(kind: RepoType) -> (EffectsFixture, ReviewCheckpoint) {
+    let mut fixture = fixture(kind);
+    let checkpoint = fixture.refreshed_checkpoint();
+    fixture.perform([Action::Repository(RepositoryAction::SetReviewed {
+        path: "file.rs".to_owned(),
+        reviewed: true,
+    })]);
+    fixture.wait_for::<ReviewStateSaved>();
+    (fixture, checkpoint)
+}
+
+#[test_case::test_case(RepoType::Git; "git")]
+#[test_case::test_case(RepoType::Jj; "jj")]
+fn shutdown_saves_a_queued_file_mark_after_cancelling_repository_reads(kind: RepoType) {
+    let mut fixture = fixture(kind);
+    let checkpoint = fixture.refreshed_checkpoint();
+    let hold = fixture.effects.hold_repository_work();
+    fixture.effects.refresh().unwrap();
+    fixture.perform([Action::Repository(RepositoryAction::SetReviewed {
+        path: "file.rs".to_owned(),
+        reviewed: true,
+    })]);
+
+    assert!(matches!(
+        shutdown_and_load(fixture, hold, &checkpoint),
+        review_store::LoadResult::Reviewed(_)
+    ));
+}
+
+#[test_case::test_case(RepoType::Git; "git")]
+#[test_case::test_case(RepoType::Jj; "jj")]
+fn shutdown_saves_a_queued_unreview_hunk_mark_and_unreview_all(kind: RepoType) {
+    let mut fixture = fixture(kind);
+    let checkpoint = fixture.refreshed_checkpoint();
+    let hold = fixture.effects.hold_repository_work();
+    fixture.perform([accept_line_three(checkpoint.clone())]);
+    let review_store::LoadResult::Reviewed(record) = shutdown_and_load(fixture, hold, &checkpoint)
+    else {
+        panic!("expected the queued hunk mark to be saved on shutdown");
+    };
+    assert!(record.partial.is_some());
+
+    let (fixture, checkpoint) = fixture_with_reviewed_file(kind);
+    let hold = fixture.effects.hold_repository_work();
+    fixture.perform([Action::Repository(RepositoryAction::SetReviewed {
+        path: "file.rs".to_owned(),
+        reviewed: false,
+    })]);
+    assert_eq!(
+        shutdown_and_load(fixture, hold, &checkpoint),
+        review_store::LoadResult::Unreviewed
+    );
+
+    let (fixture, checkpoint) = fixture_with_reviewed_file(kind);
+    let hold = fixture.effects.hold_repository_work();
+    fixture.perform([Action::Repository(RepositoryAction::UnreviewAll(
+        checkpoint.clone(),
+    ))]);
+    assert_eq!(
+        shutdown_and_load(fixture, hold, &checkpoint),
+        review_store::LoadResult::Unreviewed
+    );
+}

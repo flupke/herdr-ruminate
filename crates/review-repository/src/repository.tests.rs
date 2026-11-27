@@ -229,3 +229,49 @@ fn rename_diff_paths_include_each_distinct_side_once() {
         [b"same.rs".as_slice()]
     );
 }
+
+#[test]
+fn without_cancellation_keeps_running_after_the_original_is_cancelled() {
+    use review_test_support::{GitFixture, JjFixture, JjLayout, ReviewRepositoryFixture};
+
+    let fixtures: [Box<dyn ReviewRepositoryFixture>; 2] = [
+        Box::new(GitFixture::new()),
+        Box::new(JjFixture::new(JjLayout::NonColocated)),
+    ];
+    for files in fixtures {
+        let state = tempfile::tempdir().unwrap();
+        let repository = super::Repository::discover(files.root())
+            .unwrap()
+            .with_state_root(state.path());
+        let independent = repository.without_cancellation();
+
+        repository.cancel();
+
+        assert!(matches!(
+            repository.current_identity(),
+            Err(Error::CommandCancelled { .. })
+        ));
+        assert!(independent.current_identity().is_ok());
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_command_runs_in_its_own_process_group() {
+    let cancellation = Cancellation::default();
+    let output = shell(&cancellation)
+        .output(["read -r stat < /proc/$$/stat && printf '%s\\n' \"$stat\""])
+        .unwrap();
+    assert!(output.status.success());
+    let stat = String::from_utf8(output.stdout).unwrap();
+    let process_id: i32 = stat.split_whitespace().next().unwrap().parse().unwrap();
+    let after_comm = stat.rsplit_once(')').unwrap().1;
+    let process_group: i32 = after_comm
+        .split_whitespace()
+        .nth(2)
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(process_group, process_id);
+    assert_ne!(process_group, nix::unistd::getpgrp().as_raw());
+}

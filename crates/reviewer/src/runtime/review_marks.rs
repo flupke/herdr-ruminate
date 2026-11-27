@@ -11,6 +11,9 @@ impl Worker {
         messages: &ApplicationEventSender,
     ) {
         let result = self.clear_review_marks(checkpoint);
+        if self.is_stopping() {
+            return;
+        }
         self.poll(messages);
         self.announce_review_states(messages, |_| true);
         let toast = match result {
@@ -43,8 +46,8 @@ impl Worker {
         }
     }
 
-    fn clear_review_marks(&self, checkpoint: &ReviewCheckpoint) -> eyre::Result<()> {
-        let current = self.repository.current_identity()?;
+    pub(super) fn clear_review_marks(&self, checkpoint: &ReviewCheckpoint) -> eyre::Result<()> {
+        let current = self.mark_writer.current_identity()?;
         eyre::ensure!(
             current.review_unit() == &checkpoint.review_unit
                 && current.snapshot_id() == checkpoint.checkpoint,

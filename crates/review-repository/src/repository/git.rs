@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::process::Output;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ignore::gitignore::gitconfig_excludes_path;
@@ -161,14 +162,22 @@ impl GitBackend {
         S: AsRef<OsStr>,
     {
         let environment = git_environment(cache);
-        let output = RepositoryProcess::new(
+        let output = match RepositoryProcess::new(
             "git",
             &repository.root,
             "snapshot Git repository",
             &repository.cancellation,
         )
         .with_environment(&environment)
-        .output(arguments)?;
+        .output(arguments)
+        {
+            Ok(output) => output,
+            Err(error @ (Error::CommandCancelled { .. } | Error::CommandOutputTooLarge { .. })) => {
+                cache.remove_lock();
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
         if !output.status.success() {
             return Err(Error::CommandFailed {
                 operation: "snapshot Git repository".to_owned(),
@@ -236,14 +245,16 @@ impl RepositoryBackend for GitBackend {
     }
 
     fn set_state_root(&self, repository_root: &Path, state_root: &Path) {
+        static NEXT_INDEX: AtomicUsize = AtomicUsize::new(0);
         let digest = Sha256::digest(repository_root.as_os_str().as_bytes());
         let repository_key = digest.iter().fold(String::new(), |mut key, byte| {
             write!(key, "{byte:02x}").expect("writing to a string cannot fail");
             key
         });
+        let sequence = NEXT_INDEX.fetch_add(1, Ordering::Relaxed);
         let directory = state_root.join("git").join(repository_key);
         *self.cache.lock().expect("new Git snapshot lock is valid") = Some(Arc::new(GitCache {
-            index: directory.join(format!("working-index-{}", std::process::id())),
+            index: directory.join(format!("working-index-{}-{sequence}", std::process::id())),
             objects: directory.join("objects"),
             repository_objects: self.repository_objects.clone(),
             base_tree: Mutex::new(None),
@@ -518,12 +529,22 @@ fn git_environment(cache: &GitCache) -> Vec<(OsString, OsString)> {
     ]
 }
 
+impl GitCache {
+    fn lock_path(&self) -> PathBuf {
+        let mut lock = self.index.as_os_str().to_owned();
+        lock.push(".lock");
+        PathBuf::from(lock)
+    }
+
+    fn remove_lock(&self) {
+        let _ = std::fs::remove_file(self.lock_path());
+    }
+}
+
 impl Drop for GitCache {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.index);
-        let mut lock = self.index.as_os_str().to_owned();
-        lock.push(".lock");
-        let _ = std::fs::remove_file(lock);
+        self.remove_lock();
     }
 }
 

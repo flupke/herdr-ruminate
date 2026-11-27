@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::thread::{self, JoinHandle};
 
@@ -31,7 +32,7 @@ use super::page_sharing::PageSharing;
 use super::page_threads::PageThreads;
 use super::revision_progress::HistoryProgress;
 use super::route::WorkerStopped;
-use super::worker::{Worker, WorkerCommand};
+use super::worker::{MarkWriter, Worker, WorkerCommand};
 use crate::watcher::SourceWatchRequests;
 
 pub(super) struct Setup {
@@ -96,12 +97,13 @@ pub(super) struct Outputs {
 }
 
 pub(super) struct Effects {
-    repository_root: PathBuf,
+    repository: Repository,
     target: AgentTarget,
     store: ReviewStore,
     source_watches: Option<SourceWatchRequests>,
     commands: Sender<WorkerCommand>,
     documents: Sender<document::Command>,
+    stopping: Arc<AtomicBool>,
     page_opener: Option<PageOpener>,
     page_threads: Arc<PageThreads>,
     page_sharing: Option<PageSharing>,
@@ -115,6 +117,25 @@ struct FrontWorkers {
     comments: comments::Worker,
     search: text_search::Worker,
     highlighting: highlighting::Worker,
+}
+
+impl FrontWorkers {
+    fn start(comments: comments::Worker, theme: Theme, outputs: &Outputs) -> Self {
+        let highlights = outputs.background.clone();
+        let search_results = outputs.interactive.clone();
+        Self {
+            comments,
+            search: text_search::Worker::start(move |results| {
+                let _ = search_results.send(EventEnvelope::new(results));
+            }),
+            highlighting: highlighting::Worker::start(
+                syntax_highlighting::SyntaxHighlighter::new(theme.syntax, theme.palette.text),
+                move |result| {
+                    let _ = highlights.send(EventEnvelope::new(result));
+                },
+            ),
+        }
+    }
 }
 
 type TerminalExecutor<'a> = dyn FnMut(TerminalAction) -> eyre::Result<ControlFlow<()>> + 'a;
@@ -173,9 +194,12 @@ impl Effects {
             hooks: explore_hooks,
             references: Some(ReferencesFinder::new(linear.clone())),
         });
+        let mark_writer = MarkWriter::new(&repository, &store);
+        let stopping = Arc::new(AtomicBool::new(false));
         let mut worker = Worker {
             repository: repository.clone(),
             tracker,
+            mark_writer,
             store: store.clone(),
             snapshot: None,
             commands: commands.clone(),
@@ -186,38 +210,28 @@ impl Effects {
             held_kickoff: None,
             documents: documents.clone(),
             revision_progress: HistoryProgress::default(),
+            stopping: Arc::clone(&stopping),
         };
         let worker_messages = messages.clone();
         let worker_thread = thread::spawn(move || {
             worker.run(&command_receiver, &worker_messages);
             let _ = worker_messages.send(WorkerStopped);
         });
-        let highlights = outputs.background.clone();
-        let search_results = outputs.interactive.clone();
+        let lsp = review_lsp::Worker::start(repository.root().to_owned());
         Self {
-            repository_root: repository.root().to_owned(),
+            repository,
             target,
             store,
             source_watches,
             commands,
             documents,
+            stopping,
             page_opener: None,
             page_threads,
             page_sharing: None,
             messages,
-            front: Some(FrontWorkers {
-                comments,
-                search: text_search::Worker::start(move |results| {
-                    let _ = search_results.send(EventEnvelope::new(results));
-                }),
-                highlighting: highlighting::Worker::start(
-                    syntax_highlighting::SyntaxHighlighter::new(theme.syntax, theme.palette.text),
-                    move |result| {
-                        let _ = highlights.send(EventEnvelope::new(result));
-                    },
-                ),
-            }),
-            lsp: review_lsp::Worker::start(repository.root().to_owned()),
+            front: Some(FrontWorkers::start(comments, theme, outputs)),
+            lsp,
             threads: vec![worker_thread, document_thread],
         }
     }
@@ -232,6 +246,11 @@ impl Effects {
             terminal,
         }
         .run_all(actions)
+    }
+
+    pub(super) fn begin_shutdown(&self) {
+        self.stopping.store(true, Ordering::Release);
+        self.repository.cancel();
     }
 
     pub(super) fn refresh(&self) -> eyre::Result<()> {
@@ -363,7 +382,7 @@ impl Effects {
 
     fn resolve(&self, path: PathBuf) -> PathBuf {
         if path.is_relative() {
-            self.repository_root.join(path)
+            self.repository.root().join(path)
         } else {
             path
         }
@@ -394,9 +413,10 @@ impl Effects {
 
 impl Drop for Effects {
     fn drop(&mut self) {
-        drop(self.front.take());
+        self.begin_shutdown();
         let _ = self.commands.send(WorkerCommand::Quit);
         let _ = self.documents.send(document::Command::Quit);
+        drop(self.front.take());
         for thread in self.threads.drain(..) {
             let _ = thread.join();
         }

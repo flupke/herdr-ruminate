@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 
 use component_core::ApplicationEventSender;
@@ -26,9 +26,48 @@ use super::revision_progress::HistoryProgress;
 use super::{auto_review, document};
 
 #[derive(Debug)]
+pub(super) struct MarkWriter {
+    repository: Repository,
+    tracker: ReviewTracker,
+}
+
+impl MarkWriter {
+    pub(super) fn new(repository: &Repository, store: &ReviewStore) -> Self {
+        let uncancelled = repository.without_cancellation();
+        Self {
+            tracker: ReviewTracker::new(uncancelled.clone(), store.clone()),
+            repository: uncancelled,
+        }
+    }
+
+    pub(super) fn current_identity(&self) -> review_repository::Result<SnapshotIdentity> {
+        self.repository.current_identity()
+    }
+
+    fn mark(&self, snapshot: &Snapshot, file: &ChangedFile) -> eyre::Result<MarkResult> {
+        self.tracker.mark(snapshot, file, &MarkAuthor::Reviewer)
+    }
+
+    fn unreview(&self, snapshot: &Snapshot, file: &ChangedFile) -> eyre::Result<()> {
+        self.tracker.unreview(snapshot, file)
+    }
+
+    fn mark_hunk(
+        &self,
+        snapshot: &Snapshot,
+        file: &ChangedFile,
+        mark: &HunkMark,
+    ) -> eyre::Result<MarkResult> {
+        self.tracker
+            .mark_hunk(snapshot, file, mark, &MarkAuthor::Reviewer)
+    }
+}
+
+#[derive(Debug)]
 pub(super) struct Worker {
     pub(super) repository: Repository,
     pub(super) tracker: Arc<ReviewTracker>,
+    pub(super) mark_writer: MarkWriter,
     pub(super) store: ReviewStore,
     pub(super) snapshot: Option<Snapshot>,
     pub(super) commands: Sender<WorkerCommand>,
@@ -39,6 +78,7 @@ pub(super) struct Worker {
     pub(super) held_kickoff: Option<review_explore::TurnRequest>,
     pub(super) documents: Sender<document::Command>,
     pub(super) revision_progress: HistoryProgress,
+    pub(super) stopping: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
@@ -86,12 +126,25 @@ impl Worker {
         }
     }
 
+    pub(super) fn is_stopping(&self) -> bool {
+        self.stopping.load(Ordering::Acquire)
+    }
+
     fn handle_command(
         &mut self,
         command: WorkerCommand,
         messages: &ApplicationEventSender,
     ) -> bool {
         match command {
+            WorkerCommand::Quit => return false,
+            #[cfg(test)]
+            WorkerCommand::Hold(release) => {
+                let _ = release.recv();
+                return true;
+            }
+            command if self.is_stopping() => {
+                self.handle_while_stopping(command);
+            }
             WorkerCommand::Poll => {
                 let _ = self.poll(messages);
                 let _ = messages.send(RepositoryRefreshFinished);
@@ -100,13 +153,40 @@ impl Worker {
             WorkerCommand::AutoReviewFinished(review) => self.finish_auto_review(&review, messages),
             WorkerCommand::RevisionProgress => self.next_revision_progress(messages),
             WorkerCommand::Explore(input) => self.handle_explore(input, messages),
-            #[cfg(test)]
-            WorkerCommand::Hold(release) => {
-                let _ = release.recv();
-            }
-            WorkerCommand::Quit => return false,
         }
         true
+    }
+
+    fn handle_while_stopping(&mut self, command: WorkerCommand) {
+        self.cancel_auto_review();
+        match command {
+            WorkerCommand::Repository(RepositoryAction::SetReviewed { path, reviewed }) => {
+                let _ = self.save_reviewed(&path, reviewed);
+            }
+            WorkerCommand::Repository(RepositoryAction::SetHunkReviewed {
+                review_checkpoint,
+                path,
+                mark,
+            }) => {
+                let _ = self.save_hunk_reviewed(&review_checkpoint, &path, &mark);
+            }
+            WorkerCommand::Repository(RepositoryAction::UnreviewAll(checkpoint)) => {
+                let _ = self.clear_review_marks(&checkpoint);
+            }
+            WorkerCommand::Poll
+            | WorkerCommand::AutoReviewFinished(_)
+            | WorkerCommand::RevisionProgress
+            | WorkerCommand::Explore(_)
+            | WorkerCommand::Quit
+            | WorkerCommand::Repository(
+                RepositoryAction::LoadRevisionCandidates(_)
+                | RepositoryAction::LoadRevisionHistory { .. }
+                | RepositoryAction::EditRevision { .. }
+                | RepositoryAction::AutoReview(_),
+            ) => {}
+            #[cfg(test)]
+            WorkerCommand::Hold(_) => {}
+        }
     }
 
     fn handle_explore(&mut self, input: explore_session::Input, messages: &ApplicationEventSender) {
@@ -158,6 +238,9 @@ impl Worker {
     }
 
     fn marks_changed(&mut self) {
+        if self.is_stopping() {
+            return;
+        }
         let Some(snapshot) = &self.snapshot else {
             return;
         };
@@ -341,23 +424,12 @@ impl Worker {
         path: String,
         mark: &HunkMark,
     ) {
-        let result = (|| {
-            let snapshot = self
-                .snapshot
-                .as_ref()
-                .filter(|snapshot| {
-                    review_checkpoint.matches(
-                        snapshot.identity.review_unit(),
-                        snapshot.identity.snapshot_id(),
-                    )
-                })
-                .ok_or_else(|| eyre::eyre!("the change moved; wait for the next refresh"))?;
-            let file = changed_file(snapshot, &path)?;
-            let marked = self
-                .tracker
-                .mark_hunk(snapshot, file, mark, &MarkAuthor::Reviewer)?;
-            self.marked_state(snapshot, file, marked)
-        })();
+        let saved = self.save_hunk_reviewed(review_checkpoint, &path, mark);
+        if self.is_stopping() {
+            return;
+        }
+        let result =
+            saved.and_then(|(snapshot, file, marked)| self.marked_state(snapshot, file, marked));
         if let Err(error) = &result {
             let _ = messages.send(ui_events::ToastRequested {
                 text: format!("Could not change the hunk review mark: {error}"),
@@ -371,26 +443,69 @@ impl Worker {
         });
     }
 
+    fn save_hunk_reviewed(
+        &self,
+        review_checkpoint: &ReviewCheckpoint,
+        path: &str,
+        mark: &HunkMark,
+    ) -> eyre::Result<(&Snapshot, &ChangedFile, MarkResult)> {
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .filter(|snapshot| {
+                review_checkpoint.matches(
+                    snapshot.identity.review_unit(),
+                    snapshot.identity.snapshot_id(),
+                )
+            })
+            .ok_or_else(|| eyre::eyre!("the change moved; wait for the next refresh"))?;
+        let file = changed_file(snapshot, path)?;
+        let marked = self.mark_writer.mark_hunk(snapshot, file, mark)?;
+        Ok((snapshot, file, marked))
+    }
+
     fn set_reviewed(&self, messages: &ApplicationEventSender, path: String, reviewed: bool) {
-        let Some(snapshot) = self.snapshot.as_ref() else {
+        let Some(review_unit) = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.identity.review_unit().clone())
+        else {
             return;
         };
-        let result = changed_file(snapshot, &path)
-            .and_then(|file| {
-                if reviewed {
-                    let marked = self.tracker.mark(snapshot, file, &MarkAuthor::Reviewer)?;
-                    self.marked_state(snapshot, file, marked)
-                } else {
-                    self.tracker.unreview(snapshot, file)?;
-                    self.tracker.status(snapshot, file)
-                }
+        let saved = self.save_reviewed(&path, reviewed);
+        if self.is_stopping() {
+            return;
+        }
+        let result = saved
+            .and_then(|(snapshot, file, marked)| match marked {
+                Some(marked) => self.marked_state(snapshot, file, marked),
+                None => self.tracker.status(snapshot, file),
             })
             .map_err(|_| ());
         let _ = messages.send(ReviewStateSaved {
-            review_unit: snapshot.identity.review_unit().clone(),
+            review_unit,
             path,
             result,
         });
+    }
+
+    fn save_reviewed(
+        &self,
+        path: &str,
+        reviewed: bool,
+    ) -> eyre::Result<(&Snapshot, &ChangedFile, Option<MarkResult>)> {
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| eyre::eyre!("no snapshot is loaded"))?;
+        let file = changed_file(snapshot, path)?;
+        let marked = if reviewed {
+            Some(self.mark_writer.mark(snapshot, file)?)
+        } else {
+            self.mark_writer.unreview(snapshot, file)?;
+            None
+        };
+        Ok((snapshot, file, marked))
     }
 
     fn marked_state(

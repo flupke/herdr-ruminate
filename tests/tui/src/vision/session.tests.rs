@@ -182,6 +182,83 @@ fn marks_made_in_one_jj_workspace_show_in_another_workspace_of_the_repository() 
     assert!(screen.text.contains("✓ notes.md"), "{}", screen.text);
 }
 
+#[test]
+fn a_mark_painted_just_before_the_pane_closes_is_saved() {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+
+    let (mut fixture, _) = Fixture::start();
+    fixture.wait_for("○ notes.md");
+    let real_jj = find_on_path("jj").expect("jj must be on PATH");
+    let dir = fixture.session.directory().to_owned();
+    let entered = dir.join("jj-entered");
+    let release = dir.join("jj-release");
+    let holding = dir.join("jj-holding");
+    for fifo in [&entered, &release] {
+        let status = std::process::Command::new("mkfifo")
+            .arg(fifo)
+            .status()
+            .unwrap();
+        assert!(status.success(), "mkfifo {fifo:?} failed");
+    }
+    let mut release_pipe = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&release)
+        .unwrap();
+    let entered_path = entered.clone();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let mut reader = BufReader::new(fs::File::open(entered_path).unwrap());
+        let _ = reader.read_line(&mut line);
+        let _ = entered_tx.send(line);
+    });
+    let wrapper = dir.join("agent-bin/jj");
+    fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nif mkdir '{}' 2>/dev/null; then\n  printf 'entered\\n' > '{}'\n  IFS= read -r _ < '{}'\nfi\nexec '{}' \"$@\"\n",
+            holding.display(),
+            entered.display(),
+            release.display(),
+            real_jj.display(),
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+
+    fixture.keys(&["space"]);
+    fixture.wait_for("✓ notes.md");
+    entered_rx
+        .recv_timeout(GUARD)
+        .expect("worker must start saving the mark");
+
+    let pane = fixture.session.terminals.reviewer_pane.clone();
+    let reviewer = fixture.session.terminals.reviewer.clone();
+    do_command(&fixture.vision, "pane.close", &json!({"pane": pane})).unwrap();
+    let _ = writeln!(release_pipe, "go");
+    wait_terminal_ended(&fixture.vision, &reviewer).unwrap();
+    fixture.session.terminals = open_reviewer(
+        &fixture.vision,
+        &fixture.session.scratch,
+        &fixture.session.reviewer_program,
+        fixture.session.terminals.agent.clone(),
+        fixture.session.terminals.agent_pane.clone(),
+    )
+    .unwrap();
+    fixture.session.first_screen(&fixture.vision).unwrap();
+    let screen = fixture.wait_for("○ sample.rs");
+    assert!(screen.text.contains("✓ notes.md"), "{}", screen.text);
+}
+
+fn find_on_path(program: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join(program))
+        .find(|candidate| candidate.is_file())
+}
+
 fn tool_json(result: &Value) -> Value {
     serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap()
 }

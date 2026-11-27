@@ -479,6 +479,10 @@ fn open_reviewer(
 
 fn close_terminal(vision: &Vision, terminal: &str, pane: &str) -> Result<()> {
     do_command(vision, "pane.close", &json!({"pane": pane}))?;
+    wait_terminal_ended(vision, terminal)
+}
+
+fn wait_terminal_ended(vision: &Vision, terminal: &str) -> Result<()> {
     // `hc ls` lists live terminals only.
     wait_core(vision, &format!("{terminal} to end"), |listed| {
         !listed["terminals"]

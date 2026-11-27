@@ -239,9 +239,9 @@ impl Runtime {
             repaint: false,
         }
         .run();
+        effects.begin_shutdown();
         terminal_events.stop();
         event_producers.stop();
-        self.repository.cancel();
         drop(terminal);
         drop(page);
         drop(effects);
